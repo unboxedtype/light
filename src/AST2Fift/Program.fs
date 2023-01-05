@@ -23,17 +23,21 @@ type IRExpr =
 
 type AST = IRExpr
 
+exception ASTException of string
+
 // transforms AST to Fift script
 let rec AST2Fift (p: AST) =
     match p with
         | BoolVal false -> ["0 INT"]
         | BoolVal true -> ["-1 INT"]
         | NumVal v -> [ sprintf "%d INT" v ]
-        | Add (l, r) -> (AST2Fift l) @ (AST2Fift r) @ ["ADD"]
+        | Add (l, r) ->
+            let l1, r1 = (AST2Fift l, AST2Fift r)
+            l1 @ r1 @ ["ADD"]
         | Not v ->
             (AST2Fift v) @ ["NOT"]
         | _ ->
-            []
+            raise (ASTException "Unsupported AST element")
 
 let fiftHeader =
     ["\"Asm.fif\" include"; "<{"]
