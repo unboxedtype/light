@@ -24,10 +24,24 @@ type IRExpr =
 type AST = IRExpr
 
 // transforms AST to Fift script
-let AST2Fift (p: AST) = "(empty)"
+let rec AST2Fift (p: AST) =
+    match p with
+        | BoolVal false -> ["0 INT"]
+        | BoolVal true -> ["-1 INT"]
+        | Not v ->
+            (AST2Fift v) @ ["NOT"]
+        | _ ->
+            []
+
+let fiftHeader =
+    ["\"Asm.fif\" include"; "<{"]
+
+let fiftFooter =
+    ["}>s"; "runvmcode drop .s"]
 
 [<EntryPoint>]
 let main argv =
-    let fift = AST2Fift (BoolVal false)
-    printfn "%s" fift
+    let fift = AST2Fift (Not (Not (BoolVal false)))
+    let program = fiftHeader @ fift @ fiftFooter
+    List.map (printfn "%s") program |> ignore
     0
