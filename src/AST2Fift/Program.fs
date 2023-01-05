@@ -28,6 +28,8 @@ let rec AST2Fift (p: AST) =
     match p with
         | BoolVal false -> ["0 INT"]
         | BoolVal true -> ["-1 INT"]
+        | NumVal v -> [ sprintf "%d INT" v ]
+        | Add (l, r) -> (AST2Fift l) @ (AST2Fift r) @ ["ADD"]
         | Not v ->
             (AST2Fift v) @ ["NOT"]
         | _ ->

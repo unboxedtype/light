@@ -1,0 +1,33 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{F36E8BC7-863D-4221-B52D-9467A9CBAA0F}"
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "AST2Fift", "src\AST2Fift\AST2Fift.fsproj", "{A3A29A99-5C7B-4972-B00E-AB8E7013C671}"
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "tests", "tests\tests.fsproj", "{458093C1-311D-4AD5-BD1A-0B0E574CA12A}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A3A29A99-5C7B-4972-B00E-AB8E7013C671}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A3A29A99-5C7B-4972-B00E-AB8E7013C671}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A3A29A99-5C7B-4972-B00E-AB8E7013C671}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A3A29A99-5C7B-4972-B00E-AB8E7013C671}.Release|Any CPU.Build.0 = Release|Any CPU
+		{458093C1-311D-4AD5-BD1A-0B0E574CA12A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{458093C1-311D-4AD5-BD1A-0B0E574CA12A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{458093C1-311D-4AD5-BD1A-0B0E574CA12A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{458093C1-311D-4AD5-BD1A-0B0E574CA12A}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{A3A29A99-5C7B-4972-B00E-AB8E7013C671} = {F36E8BC7-863D-4221-B52D-9467A9CBAA0F}
+	EndGlobalSection
+EndGlobal
