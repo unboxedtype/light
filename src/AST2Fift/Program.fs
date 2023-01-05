@@ -7,6 +7,14 @@
 
 module AST2Fift
 
+open System
+
+let fiftHeader =
+    ["\"Asm.fif\" include"; "<{"]
+
+let fiftFooter =
+    ["}>s"; "runvmcode drop .s"]
+
 // Lighthouse IR expression type
 type IRExpr =
     | BoolVal of value : bool
@@ -38,12 +46,6 @@ let rec AST2Fift (p: AST) =
             (AST2Fift v) @ ["NOT"]
         | _ ->
             raise (ASTException "Unsupported AST element")
-
-let fiftHeader =
-    ["\"Asm.fif\" include"; "<{"]
-
-let fiftFooter =
-    ["}>s"; "runvmcode drop .s"]
 
 [<EntryPoint>]
 let main argv =

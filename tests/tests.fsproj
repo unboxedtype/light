@@ -18,7 +18,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\src\AST2Fift\AST2Fift.fsproj" />
+    <ProjectReference Include="../src/AST2Fift/AST2Fift.fsproj" />
+    <ProjectReference Include="../src/FiftExecutor/FiftExecutor.fsproj" />
   </ItemGroup>
 
 </Project>
