@@ -48,7 +48,7 @@ and EvalBoolExpr (p: BoolExpr) =
         | Not v ->
             (EvalBoolExpr v) @ ["NOT"]
         | Eq (l1, l2) ->
-            (EvalIRExpr l1) @ (EvalIRExpr l2) @ ["EQ"]
+            (EvalIRExpr l1) @ (EvalIRExpr l2) @ ["EQUAL"]
         | Bool false ->
             ["0 INT"]
         | Bool true ->

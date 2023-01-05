@@ -49,3 +49,10 @@ let ExecBoolUnit () =
 let ExecAddTest () =
     let code = EvalIRExpr (Add (NumVal 1000, NumVal 1234))
     Assert.AreEqual (ExecuteCodeInVM code, "2234")
+
+[<Test>]
+let ExecEqTest () =
+    let l = Add (NumVal 1000, NumVal 1234)
+    let r = Add (NumVal 1001, NumVal 1233)
+    let code_eq = EvalIRExpr (BoolVal (Eq (l, r)))
+    Assert.AreEqual (ExecuteCodeInVM code_eq, "-1")
