@@ -22,30 +22,30 @@ let Setup () =
 
 [<Test>]
 let BoolFalseTest () =
-    let s = AST2Fift (BoolVal false)
+    let s = EvalIRExpr (BoolVal (Bool false))
     Assert.AreEqual (["0 INT"], s);
 
 [<Test>]
 let BoolTrueTest () =
-    let s = AST2Fift (BoolVal true)
+    let s = EvalIRExpr (BoolVal (Bool true))
     Assert.AreEqual (["-1 INT"], s);
 
 [<Test>]
 let NumValTest () =
-    let s = AST2Fift (NumVal 1000)
+    let s = EvalIRExpr (NumVal 1000)
     Assert.AreEqual (["1000 INT"], s);
 
 [<Test>]
 let Add2Test () =
-    let sum = AST2Fift (Add (NumVal 1000, NumVal 1234))
+    let sum = EvalIRExpr (Add (NumVal 1000, NumVal 1234))
     Assert.AreEqual (["1000 INT"; "1234 INT"; "ADD"], sum)
 
 [<Test>]
 let ExecBoolUnit () =
-    let code = AST2Fift (BoolVal true)
+    let code = EvalIRExpr (BoolVal (Bool true))
     Assert.AreEqual (ExecuteCodeInVM code, "-1")
 
 [<Test>]
 let ExecAddTest () =
-    let code = AST2Fift (Add (NumVal 1000, NumVal 1234))
+    let code = EvalIRExpr (Add (NumVal 1000, NumVal 1234))
     Assert.AreEqual (ExecuteCodeInVM code, "2234")

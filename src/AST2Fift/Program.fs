@@ -16,40 +16,49 @@ let fiftFooter =
     ["}>s"; "runvmcode drop .s"]
 
 // Lighthouse IR expression type
-type IRExpr =
-    | BoolVal of value : bool
-    | NumVal of value : int
-    | Mul of l: IRExpr * r: IRExpr
-    | Add of l: IRExpr * r: IRExpr
-    | Gt of  l: IRExpr * r: IRExpr
-    | Lt of l: IRExpr * r: IRExpr
-    | Eq of l: IRExpr * r: IRExpr
-    | Or of l: IRExpr * r: IRExpr
-    | And of l: IRExpr * r: IRExpr
-    | Mod of l: IRExpr * r: IRExpr
-    | Not of l: IRExpr
 
-type AST = IRExpr
+type IRExpr =
+    | NumVal of value : int
+    | Add of l: IRExpr * r: IRExpr
+    | BoolVal of v: BoolExpr
+and BoolExpr =
+    | Bool of v : bool
+    | Gt of  l: BoolExpr * r: BoolExpr
+    | Lt of l: BoolExpr * r: BoolExpr
+    | Or of l: BoolExpr * r: BoolExpr
+    | And of l: BoolExpr * r: BoolExpr
+    | Not of l: BoolExpr
+    | Eq of l: IRExpr * r: IRExpr
 
 exception ASTException of string
 
 // transforms AST to Fift script
-let rec AST2Fift (p: AST) =
+let rec EvalIRExpr (p: IRExpr) =
     match p with
-        | BoolVal false -> ["0 INT"]
-        | BoolVal true -> ["-1 INT"]
-        | NumVal v -> [ sprintf "%d INT" v ]
+        | NumVal v ->
+            [sprintf "%d INT" v]
         | Add (l, r) ->
-            let l1, r1 = (AST2Fift l, AST2Fift r)
-            l1 @ r1 @ ["ADD"]
-        | Not v ->
-            (AST2Fift v) @ ["NOT"]
+            (EvalIRExpr l) @ (EvalIRExpr r) @ ["ADD"]
+        | BoolVal v ->
+            (EvalBoolExpr v)
         | _ ->
             raise (ASTException "Unsupported AST element")
+and EvalBoolExpr (p: BoolExpr) =
+    match p with
+        | Not v ->
+            (EvalBoolExpr v) @ ["NOT"]
+        | Eq (l1, l2) ->
+            (EvalIRExpr l1) @ (EvalIRExpr l2) @ ["EQ"]
+        | Bool false ->
+            ["0 INT"]
+        | Bool true ->
+            ["-1 INT"]
+        | _ ->
+            raise (ASTException "Unsupported BoolExpr element")
 
 [<EntryPoint>]
 let main argv =
-    let fift = AST2Fift (Not (Not (BoolVal false)))
+    let fift = EvalIRExpr (BoolVal (Not (Not (Bool false))))
     let program = fiftHeader @ fift @ fiftFooter
     List.map (printfn "%s") program |> ignore
     0
