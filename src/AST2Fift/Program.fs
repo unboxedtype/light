@@ -49,7 +49,9 @@ let rec EvalIRExpr (p: IRExpr) (ctx: Context) =
         | Add (l, r) ->
             (EvalIRExpr l ctx) @ (EvalIRExpr r ctx) @ ["ADD"]
         | BoolVal v ->
-            (EvalBoolExpr v ctx)
+            EvalBoolExpr v ctx
+        | Var name ->
+            EvalIRExpr ctx.[name] ctx
         | _ ->
             raise (ASTException "Unsupported AST element")
 and EvalBoolExpr (p: BoolExpr) (ctx: Context) =

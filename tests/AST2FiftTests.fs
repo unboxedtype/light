@@ -63,3 +63,24 @@ let ExecEqTest () =
     let r = Add (Number 1001, Number 1233)
     let code_eq = EvalIRExpr (BoolVal (Eq (l, r))) ctx
     Assert.AreEqual (ExecuteCodeInVM code_eq, "-1")
+
+[<Test>]
+let ExecValueTest () =
+    let ctx = Map [ ("a", Number 1000) ]
+    let code_eq = EvalIRExpr (Var "a") ctx
+    Assert.AreEqual (ExecuteCodeInVM code_eq, "1000")
+
+[<Test>]
+let ExecValueAddTest () =
+    let ctx = Map [ ("a", Number 1000); ("b", Number 2000);
+                    ("c", Add (Var "a", Var "b"))]
+    let code_eq = EvalIRExpr (Var "c") ctx
+    Assert.AreEqual (ExecuteCodeInVM code_eq, "3000")
+
+[<Test>]
+let ExecValueAddTest2 () =
+    let ctx = Map [ ("a", Add (Number 100, Number 200));
+                    ("b", Add (Number 2000, Var "a"));
+                    ("c", Add (Var "a", Var "b"))]
+    let code_eq = EvalIRExpr (Var "c") ctx
+    Assert.AreEqual (ExecuteCodeInVM code_eq, "2600")
