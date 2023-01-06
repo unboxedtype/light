@@ -108,3 +108,9 @@ let ExecValueAddTest2 () =
                     ("c", Add (Var "a", Var "b"))]
     let code_eq = EvalIRExpr (Var "c") ctx
     Assert.AreEqual (ExecuteCodeInVM code_eq, "2600")
+
+[<Test>]
+let ExecListTest () =
+    let ctx = Map [ ("a", Number 100); ("b", Number 200) ]
+    let code = EvalIRExpr (List (Cons (Var "b", (Cons (Var "a", Nil))))) ctx
+    Assert.AreEqual (ExecuteCodeInVM code, "[ 200 [ 100 [] ] ]")
