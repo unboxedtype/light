@@ -6,6 +6,7 @@ open Printf
 open System.IO
 open System.Diagnostics
 open System.Threading.Tasks
+open System.Collections.Generic
 open AST2Fift
 
 let ExecuteCodeInVM fiftCode =
@@ -69,6 +70,17 @@ let ExecValueTest () =
     let ctx = Map [ ("a", Number 1000) ]
     let code_eq = EvalIRExpr (Var "a") ctx
     Assert.AreEqual (ExecuteCodeInVM code_eq, "1000")
+
+[<Test>]
+let ExecValueNotFoundTest () =
+    let ctx = Map []
+    let code_eq =
+     try
+         Some (EvalIRExpr (Var "a") ctx)
+     with
+         | :? KeyNotFoundException -> None
+         | _ -> Some ([""])
+    Assert.AreEqual (code_eq, None)
 
 [<Test>]
 let ExecValueAddTest () =
