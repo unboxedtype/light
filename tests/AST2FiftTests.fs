@@ -46,6 +46,18 @@ let Add2Test () =
     Assert.AreEqual (["1000 INT"; "1234 INT"; "ADD"], sum)
 
 [<Test>]
+let ListTest () =
+    let ctx = Map []
+    let nil = EvalIRExpr (List Nil) ctx
+    Assert.AreEqual (["NIL"], nil)
+
+[<Test>]
+let ListTest2 () =
+    let ctx = Map []
+    let list = EvalIRExpr (List (Cons (Number 1, Nil))) ctx
+    Assert.AreEqual (["1 INT"; "NIL"; "CONS"], list)
+
+[<Test>]
 let ExecBoolUnit () =
     let ctx = Map []
     let code = EvalIRExpr (BoolVal (Bool true)) ctx

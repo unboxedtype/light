@@ -35,7 +35,7 @@ and BoolExpr =
     | Eq of l: IRExpr * r: IRExpr
 and IRList =
     | Nil
-    | Cons of v: IRExpr
+    | Cons of h: IRExpr * t: IRList
 
 exception ASTException of string
 
@@ -52,6 +52,8 @@ let rec EvalIRExpr (p: IRExpr) (ctx: Context) =
             EvalBoolExpr v ctx
         | Var name ->
             EvalIRExpr ctx.[name] ctx
+        | List l ->
+            EvalIRList l ctx
         | _ ->
             raise (ASTException "Unsupported AST element")
 and EvalBoolExpr (p: BoolExpr) (ctx: Context) =
@@ -66,6 +68,12 @@ and EvalBoolExpr (p: BoolExpr) (ctx: Context) =
             ["-1 INT"]
         | _ ->
             raise (ASTException "Unsupported BoolExpr element")
+and EvalIRList (l: IRList) (ctx: Context) =
+    match l with
+        | Nil ->
+            ["NIL"]
+        | Cons (h, t) ->
+            (EvalIRExpr h ctx) @ (EvalIRList t ctx) @ ["CONS"]
 
 [<EntryPoint>]
 let main argv =
