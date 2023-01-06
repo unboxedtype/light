@@ -8,6 +8,7 @@
 module AST2Fift
 
 open System
+open FSharp.Collections
 
 let fiftHeader =
     ["\"Asm.fif\" include"; "<{"]
@@ -15,10 +16,13 @@ let fiftHeader =
 let fiftFooter =
     ["}>s"; "runvmcode drop .s"]
 
+// ===========================================================
 // Lighthouse IR expression type
-
+// ===========================================================
 type IRExpr =
-    | NumVal of value : int
+    | Number of value: int
+    | List of value: IRList
+    | Var of name: string
     | Add of l: IRExpr * r: IRExpr
     | BoolVal of v: BoolExpr
 and BoolExpr =
@@ -29,26 +33,31 @@ and BoolExpr =
     | And of l: BoolExpr * r: BoolExpr
     | Not of l: BoolExpr
     | Eq of l: IRExpr * r: IRExpr
+and IRList =
+    | Nil
+    | Cons of v: IRExpr
 
 exception ASTException of string
 
+type Context = Map<string, IRExpr>
+
 // transforms AST to Fift script
-let rec EvalIRExpr (p: IRExpr) =
+let rec EvalIRExpr (p: IRExpr) (ctx: Context) =
     match p with
-        | NumVal v ->
+        | Number v ->
             [sprintf "%d INT" v]
         | Add (l, r) ->
-            (EvalIRExpr l) @ (EvalIRExpr r) @ ["ADD"]
+            (EvalIRExpr l ctx) @ (EvalIRExpr r ctx) @ ["ADD"]
         | BoolVal v ->
-            (EvalBoolExpr v)
+            (EvalBoolExpr v ctx)
         | _ ->
             raise (ASTException "Unsupported AST element")
-and EvalBoolExpr (p: BoolExpr) =
+and EvalBoolExpr (p: BoolExpr) (ctx: Context) =
     match p with
         | Not v ->
-            (EvalBoolExpr v) @ ["NOT"]
+            (EvalBoolExpr v ctx) @ ["NOT"]
         | Eq (l1, l2) ->
-            (EvalIRExpr l1) @ (EvalIRExpr l2) @ ["EQUAL"]
+            (EvalIRExpr l1 ctx) @ (EvalIRExpr l2 ctx) @ ["EQUAL"]
         | Bool false ->
             ["0 INT"]
         | Bool true ->
@@ -58,7 +67,8 @@ and EvalBoolExpr (p: BoolExpr) =
 
 [<EntryPoint>]
 let main argv =
-    let fift = EvalIRExpr (BoolVal (Not (Not (Bool false))))
+    let ctx = Map []
+    let fift = EvalIRExpr (BoolVal (Not (Not (Bool false)))) ctx
     let program = fiftHeader @ fift @ fiftFooter
     List.map (printfn "%s") program |> ignore
     0

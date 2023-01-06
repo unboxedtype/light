@@ -22,37 +22,44 @@ let Setup () =
 
 [<Test>]
 let BoolFalseTest () =
-    let s = EvalIRExpr (BoolVal (Bool false))
+    let ctx = Map []
+    let s = EvalIRExpr (BoolVal (Bool false)) ctx
     Assert.AreEqual (["0 INT"], s);
 
 [<Test>]
 let BoolTrueTest () =
-    let s = EvalIRExpr (BoolVal (Bool true))
+    let ctx = Map []
+    let s = EvalIRExpr (BoolVal (Bool true)) ctx
     Assert.AreEqual (["-1 INT"], s);
 
 [<Test>]
-let NumValTest () =
-    let s = EvalIRExpr (NumVal 1000)
+let NumberTest () =
+    let ctx = Map []
+    let s = EvalIRExpr (Number 1000) ctx
     Assert.AreEqual (["1000 INT"], s);
 
 [<Test>]
 let Add2Test () =
-    let sum = EvalIRExpr (Add (NumVal 1000, NumVal 1234))
+    let ctx = Map []
+    let sum = EvalIRExpr (Add (Number 1000, Number 1234)) ctx
     Assert.AreEqual (["1000 INT"; "1234 INT"; "ADD"], sum)
 
 [<Test>]
 let ExecBoolUnit () =
-    let code = EvalIRExpr (BoolVal (Bool true))
+    let ctx = Map []
+    let code = EvalIRExpr (BoolVal (Bool true)) ctx
     Assert.AreEqual (ExecuteCodeInVM code, "-1")
 
 [<Test>]
 let ExecAddTest () =
-    let code = EvalIRExpr (Add (NumVal 1000, NumVal 1234))
+    let ctx = Map []
+    let code = EvalIRExpr (Add (Number 1000, Number 1234)) ctx
     Assert.AreEqual (ExecuteCodeInVM code, "2234")
 
 [<Test>]
 let ExecEqTest () =
-    let l = Add (NumVal 1000, NumVal 1234)
-    let r = Add (NumVal 1001, NumVal 1233)
-    let code_eq = EvalIRExpr (BoolVal (Eq (l, r)))
+    let ctx = Map []
+    let l = Add (Number 1000, Number 1234)
+    let r = Add (Number 1001, Number 1233)
+    let code_eq = EvalIRExpr (BoolVal (Eq (l, r))) ctx
     Assert.AreEqual (ExecuteCodeInVM code_eq, "-1")

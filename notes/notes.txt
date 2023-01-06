@@ -1,0 +1,39 @@
+// Description:
+//    This file contains random notes on the topic of Lighthouse language.
+// Author:
+//    Evgeniy Shishkin <evgeniy.shishkin@gmail.com>
+// Date:
+//    Jan 2023
+
+
+type X =
+    | ctor1(param1:T1, param2:T2, ...)
+    | ctor2(param1:T1, ...)   
+Type X is a list of constructors together with their parameters,
+   linked to a single entity.
+Parameters must have types already defined in the scope.   
+
+type TypeDefinition =
+    | Ctors of (
+       (* ctor name *) string *
+       (( (* ctor param name *) string *
+          (* ctor param type *) TypeValue) list)) list
+
+1) all ctor names must be unique
+2) some ctors must be terminal
+3) ctor param names must be unique in a scope of a single ctor
+4) ctor param types must be already defined or use 
+   the TypeDef being defined (recursive type)
+
+type ListNat = Nil | Cons (a:Nat) (t: ListNat)
+ListNatType = [("Nil",[]), ("Cons",[("a",Nat),("t",ListNatType)])]
+let l:ListNat = Cons 10 (Cons 20 Nil) // [10, 20]
+let r = l // copy
+let a = map (fun x -> x + 1) [1,2,3]
+type Func =
+    Func(name: string,
+         params:
+            (/* name */ string,
+             /* type */ TypeValue) list,
+         body: IRExpr
+    )
