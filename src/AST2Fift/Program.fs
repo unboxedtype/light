@@ -38,11 +38,10 @@ type IRExpr =
     | List of value: IRList
     | ListHead of value: IRExpr
     | ListTail of value: IRExpr
-    | Var of name: string
     | Add of l: IRExpr * r: IRExpr
     | BoolVal of v: BoolExpr
-    | FunDef of name: string * prms: string list * body: IRExpr
-    | FunCall of name: string * prms: IRExpr list
+    | Bind of name: string * prms: string list * body: IRExpr
+    | Eval of name: string * prms: IRExpr list
 and BoolExpr =
     | Bool of v : bool
     | Gt of  l: BoolExpr * r: BoolExpr
@@ -57,7 +56,9 @@ and IRList =
 
 exception ASTException of string
 
-type Context = Map<string, IRExpr>
+type Context = Map<string, string list * IRExpr>
+// var name -> (param list, body)
+// for variables, param list = [], body is the value
 
 // transforms AST to Fift script
 let rec EvalIRExpr (p: IRExpr) (ctx: Context) =
@@ -68,8 +69,8 @@ let rec EvalIRExpr (p: IRExpr) (ctx: Context) =
             (EvalIRExpr l ctx) @ (EvalIRExpr r ctx) @ [TVM_ADD]
         | BoolVal v ->
             EvalBoolExpr v ctx
-        | Var name ->
-            EvalIRExpr ctx.[name] ctx
+        | Eval (name, []) ->
+            EvalIRExpr (snd ctx.[name]) ctx
         | List l ->
             EvalIRList l ctx
         | ListHead l ->

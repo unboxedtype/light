@@ -79,8 +79,8 @@ let ExecEqTest () =
 
 [<Test>]
 let ExecValueTest () =
-    let ctx = Map [ ("a", Number 1000) ]
-    let code_eq = EvalIRExpr (Var "a") ctx
+    let ctx = Map [ ("a", ([], Number 1000)) ]
+    let code_eq = EvalIRExpr (Eval ("a", [])) ctx
     Assert.AreEqual (Some "1000", ExecuteCodeInVM code_eq)
 
 [<Test>]
@@ -88,7 +88,7 @@ let ExecValueNotFoundTest () =
     let ctx = Map []
     let code_eq =
      try
-         Some (EvalIRExpr (Var "a") ctx)
+         Some (EvalIRExpr (Eval ("a", [])) ctx)
      with
          | :? KeyNotFoundException -> None
          | _ -> Some ([""])
@@ -96,23 +96,23 @@ let ExecValueNotFoundTest () =
 
 [<Test>]
 let ExecValueAddTest () =
-    let ctx = Map [ ("a", Number 1000); ("b", Number 2000);
-                    ("c", Add (Var "a", Var "b"))]
-    let code_eq = EvalIRExpr (Var "c") ctx
+    let ctx = Map [ ("a", ([], Number 1000)); ("b", ([], Number 2000));
+                    ("c", ([], Add (Eval ("a", []), Eval ("b", [])))) ]
+    let code_eq = EvalIRExpr (Eval ("c", [])) ctx
     Assert.AreEqual (Some "3000", ExecuteCodeInVM code_eq)
 
 [<Test>]
 let ExecValueAddTest2 () =
-    let ctx = Map [ ("a", Add (Number 100, Number 200));
-                    ("b", Add (Number 2000, Var "a"));
-                    ("c", Add (Var "a", Var "b"))]
-    let code_eq = EvalIRExpr (Var "c") ctx
+    let ctx = Map [ ("a", ([], Add (Number 100, Number 200)));
+                    ("b", ([], Add (Number 2000, Eval ("a", []))));
+                    ("c", ([], Add (Eval ("a", []), Eval ("b", []))))]
+    let code_eq = EvalIRExpr (Eval ("c", [])) ctx
     Assert.AreEqual (Some "2600", ExecuteCodeInVM code_eq)
 
 [<Test>]
 let ExecListTest () =
-    let ctx = Map [ ("a", Number 100); ("b", Number 200) ]
-    let code = EvalIRExpr (List (Cons (Var "b", (Cons (Var "a", Nil))))) ctx
+    let ctx = Map [ ("a", ([], Number 100)); ("b", ([], Number 200)) ]
+    let code = EvalIRExpr (List (Cons (Eval ("b", []), (Cons (Eval ("a", []), Nil))))) ctx
     Assert.AreEqual (Some "[ 200 [ 100 [] ] ]", ExecuteCodeInVM code)
 
 [<Test>]
