@@ -111,7 +111,8 @@ let ExecValueAddTest2 () =
 
 [<Test>]
 let ExecListTest () =
-    let ctx = Map [ ("a", ([], Number 100)); ("b", ([], Number 200)) ]
+    let ctx = Map [ ("a", ([], Number 100));
+                    ("b", ([], Number 200)) ]
     let code = EvalIRExpr (List (Cons (Eval ("b", []), (Cons (Eval ("a", []), Nil))))) ctx
     Assert.AreEqual (Some "[ 200 [ 100 [] ] ]", ExecuteCodeInVM code)
 
@@ -138,3 +139,10 @@ let ExecListTailNonEmptyTest () =
     let ctx = Map []
     let code = EvalIRExpr (ListTail (List (Cons (Number 1, Nil)))) ctx
     Assert.AreEqual (Some "[]", ExecuteCodeInVM code)
+
+[<Test>]
+let ExecEvalTest () =
+    // let increment n = 1 + n
+    let ctx = Map [("increment", (["n"], Add (Number 1, Eval ("n", []))))]
+    let code = EvalIRExpr (Eval ("increment", [("n", Number 10)])) ctx
+    Assert.AreEqual (Some "11", ExecuteCodeInVM code)

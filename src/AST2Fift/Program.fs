@@ -33,6 +33,10 @@ let TVM_ADD = "ADD";
 // ===========================================================
 // Lighthouse IR expression type
 // ===========================================================
+// TODO: remove BoolVal, BoolExpr, move into IRExpr instead.
+// Rational: type system must guarantee the correctness of
+//   Gt, Lt, Eq.. type soundness, no need to do type check
+//   at this level. Insert IRExpr instead of BoolExpr
 type IRExpr =
     | Number of value: int
     | List of value: IRList
@@ -41,7 +45,7 @@ type IRExpr =
     | Add of l: IRExpr * r: IRExpr
     | BoolVal of v: BoolExpr
     | Bind of name: string * prms: string list * body: IRExpr
-    | Eval of name: string * prms: IRExpr list
+    | Eval of name: string * prms: (string * IRExpr) list
 and BoolExpr =
     | Bool of v : bool
     | Gt of  l: BoolExpr * r: BoolExpr
@@ -60,7 +64,6 @@ type Context = Map<string, string list * IRExpr>
 // var name -> (param list, body)
 // for variables, param list = [], body is the value
 
-// transforms AST to Fift script
 let rec EvalIRExpr (p: IRExpr) (ctx: Context) =
     match p with
         | Number v ->
@@ -71,6 +74,14 @@ let rec EvalIRExpr (p: IRExpr) (ctx: Context) =
             EvalBoolExpr v ctx
         | Eval (name, []) ->
             EvalIRExpr (snd ctx.[name]) ctx
+        | Eval (name, pv_list) ->  // pv_list = [("a", Add (1,2))]
+            // 1. add all parameter values into the context
+            // 2. evaluate function body with the new context
+            // 3. retun the evaluated value
+            let updateContext ctx (name, body) =
+                Map.add name ([], body) ctx
+            let ctx2 = List.fold updateContext ctx pv_list
+            EvalIRExpr (snd ctx.[name]) ctx2
         | List l ->
             EvalIRList l ctx
         | ListHead l ->

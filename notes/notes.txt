@@ -37,3 +37,9 @@ type Func =
              /* type */ TypeValue) list,
          body: IRExpr
     )
+
+
+[let f = 10,
+ let n = fun x -> x + 1,
+ n f]
+
