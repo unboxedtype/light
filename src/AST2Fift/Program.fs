@@ -10,14 +10,17 @@ module AST2Fift
 open System
 open FSharp.Collections
 
-let fiftHeader =
+let FiftHeader =
     ["\"Asm.fif\" include"; "<{"]
 
-let fiftFooter =
+let FiftFooter =
     ["}>s"; "runvmcode"; ".dump"; "cr"; ".dump"]
 
 let WhiteSpace = " ";
 
+// ===========================================================
+// TVM instructions used in the code generation
+// ===========================================================
 let TVM_INT = "INT";
 let TVM_NIL = "NIL";
 let TVM_FIRST = "FIRST";
@@ -26,6 +29,7 @@ let TVM_NOT = "NOT";
 let TVM_EQUAL = "EQUAL";
 let TVM_CONS = "CONS";
 let TVM_ADD = "ADD";
+
 // ===========================================================
 // Lighthouse IR expression type
 // ===========================================================
@@ -92,11 +96,3 @@ and EvalIRList (l: IRList) (ctx: Context) =
             [TVM_NIL]
         | Cons (h, t) ->
             (EvalIRExpr h ctx) @ (EvalIRList t ctx) @ [TVM_CONS]
-
-[<EntryPoint>]
-let main argv =
-    let ctx = Map []
-    let fift = EvalIRExpr (BoolVal (Not (Not (Bool false)))) ctx
-    let program = fiftHeader @ fift @ fiftFooter
-    List.map (printfn "%s") program |> ignore
-    0

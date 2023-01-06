@@ -11,7 +11,7 @@ open AST2Fift
 
 let ExecuteCodeInVM fiftCode =
     let scriptPath = Environment.CurrentDirectory + "/test.fif"
-    let program = fiftHeader @ fiftCode @ fiftFooter
+    let program = FiftHeader @ fiftCode @ FiftFooter
     let file = File.CreateText(scriptPath)
     program |> List.map (fun s -> fprintfn file "%s" s) |> ignore
     file.Close()
