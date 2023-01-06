@@ -61,13 +61,13 @@ let ListTest2 () =
 let ExecBoolUnit () =
     let ctx = Map []
     let code = EvalIRExpr (BoolVal (Bool true)) ctx
-    Assert.AreEqual (ExecuteCodeInVM code, "-1")
+    Assert.AreEqual (Some "-1", ExecuteCodeInVM code)
 
 [<Test>]
 let ExecAddTest () =
     let ctx = Map []
     let code = EvalIRExpr (Add (Number 1000, Number 1234)) ctx
-    Assert.AreEqual (ExecuteCodeInVM code, "2234")
+    Assert.AreEqual (Some "2234", ExecuteCodeInVM code)
 
 [<Test>]
 let ExecEqTest () =
@@ -75,13 +75,13 @@ let ExecEqTest () =
     let l = Add (Number 1000, Number 1234)
     let r = Add (Number 1001, Number 1233)
     let code_eq = EvalIRExpr (BoolVal (Eq (l, r))) ctx
-    Assert.AreEqual (ExecuteCodeInVM code_eq, "-1")
+    Assert.AreEqual (Some "-1", ExecuteCodeInVM code_eq)
 
 [<Test>]
 let ExecValueTest () =
     let ctx = Map [ ("a", Number 1000) ]
     let code_eq = EvalIRExpr (Var "a") ctx
-    Assert.AreEqual (ExecuteCodeInVM code_eq, "1000")
+    Assert.AreEqual (Some "1000", ExecuteCodeInVM code_eq)
 
 [<Test>]
 let ExecValueNotFoundTest () =
@@ -92,14 +92,14 @@ let ExecValueNotFoundTest () =
      with
          | :? KeyNotFoundException -> None
          | _ -> Some ([""])
-    Assert.AreEqual (code_eq, None)
+    Assert.AreEqual (None, code_eq)
 
 [<Test>]
 let ExecValueAddTest () =
     let ctx = Map [ ("a", Number 1000); ("b", Number 2000);
                     ("c", Add (Var "a", Var "b"))]
     let code_eq = EvalIRExpr (Var "c") ctx
-    Assert.AreEqual (ExecuteCodeInVM code_eq, "3000")
+    Assert.AreEqual (Some "3000", ExecuteCodeInVM code_eq)
 
 [<Test>]
 let ExecValueAddTest2 () =
@@ -107,10 +107,34 @@ let ExecValueAddTest2 () =
                     ("b", Add (Number 2000, Var "a"));
                     ("c", Add (Var "a", Var "b"))]
     let code_eq = EvalIRExpr (Var "c") ctx
-    Assert.AreEqual (ExecuteCodeInVM code_eq, "2600")
+    Assert.AreEqual (Some "2600", ExecuteCodeInVM code_eq)
 
 [<Test>]
 let ExecListTest () =
     let ctx = Map [ ("a", Number 100); ("b", Number 200) ]
     let code = EvalIRExpr (List (Cons (Var "b", (Cons (Var "a", Nil))))) ctx
-    Assert.AreEqual (ExecuteCodeInVM code, "[ 200 [ 100 [] ] ]")
+    Assert.AreEqual (Some "[ 200 [ 100 [] ] ]", ExecuteCodeInVM code)
+
+[<Test>]
+let ExecListHeadEmptyTest () =
+    let ctx = Map []
+    let code = EvalIRExpr (ListHead (List Nil)) ctx
+    Assert.AreEqual (None, ExecuteCodeInVM code)
+
+[<Test>]
+let ExecListHeadNonEmptyTest () =
+    let ctx = Map []
+    let code = EvalIRExpr (ListHead (List (Cons (Number 1, Nil)))) ctx
+    Assert.AreEqual (Some "1", ExecuteCodeInVM code)
+
+[<Test>]
+let ExecListTailEmptyTest () =
+    let ctx = Map []
+    let code = EvalIRExpr (ListTail (List Nil)) ctx
+    Assert.AreEqual (None, ExecuteCodeInVM code)
+
+[<Test>]
+let ExecListTailNonEmptyTest () =
+    let ctx = Map []
+    let code = EvalIRExpr (ListTail (List (Cons (Number 1, Nil)))) ctx
+    Assert.AreEqual (Some "[]", ExecuteCodeInVM code)

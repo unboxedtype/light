@@ -10,4 +10,4 @@ run:
 ## /m:1 switch is a workaround not to
 ## let dotnet break the tty
 test:
-	@NO_COLOR=true dotnet test /m:1  
+	@dotnet test /m:1
