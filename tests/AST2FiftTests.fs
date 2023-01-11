@@ -146,3 +146,11 @@ let ExecEvalTest () =
     let ctx = Map [("increment", (["n"], Add (Number 1, Eval ("n", []))))]
     let code = EvalIRExpr (Eval ("increment", [("n", Number 10)])) ctx
     Assert.AreEqual (Some "11", ExecuteCodeInVM code)
+
+[<Test>]
+let ExecEval2DefTest () =
+    // let increase n = 1 + n
+    let ctx = Map [("increase", (["n"], Add (Number 2, Add (Number 1, Eval ("n", [])))))]
+    let code = EvalIRExpr (Eval ("increase", [("n",
+                                                Eval ("increase", [("n", Number 10)]))])) ctx
+    Assert.AreEqual (Some "16", ExecuteCodeInVM code)
