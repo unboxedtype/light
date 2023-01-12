@@ -86,6 +86,8 @@ let heapAlloc heap node =
     let addr = findNewAddr heap
     (Map.add addr node heap, addr)
 
+let hAlloc = heapAlloc
+
 let pushglobal f state =
     let a = Map.find f (getGlobals state)
     putStack (a :: getStack state) state
@@ -161,6 +163,47 @@ let rec eval state =
             let nextState = doAdmin (step state)
             eval nextState
     state :: restStates
+
+type Expr =
+    | EVar of name:Name
+    | ENum of n:int
+    | EAp of e1:Expr * e2:Expr
+
+type CoreExpr = Expr
+type ScDefn = Name * (Name list) * Expr
+type CoreScDefn = ScDefn
+
+let initialCode =
+    [Pushglobal "main", Unwind]
+
+let preludeDefs =
+    []
+
+let compiledPrimitives =
+    []
+
+let allocateSc heap (name, nargs, code) =
+    let (heap', addr) = hAlloc heap (NGlobal (nargs, code))
+    heap'
+//    (heap', (name, addr))
+
+let compileC e env =
+    [Unwind]
+
+let compileR e env =
+    compileC e env @ [Slide (List.length env + 1); Unwind]
+
+let compileSc (name, env, body) =
+    (name, List.length env, compileR body (List.indexed env))
+
+let buildInitialHeap program =
+    let hInitial = Map []
+    let compiled1 = List.map compileSc (preludeDefs @ program) @ compiledPrimitives
+    List.fold allocateSc hInitial compiled1
+
+let compile program =
+    let (heap, globals) = buildInitialHeap program
+    (initialCode, [], [], heap, globals, statInitial)
 
 [<OneTimeSetUp>]
 let Setup () =
