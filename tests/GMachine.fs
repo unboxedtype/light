@@ -243,6 +243,11 @@ let Setup () =
     ()
 
 [<Test>]
-let BasicTest () =
+let KCombCompileTest () =
     let code = compileSc ("K", ["x"; "y"], (EVar "x"))
     Assert.AreEqual( ("K", 2, [Push 0; Slide 3; Unwind]), code );
+
+[<Test>]
+let EvalOtherTest () =
+    let code = compileSc ("F", ["x"; "y"], (EAp (EVar "z", EVar "x")))
+    Assert.AreEqual( ("F", 2, [Push 0; Pushglobal "z"; Mkap; Slide 3; Unwind]), code );
