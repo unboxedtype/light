@@ -88,9 +88,14 @@ let heapAlloc heap node =
 
 let hAlloc = heapAlloc
 
-let pushglobal f state =
-    let a = Map.find f (getGlobals state)
-    putStack (a :: getStack state) state
+let pushglobal (f:Name) (state:GmState) =
+    match Map.tryFind f (getGlobals state) with
+        | Some a ->
+            putStack (a :: getStack state) state
+        | None ->
+            let msg = sprintf "Global name %A not found in the globals dictionary" f
+            printfn "%s" msg
+            raise (GMError msg)
 
 let pushint n state =
     let (heap', a) = heapAlloc (getHeap state) (NNum n)
@@ -104,20 +109,28 @@ let mkap state =
         | _ ->
             raise (GMError "stack underflow")
 
-let getArg n =
+let getApArg n =
     match n with
-        | NAp (f, v) -> v
-        | _ -> raise (GMError "node must be of NAp type")
+        | NAp (f, v) ->
+            v
+        | _ ->
+            raise (GMError "node must be of NAp type")
 
-let hLookup heap key =
-    Map.find key heap
+let hLookup (heap:GmHeap) (key:Addr) : Node =
+    match Map.tryFind key heap with
+        | Some v ->
+            v
+        | None ->
+            let msg = sprintf "key %A not found in the map" key
+            printfn "%s" msg
+            raise (GMError msg)
 
 let at l n =
     List.item n l
 
 let push n state =
     let as' = getStack state
-    let a = getArg (hLookup (getHeap state) (at as' (n + 1)))
+    let a = getApArg (hLookup (getHeap state) (at as' (n + 1)))
     putStack (a :: as') state
 
 let slide n state =
@@ -133,8 +146,10 @@ let unwind state =
             let heap = getHeap state
             let newState s =
                 match s with
-                    | NNum n -> state
-                    | NAp (a1, a2) -> putCode [Unwind] (putStack (a1 :: a :: as') state)
+                    | NNum n ->
+                        state
+                    | NAp (a1, a2) ->
+                        putCode [Unwind] (putStack (a1 :: a :: as') state)
                     | NGlobal (n, c) ->
                         if List.length as' < n then
                             raise (GMError "Unwinding with too few arguments")
@@ -239,30 +254,37 @@ let buildInitialHeap program =
     (heap, globals)
 
 
-let compile (program: CoreProgram) =
+let compile (program: CoreProgram) : GmState =
     let (heap, globals) = buildInitialHeap program
-    (initialCode, [], [], heap, globals, statInitial)
+    (initialCode, [], heap, globals, statInitial)
 
 [<OneTimeSetUp>]
 let Setup () =
     ()
 
 [<Test>]
-let KCombCompileTest () =
+let compileScKTest () =
     let code = compileSc ("K", ["x"; "y"], (EVar "x"))
     Assert.AreEqual( ("K", 2, [Push 0; Slide 3; Unwind]), code );
 
 [<Test>]
-let EvalOtherTest () =
+let compileScFTest () =
     let code = compileSc ("F", ["x"; "y"], (EAp (EVar "z", EVar "x")))
     Assert.AreEqual( ("F", 2, [Push 0; Pushglobal "z"; Mkap; Slide 3; Unwind]), code );
 
 [<Test>]
-let CompileSimpleTest () =
+let compileProgTest () =
     let coreProg =
-        [ ("Main", [], (EAp (EVar "Z", EVar "y")));
-          ("Z", ["x"], (ENum 1)) ]
-    let (initialCode, _, _, heap, globals, _) = compile coreProg
-    printf "heap = %A\n" heap
-    printf "globals = %A\n" globals
-    Assert.AreEqual( [Pushglobal "main"; Unwind],  initialCode );
+        [ ("main", [], (EAp (EVar "Z", EVar "y")));
+          ("y", [], (ENum 1));
+          ("Z", ["x"], (EVar "x")) ]
+    let initSt = compile coreProg
+    let finalSt = List.last (eval initSt)
+    printfn "%A" finalSt
+    match finalSt with
+        | ([], [resultAddr], heap, _, _) ->
+            let result = hLookup heap resultAddr
+            Assert.AreEqual( NNum 1, result )
+        | _ ->
+            // must not happen
+            Assert.AreEqual( true, false )
