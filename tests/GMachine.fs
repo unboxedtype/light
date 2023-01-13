@@ -181,25 +181,18 @@ type Expr =
     | ENum of n:int
     | EAp of e1:Expr * e2:Expr
 
-type CoreExpr = Expr
-type ScDefn = Name * (Name list) * Expr
-type CoreScDefn = ScDefn
+type GmCompiledSC = Name * int * GmCode
 
-let initialCode =
-    [Pushglobal "main", Unwind]
+let initialCode : GmCode =
+    [Pushglobal "main"; Unwind]
 
-let preludeDefs =
-    []
-
-let compiledPrimitives =
-    []
-
-// GmHeap -> GmCompiledSC -> (GmHeap, (Name, Addr))
-// this is a folding function, hence: state -> elem -> state
-let allocateSc heap (name, nargs, code) =
+// Allocate supercombinator, i.e. add the given new supercombinator
+// into the heap and return newly allocated address together with
+// the new heap. This is a folding function.
+let allocateSc (heap: GmHeap, globals: GmGlobals) ((name, nargs, code):GmCompiledSC) =
     let (heap', addr) = hAlloc heap (NGlobal (nargs, code))
-    // (heap', (name, addr))
-    heap'
+    let globals' = Map.add name addr globals
+    (heap', globals')
 
 // shift all indexes on m places
 let argOffset m env =
@@ -223,18 +216,30 @@ let rec compileC ast env =
 let compileR ast env =
     compileC ast env @ [Slide (List.length env + 1); Unwind]
 
+// Supercombinator is defined by the following triplet
+// (sc name, list of formal argument variable names, body AST)
+type SC = Name * (Name list) * Expr
+
+// Program is a list of supercombinator definitions, including the
+// Main combinator
+type CoreProgram = SC list
+
 // compile Supercombinator with the given name, having the
 // given environment and ast (body)
-let compileSc (name, env, ast) =
+let compileSc ((name, env, ast): SC) : GmCompiledSC =
     (name, List.length env, compileR ast (List.indexed env))
 
 // (GmHeap, GmGlobals)
 let buildInitialHeap program =
-    let hInitial = Map []
-    // let compiled1 = List.map compileSc (preludeDefs @ program) @ compiledPrimitives
-    (List.fold allocateSc hInitial [], []) // compiled1
+    let initialHeap = Map []
+    let initialGlobals = Map []
+    let acc = (initialHeap, initialGlobals)
+    let compiled1 = List.map compileSc program
+    let (heap, globals) = List.fold allocateSc acc compiled1
+    (heap, globals)
 
-let compile program =
+
+let compile (program: CoreProgram) =
     let (heap, globals) = buildInitialHeap program
     (initialCode, [], [], heap, globals, statInitial)
 
@@ -251,3 +256,13 @@ let KCombCompileTest () =
 let EvalOtherTest () =
     let code = compileSc ("F", ["x"; "y"], (EAp (EVar "z", EVar "x")))
     Assert.AreEqual( ("F", 2, [Push 0; Pushglobal "z"; Mkap; Slide 3; Unwind]), code );
+
+[<Test>]
+let CompileSimpleTest () =
+    let coreProg =
+        [ ("Main", [], (EAp (EVar "Z", EVar "y")));
+          ("Z", ["x"], (ENum 1)) ]
+    let (initialCode, _, _, heap, globals, _) = compile coreProg
+    printf "heap = %A\n" heap
+    printf "globals = %A\n" globals
+    Assert.AreEqual( [Pushglobal "main"; Unwind],  initialCode );
