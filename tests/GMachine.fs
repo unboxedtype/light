@@ -33,6 +33,7 @@ let getStack (i, stack, heap, globals, stats) =
 let putStack s' (i, stack, heap, globals, stats) =
     (i, s', heap, globals, stats)
 
+// Expression node (when computing, not AST)
 type Node =
     | NNum of v: int
     | NAp of f: Addr * a: Addr // f(a)
@@ -86,15 +87,12 @@ let heapAlloc heap node =
     let addr = findNewAddr heap
     (Map.add addr node heap, addr)
 
-let hAlloc = heapAlloc
-
 let pushglobal (f:Name) (state:GmState) =
     match Map.tryFind f (getGlobals state) with
         | Some a ->
             putStack (a :: getStack state) state
         | None ->
             let msg = sprintf "Global name %A not found in the globals dictionary" f
-            printfn "%s" msg
             raise (GMError msg)
 
 let pushint n state =
@@ -116,13 +114,12 @@ let getApArg n =
         | _ ->
             raise (GMError "node must be of NAp type")
 
-let hLookup (heap:GmHeap) (key:Addr) : Node =
+let heapLookup (heap:GmHeap) (key:Addr) : Node =
     match Map.tryFind key heap with
         | Some v ->
             v
         | None ->
             let msg = sprintf "key %A not found in the map" key
-            printfn "%s" msg
             raise (GMError msg)
 
 let at l n =
@@ -130,7 +127,7 @@ let at l n =
 
 let push n state =
     let as' = getStack state
-    let a = getApArg (hLookup (getHeap state) (at as' (n + 1)))
+    let a = getApArg (heapLookup (getHeap state) (at as' (n + 1)))
     putStack (a :: as') state
 
 let slide n state =
@@ -155,7 +152,7 @@ let unwind state =
                             raise (GMError "Unwinding with too few arguments")
                         else
                             putCode c state
-            newState (hLookup heap a)
+            newState (heapLookup heap a)
         | _ ->
             raise (GMError "stack underflow")
 
@@ -191,6 +188,7 @@ let rec eval state =
             eval nextState
     state :: restStates
 
+// AST Expression node
 type Expr =
     | EVar of name:Name
     | ENum of n:int
@@ -205,7 +203,7 @@ let initialCode : GmCode =
 // into the heap and return newly allocated address together with
 // the new heap. This is a folding function.
 let allocateSc (heap: GmHeap, globals: GmGlobals) ((name, nargs, code):GmCompiledSC) =
-    let (heap', addr) = hAlloc heap (NGlobal (nargs, code))
+    let (heap', addr) = heapAlloc heap (NGlobal (nargs, code))
     let globals' = Map.add name addr globals
     (heap', globals')
 
@@ -220,7 +218,8 @@ let rec compileC ast env =
         | EAp (e1, e2) ->
             compileC e2 env @ compileC e1 (argOffset 1 env) @ [Mkap]
         | EVar v ->
-            let r = List.tryPick (fun (n, v') -> if v' = v then Some n else None) env
+            let r = List.tryPick (fun (n, v') ->
+                                  if v' = v then Some n else None) env
             match r with
                 | Some n ->
                     [Push n]
@@ -253,10 +252,16 @@ let buildInitialHeap program =
     let (heap, globals) = List.fold allocateSc acc compiled1
     (heap, globals)
 
-
 let compile (program: CoreProgram) : GmState =
     let (heap, globals) = buildInitialHeap program
     (initialCode, [], heap, globals, statInitial)
+
+let getResult (st:GmState) : Node =
+    match st with
+        | ([], [resultAddr], heap, _, _) ->
+            heapLookup heap resultAddr
+        | _ ->
+            raise (GMError "incorrect VM final state")
 
 [<OneTimeSetUp>]
 let Setup () =
@@ -281,10 +286,4 @@ let compileProgTest () =
     let initSt = compile coreProg
     let finalSt = List.last (eval initSt)
     printfn "%A" finalSt
-    match finalSt with
-        | ([], [resultAddr], heap, _, _) ->
-            let result = hLookup heap resultAddr
-            Assert.AreEqual( NNum 1, result )
-        | _ ->
-            // must not happen
-            Assert.AreEqual( true, false )
+    Assert.AreEqual( NNum 1, getResult finalSt )
