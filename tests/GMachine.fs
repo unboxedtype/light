@@ -144,7 +144,7 @@ let unwind state =
             let newState s =
                 match s with
                     | NNum n ->
-                        state
+                        putCode [] state
                     | NAp (a1, a2) ->
                         putCode [Unwind] (putStack (a1 :: a :: as') state)
                     | NGlobal (n, c) ->
@@ -174,6 +174,7 @@ let dispatch i =
 // there is always at least one instruction in the code
 // otherwise the step function shouldn't have executed
 let step state =
+    printfn "%A" state
     match getCode state with
         | i :: is ->
             dispatch i (putCode is state)
@@ -287,3 +288,31 @@ let compileProgTest () =
     let finalSt = List.last (eval initSt)
     printfn "%A" finalSt
     Assert.AreEqual( NNum 1, getResult finalSt )
+
+[<Test>]
+let testK () =
+    let coreProg = [
+        // K x y = x
+        ("K", ["x"; "y"], EVar "x");
+        // main = K 3 4
+        ("main", [], EAp (EAp (EVar "K", ENum 3), ENum 4))
+    ]
+    let initSt = compile coreProg
+    printfn "%A" initSt
+    let finalSt = List.last (eval initSt)
+    Assert.AreEqual( NNum 3, getResult finalSt )
+
+[<Test>]
+let testSKK3 () =
+    let coreProg = [
+        // K x y = x
+        ("K", ["x"; "y"], EVar "x");
+        // S f g x = f x (g x)
+        ("S", ["f"; "g"; "x"], EAp (EAp (EVar "f", EVar "x"), EAp (EVar "g", EVar "x")));
+        // main = S K K 3
+        ("main", [], EAp (EAp (EAp (EVar "S", EVar "K"), EVar "K"), ENum 3))
+    ]
+    let initSt = compile coreProg
+    printfn "%A" initSt
+    let finalSt = List.last (eval initSt)
+    Assert.AreEqual( NNum 3, getResult finalSt )
