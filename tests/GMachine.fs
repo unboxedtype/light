@@ -13,7 +13,9 @@ type Instruction =
     | Pushglobal of name: Name
     | Pushint of v: int
     | Push of e: int
+    | Pop of n: int
     | Mkap
+    | Update of n: int
     | Slide of n: int
 
 type Addr = int
@@ -38,6 +40,7 @@ type Node =
     | NNum of v: int
     | NAp of f: Addr * a: Addr // f(a)
     | NGlobal of args: int * code: GmCode
+    | NInd of v: int  // indirection node
 
 type GmHeap = Map<Addr, Node>
 
@@ -130,10 +133,24 @@ let push n state =
     let a = getApArg (heapLookup (getHeap state) (at as' (n + 1)))
     putStack (a :: as') state
 
+// remove n items from the stack
+let pop n state =
+    let as' = getStack state
+    putStack (List.skip n as') state
+
 let slide n state =
     match getStack state with
         | a :: as' ->
             putStack (a :: List.skip n as') state
+        | _ ->
+            raise (GMError "stack underflow")
+
+let update n state =
+    match getStack state with
+        | a :: as' ->
+            let heap = getHeap state
+            let (heap', _) = heapAlloc (getHeap state) (NInd a)
+            putHeap heap' (putStack as' state)
         | _ ->
             raise (GMError "stack underflow")
 
@@ -152,6 +169,14 @@ let unwind state =
                             raise (GMError "Unwinding with too few arguments")
                         else
                             putCode c state
+                    | NInd n ->
+                        let a' = List.head (getStack state)
+                        let ind = heapLookup heap a'
+                        match ind with
+                            | NInd a0 ->
+                                putCode [Unwind] (putStack (a0 :: as') state)
+                            | _ ->
+                                raise (GMError "incorrect stack param for NInd")
             newState (heapLookup heap a)
         | _ ->
             raise (GMError "stack underflow")
@@ -164,8 +189,12 @@ let dispatch i =
             pushint n
         | Mkap ->
             mkap
+        | Update n ->
+            update n
         | Push n ->
             push n
+        | Pop n ->
+            pop n
         | Slide n ->
             slide n
         | Unwind ->
@@ -229,7 +258,8 @@ let rec compileC ast env =
 
 // ast env -> Instruction list
 let compileR ast env =
-    compileC ast env @ [Slide (List.length env + 1); Unwind]
+    let n = List.length env
+    compileC ast env @ [Update n; Pop n; Unwind]
 
 // Supercombinator is defined by the following triplet
 // (sc name, list of formal argument variable names, body AST)
