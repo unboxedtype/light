@@ -90,6 +90,10 @@ let heapAlloc heap node =
     let addr = findNewAddr heap
     (Map.add addr node heap, addr)
 
+let putGlobals (name:Name) (addr:Addr) (code, stack, heap, globals, stats): GmState =
+    let globals' = Map.add name addr globals
+    (code, stack, heap, globals', stats)
+
 let pushglobal (f:Name) (state:GmState) =
     match Map.tryFind f (getGlobals state) with
         | Some a ->
@@ -98,9 +102,20 @@ let pushglobal (f:Name) (state:GmState) =
             let msg = sprintf "Global name %A not found in the globals dictionary" f
             raise (GMError msg)
 
+let globalLookup (key:Name) (globals:GmGlobals) : Addr option =
+    match Map.tryFind key globals with
+        | Some v ->
+            Some v
+        | None ->
+            None
+
 let pushint n state =
-    let (heap', a) = heapAlloc (getHeap state) (NNum n)
-    putHeap heap' (putStack (a :: getStack state) state)
+    match globalLookup (string n) (getGlobals state) with
+        | Some addr ->
+            putStack (addr :: getStack state) state
+        | None ->
+            let (heap', a) = heapAlloc (getHeap state) (NNum n)
+            putGlobals (string n) a (putHeap heap' (putStack (a :: getStack state) state))
 
 let mkap state =
     match getStack state with
@@ -124,6 +139,9 @@ let heapLookup (heap:GmHeap) (key:Addr) : Node =
         | None ->
             let msg = sprintf "key %A not found in the map" key
             raise (GMError msg)
+
+let heapUpdate (heap:GmHeap) (key:Addr) (v:Node) =
+    Map.add key v heap
 
 let at l n =
     List.item n l
@@ -149,8 +167,8 @@ let update n state =
     match getStack state with
         | a :: as' ->
             let heap = getHeap state
-            let (heap', _) = heapAlloc (getHeap state) (NInd a)
-            putHeap heap' (putStack as' state)
+            let an = at as' n
+            putHeap (heapUpdate heap an (NInd a)) (putStack as' state)
         | _ ->
             raise (GMError "stack underflow")
 
@@ -169,14 +187,8 @@ let unwind state =
                             raise (GMError "Unwinding with too few arguments")
                         else
                             putCode c state
-                    | NInd n ->
-                        let a' = List.head (getStack state)
-                        let ind = heapLookup heap a'
-                        match ind with
-                            | NInd a0 ->
-                                putCode [Unwind] (putStack (a0 :: as') state)
-                            | _ ->
-                                raise (GMError "incorrect stack param for NInd")
+                    | NInd a0 ->
+                        putCode [Unwind] (putStack (a0 :: as') state)
             newState (heapLookup heap a)
         | _ ->
             raise (GMError "stack underflow")
@@ -203,7 +215,13 @@ let dispatch i =
 // there is always at least one instruction in the code
 // otherwise the step function shouldn't have executed
 let step state =
-    printfn "%A" state
+    (**
+    let code_str = sprintf "%A" (getCode state)
+    let stack_str = sprintf "%A" (getStack state)
+    let heap_str = sprintf "%A" (getHeap state)
+    NUnit.Framework.TestContext.Progress.WriteLine("CODE : {0}\nSTACK: {1}\nHEAP: {2}",
+                                                  code_str, stack_str, heap_str)
+                                                  **)
     match getCode state with
         | i :: is ->
             dispatch i (putCode is state)
@@ -301,12 +319,12 @@ let Setup () =
 [<Test>]
 let compileScKTest () =
     let code = compileSc ("K", ["x"; "y"], (EVar "x"))
-    Assert.AreEqual( ("K", 2, [Push 0; Slide 3; Unwind]), code );
+    Assert.AreEqual( ("K", 2, [Push 0; Update 2; Pop 2; Unwind]), code );
 
 [<Test>]
 let compileScFTest () =
     let code = compileSc ("F", ["x"; "y"], (EAp (EVar "z", EVar "x")))
-    Assert.AreEqual( ("F", 2, [Push 0; Pushglobal "z"; Mkap; Slide 3; Unwind]), code );
+    Assert.AreEqual( ("F", 2, [Push 0; Pushglobal "z"; Mkap; Update 2; Pop 2; Unwind]), code );
 
 [<Test>]
 let compileProgTest () =
