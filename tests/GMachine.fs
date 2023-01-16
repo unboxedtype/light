@@ -286,7 +286,6 @@ let compileProgTest () =
           ("Z", ["x"], (EVar "x")) ]
     let initSt = compile coreProg
     let finalSt = List.last (eval initSt)
-    printfn "%A" finalSt
     Assert.AreEqual( NNum 1, getResult finalSt )
 
 [<Test>]
@@ -300,6 +299,7 @@ let testK () =
     let initSt = compile coreProg
     printfn "%A" initSt
     let finalSt = List.last (eval initSt)
+    NUnit.Framework.TestContext.Progress.WriteLine("testK: steps = {0}", getStats finalSt)
     Assert.AreEqual( NNum 3, getResult finalSt )
 
 [<Test>]
@@ -315,4 +315,5 @@ let testSKK3 () =
     let initSt = compile coreProg
     printfn "%A" initSt
     let finalSt = List.last (eval initSt)
+    NUnit.Framework.TestContext.Progress.WriteLine("testSKK3: steps = {0}", getStats finalSt)
     Assert.AreEqual( NNum 3, getResult finalSt )
