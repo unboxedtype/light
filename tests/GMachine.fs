@@ -219,7 +219,7 @@ let rec allocNodes (n:int) (heap:GmHeap) =
 
 let alloc n state =
     let (heap, addrs) = allocNodes n (getHeap state)
-    putHeap heap (putStack addrs state)
+    putHeap heap (putStack (addrs @ getStack state) state)
 
 let dispatch i =
     match i with
@@ -618,6 +618,25 @@ let testAlloc1 () =
             Assert.Fail(s)
 
 [<Test>]
+let testAlloc2 () =
+    let heap = Map []
+    let globals = Map []
+    let stk = [3]
+    let code = [Alloc 2]
+    let stats = 0
+    try
+        let trace = eval (code, stk, heap, globals, stats)
+        let final = List.last (trace)
+        let heap2 = Map [(0, hNull); (1, hNull)]
+        let stk2 = [1; 0; 3]
+        printTest (getStack final)
+        Assert.AreEqual (heap2, getHeap final)
+        Assert.AreEqual (stk2, getStack final)
+    with
+        | GMError s ->
+            Assert.Fail(s)
+
+[<Test>]
 let testCompile2 () =
     let code = compileSc ("X", [], ELet (false, [("k", ENum 3); ("t", ENum 2)], EVar "t"))
     // env = [(0, "k"); (1, "t")]
@@ -625,18 +644,34 @@ let testCompile2 () =
     // @3 @2 @2
 
 [<Test>]
-[<Ignore("turn off")>]
-let testLetRec1 () =
+// [<Ignore("turn off")>]
+let testCompileLetRec1 () =
+    let coreProg = [
+        ("main", [], ELet (true, [("k", ENum 3); ("t", EVar "k")], EVar "t"))
+    ]
+    let initSt = compile coreProg
+//  printTest initSt
+    Assert.Ignore()
+
+[<Test>]
+// [<Ignore("turn off")>]
+let testEvalLetRec1 () =
     let coreProg = [
         ("main", [], ELet (true, [("k", ENum 3); ("t", EVar "k")], EVar "t"))
     ]
     let initSt = compile coreProg
     printTest initSt
+    let rec repeat f n d =
+        match n with
+            | 0 -> d
+            | _ -> repeat f (n - 1) (f d)
     try
-        let trace = eval initSt
-        printTest trace
-        let finalSt = List.last trace
-        Assert.AreEqual(NNum 4, getResult finalSt)
+        printTest (repeat step 9 initSt)
+        printTest (repeat step 10 initSt)
+        printTest (repeat step 11 initSt)
+        printTest (repeat step 12 initSt)
+        printTest (repeat step 13 initSt)
     with
         | GMError s ->
             Assert.Fail(s)
+    Assert.Ignore()
