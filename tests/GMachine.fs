@@ -17,6 +17,7 @@ type Instruction =
     | Mkap
     | Update of n: int
     | Slide of n: int
+    | Alloc of n: int
 
 type Addr = int
 
@@ -43,6 +44,10 @@ type Node =
     | NInd of v: int  // indirection node
 
 type GmHeap = Map<Addr, Node>
+
+// This is a placeholder value that will be overwritten
+// during the evaluation
+let hNull = NInd -1
 
 let getHeap (i, stack, heap, globals, stats) =
     heap
@@ -197,6 +202,19 @@ let unwind state =
         | _ ->
             raise (GMError "stack underflow")
 
+let rec allocNodes (n:int) (heap:GmHeap) =
+    match n with
+        | 0 ->
+            (heap, [])
+        | _ ->
+            let (heap1, as') = allocNodes (n - 1) heap
+            let (heap2, a) = heapAlloc heap1 hNull
+            (heap2, a :: as')
+
+let alloc n state =
+    let (heap, addrs) = allocNodes n (getHeap state)
+    putHeap heap (putStack addrs state)
+
 let dispatch i =
     match i with
         | Pushglobal f ->
@@ -215,6 +233,8 @@ let dispatch i =
             slide n
         | Unwind ->
             unwind
+        | Alloc n ->
+            alloc n
 
 // there is always at least one instruction in the code
 // otherwise the step function shouldn't have executed
