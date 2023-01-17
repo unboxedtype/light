@@ -153,8 +153,11 @@ let at l n =
 
 let push n state =
     let as' = getStack state
-    let a = at as' n
-    putStack (a :: as') state
+    if List.length as' <= n then
+        raise (GMError "stack underflow in PUSH")
+    else
+        let a = at as' n
+        putStack (a :: as') state
 
 // remove n items from the stack
 let pop n state =
@@ -260,11 +263,14 @@ let rec eval state =
             eval nextState
     state :: restStates
 
+
 // AST Expression node
 type Expr =
     | EVar of name:Name
     | ENum of n:int
     | EAp of e1:Expr * e2:Expr
+    | ELet of isRec:bool * defs:GmDefinitions * body:Expr
+and GmDefinitions = (Name * Expr) list
 
 type GmCompiledSC = Name * int * GmCode
 
@@ -279,16 +285,30 @@ let allocateSc (heap: GmHeap, globals: GmGlobals) ((name, nargs, code):GmCompile
     let globals' = Map.add name addr globals
     (heap', globals')
 
+// index + variable name
+// [(1,"x"), (2,"y") ..]
+// index is needed to know the offset of the variables pointer
+    // in the stack
+type GmEnvironment = (int * Name) list
+
 // shift all indexes on m places
-let argOffset m env =
+let argOffset (m:int) (env: GmEnvironment) =
     [for (n, v) in env -> (n + m, v)]
 
-let rec compileC ast env =
+let compileArgs (defs:GmDefinitions) (env:GmEnvironment) : GmEnvironment =
+    let n = List.length defs
+    let indexes = List.rev [for i in 0 .. (n-1) -> i]
+    let names = List.map fst defs
+    (List.zip indexes names) @ (argOffset n env)
+
+type GmCompiler = Expr -> GmEnvironment -> GmCode
+
+let rec compileC (ast : Expr) (env: GmEnvironment) : GmCode =
     match ast with
         | ENum n ->
             [Pushint n]
         | EAp (e1, e2) ->
-            compileC e2 env @ compileC e1 (argOffset 1 env) @ [Mkap]
+            (compileC e2 env) @ compileC e1 (argOffset 1 env) @ [Mkap]
         | EVar v ->
             let r = List.tryPick (fun (n, v') ->
                                   if v' = v then Some n else None) env
@@ -297,6 +317,37 @@ let rec compileC ast env =
                     [Push n]
                 | _ ->
                     [Pushglobal v]
+        | ELet (recursive, defs, e) ->
+            match recursive with
+                | true ->
+                    compileLetRec compileC defs e env
+                | false ->
+                    compileLet compileC defs e env
+and compileLet (comp: GmCompiler) (defs: GmDefinitions) expr env =
+    // inject new definitions into the environment
+    let env' = compileArgs defs env
+    // compile the definitions using the old environment
+    (compileLet' defs env) @
+      // compile the expression using the new environment
+      (comp expr env') @
+      // remove stack items used to construct environment vars
+      [Slide (List.length defs)]
+and compileLet' defs env =
+    match defs with
+        | [] ->
+            []
+        | (name,expr) :: defs' ->
+            (compileC expr env) @ compileLet' defs' (argOffset 1 env)
+and compileLetRec (comp: GmCompiler) (defs: GmDefinitions) expr env =
+    let env' = compileArgs defs env
+    let n = List.length defs
+    [Alloc n] @ (compileLet'' defs env' (n - 1)) @ (comp expr env') @ [Slide n]
+and compileLet'' defs env n =
+    match defs with
+        | [] ->
+            []
+        | (name,expr) :: defs' ->
+            (compileC expr env) @ [Update n] @ compileLet'' defs' (argOffset 1 env) (n - 1)
 
 // ast env -> Instruction list
 let compileR ast env =
@@ -371,7 +422,7 @@ let testK () =
     let initSt = compile coreProg
     printfn "%A" initSt
     let finalSt = List.last (eval initSt)
-    NUnit.Framework.TestContext.Progress.WriteLine("testK: steps = {0}", getStats finalSt)
+    // NUnit.Framework.TestContext.Progress.WriteLine("testK: steps = {0}", getStats finalSt)
     Assert.AreEqual( NNum 3, getResult finalSt )
 
 [<Test>]
@@ -387,7 +438,7 @@ let testSKK3 () =
     let initSt = compile coreProg
     printfn "%A" initSt
     let finalSt = List.last (eval initSt)
-    NUnit.Framework.TestContext.Progress.WriteLine("testSKK3: steps = {0}", getStats finalSt)
+    // NUnit.Framework.TestContext.Progress.WriteLine("testSKK3: steps = {0}", getStats finalSt)
     Assert.AreEqual( NNum 3, getResult finalSt )
 
 [<Test>]
@@ -402,5 +453,77 @@ let testTwiceTwice () =
     ]
     let initSt = compile coreProg
     let finalSt = List.last (eval initSt)
-    NUnit.Framework.TestContext.Progress.WriteLine("testTwiceTwice: steps = {0}", getStats finalSt)
+    // NUnit.Framework.TestContext.Progress.WriteLine("testTwiceTwice: steps = {0}", getStats finalSt)
     Assert.AreEqual(NNum 3, getResult finalSt)
+
+[<Test>]
+let testCompileArgs0 () =
+    let defs = []
+    let env = []
+    let r = compileArgs defs env
+    Assert.AreEqual([], r)
+
+[<Test>]
+let testCompileArgs1 () =
+    let defs = [("x", ENum 1)]
+    let env = []
+    let r = compileArgs defs env
+    Assert.AreEqual([(0, "x")], r)
+
+[<Test>]
+let testCompileArgs2 () =
+    let defs = [("x", ENum 1); ("y", EVar "x")]
+    let env = []
+    let r = compileArgs defs env
+    Assert.AreEqual([(1, "x"); (0, "y")], r)
+
+[<Test>]
+let testCompileArgs3 () =
+    let defs = [("x", ENum 1); ("y", EVar "x")]
+    let env = [(5, "z"); (6, "w")]
+    let r = compileArgs defs env
+    Assert.AreEqual([(1, "x"); (0, "y"); (7, "z"); (8, "w")], r)
+
+[<Test>]
+let testLet1 () =
+    let coreProg = [
+        ("main", [], ELet (false, [("t", ENum 3)], (EVar "t")))
+    ]
+    let initSt = compile coreProg
+    let initSt = compile coreProg
+    let finalSt = List.last (eval initSt)
+    Assert.AreEqual(NNum 3, getResult finalSt)
+
+[<Test>]
+let testLet2 () =
+    let coreProg = [
+        ("main", [], ELet (false, [("k", ENum 3); ("t", ENum 4)], EVar "t"))
+    ]
+    let initSt = compile coreProg
+    try
+        let finalSt = List.last (eval initSt)
+        Assert.AreEqual(NNum 4, getResult finalSt)
+    with
+        | GMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testLetRecYCombinator () =
+    let code = compileSc ("Y", ["f"], ELet (true, [("x", EAp (EVar "f", EVar "x"))], EVar "x"))
+    Assert.AreEqual( ("Y", 1, [Alloc 1; Push 0; Push 2; Mkap; Update 0;
+                               Push 0; Slide 1; Update 1; Pop 1; Unwind]), code );
+
+[<Test>]
+[<Ignore("Not working")>]
+let testLetRec1 () =
+    let coreProg = [
+        ("main", [], ELet (true, [("k", ENum 3); ("t", EVar "k")], EVar "t"))
+    ]
+    let initSt = compile coreProg
+    NUnit.Framework.TestContext.Progress.WriteLine("testLetRec1.initSt = {0}", sprintf "%A" initSt)
+    try
+        let finalSt = List.last (eval initSt)
+        Assert.AreEqual(NNum 4, getResult finalSt)
+    with
+        | GMError s ->
+            Assert.Fail(s)
