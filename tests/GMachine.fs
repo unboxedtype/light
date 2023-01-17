@@ -180,6 +180,9 @@ let update n state =
         | _ ->
             raise (GMError "stack underflow")
 
+// a0 : ... : an : s h[a0: NGlobal n c, a1: NAp a0 a1', a2: NAp a1 a2', ...]
+//->
+// a'1 : ... : a'n : an : s
 let rearrange n heap s =
     let s' = List.map (fun x -> heapLookup heap x |> getApArg) (List.take n (List.tail s))
     s' @ (List.skip n s)
@@ -256,7 +259,7 @@ let step state =
             raise (GMError "stack underflow")
 
 // new state is added to the end of the list
-let rec eval state =
+let rec eval (state:GmState) =
     let restStates =
         if gmFinal state then [] else
             let nextState = doAdmin (step state)
@@ -364,8 +367,8 @@ type CoreProgram = SC list
 
 // compile Supercombinator with the given name, having the
 // given environment and ast (body)
-let compileSc ((name, env, ast): SC) : GmCompiledSC =
-    (name, List.length env, compileR ast (List.indexed env))
+let compileSc ((name, vars, ast): SC) : GmCompiledSC =
+    (name, List.length vars, compileR ast (List.indexed vars))
 
 // (GmHeap, GmGlobals)
 let buildInitialHeap program =
@@ -382,7 +385,7 @@ let compile (program: CoreProgram) : GmState =
 
 let getResult (st:GmState) : Node =
     match st with
-        | ([], [resultAddr], heap, _, _) ->
+        | (_, resultAddr :: tl, heap, _, _) ->
             heapLookup heap resultAddr
         | _ ->
             raise (GMError "incorrect VM final state")
@@ -390,6 +393,10 @@ let getResult (st:GmState) : Node =
 [<OneTimeSetUp>]
 let Setup () =
     ()
+
+let printTest term =
+    let str = sprintf "%A" term
+    NUnit.Framework.TestContext.Progress.WriteLine("{0}", str)
 
 [<Test>]
 let compileScKTest () =
@@ -490,7 +497,6 @@ let testLet1 () =
         ("main", [], ELet (false, [("t", ENum 3)], (EVar "t")))
     ]
     let initSt = compile coreProg
-    let initSt = compile coreProg
     let finalSt = List.last (eval initSt)
     Assert.AreEqual(NNum 3, getResult finalSt)
 
@@ -511,18 +517,125 @@ let testLet2 () =
 let testLetRecYCombinator () =
     let code = compileSc ("Y", ["f"], ELet (true, [("x", EAp (EVar "f", EVar "x"))], EVar "x"))
     Assert.AreEqual( ("Y", 1, [Alloc 1; Push 0; Push 2; Mkap; Update 0;
-                               Push 0; Slide 1; Update 1; Pop 1; Unwind]), code );
+                               Push 0; Slide 1; Update 1; Pop 1; Unwind]), code )
+[<Test>]
+let testCompile1 () =
+    let code = compileSc ("X", ["v"; "w"], EAp (EVar "v", EVar "w"))
+    // env = [(0, "v"); (1, "w")]
+    Assert.AreEqual ( ("X", 2, [Push 1; Push 1; Mkap;
+                                Update 2; Pop 2; Unwind]), code )
 
 [<Test>]
-[<Ignore("Not working")>]
+let testEval1 () =
+    let heap = Map [(0, NNum 1)]
+    let stk = [0]
+    let code = [Unwind]
+    let globals = Map [("0", 0)]
+    let stats = 0
+    let final = List.last (eval (code, stk, heap, globals, stats))
+    Assert.AreEqual (NNum 1, getResult final)
+
+[<Test>]
+let testEval2 () =
+    let heap = Map [(0, NNum 0);
+                    (1, NGlobal (1, [Push 0; Update 1; Pop 1; Unwind]))
+                    (2, NAp (1, 0))
+                   ]
+    let stk = [2]
+    let code = [Unwind]
+    let globals = Map [("0", 0); ("f", 1)]
+    let stats = 0
+    try
+        let trace = eval (code, stk, heap, globals, stats)
+//      printTest trace
+        let final = List.last (trace)
+        let heap2 = Map [(0, NNum 0);
+                         (1, NGlobal (1, [Push 0; Update 1; Pop 1; Unwind]));
+                         (2, NInd 0)]
+        let stk2 = [0]
+        Assert.AreEqual (NNum 0, getResult final)
+        Assert.AreEqual (heap2, getHeap final)
+        Assert.AreEqual (stk2, getStack final)
+    with
+        | GMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testEval3 () =
+    let heap = Map [(0, NNum 0);
+                    (1, NGlobal (1, [Push 0; Update 1; Pop 1; Unwind]))
+                    (2, NAp (1, 0))
+                   ]
+    let stk = [2; 2]
+    let code = [Unwind]
+    let globals = Map [("0", 0); ("f", 1)]
+    let stats = 0
+    try
+        let trace = eval (code, stk, heap, globals, stats)
+        let final = List.last (trace)
+        let heap2 = Map [(0, NNum 0);
+                         (1, NGlobal (1, [Push 0; Update 1; Pop 1; Unwind]));
+                         (2, NInd 0)]
+        let stk2 = [0]
+        Assert.AreEqual (NNum 0, getResult final)
+        Assert.AreEqual (heap2, getHeap final)
+        // Assert.AreEqual (stk2, getStack final)
+    with
+        | GMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testEval4 () =
+    let heap = Map [(0, NGlobal (0, [Pushint 3; Pushint 2; Push 0;
+                                     Slide 2; Update 0; Pop 0; Unwind]))]
+    let stk = []
+    let code = [Pushglobal "X"; Unwind]
+    let globals = Map [("X", 0)]
+    let stats = 0
+    try
+        let trace = eval (code, stk, heap, globals, stats)
+        Assert.AreEqual (NNum 2, getResult (List.last trace))
+    with
+        | GMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testAlloc1 () =
+    let heap = Map []
+    let globals = Map []
+    let stk = []
+    let code = [Alloc 2]
+    let stats = 0
+    try
+        let trace = eval (code, stk, heap, globals, stats)
+        let final = List.last (trace)
+        let heap2 = Map [(0, hNull); (1, hNull)]
+        let stk2 = [1; 0]
+        Assert.AreEqual (heap2, getHeap final)
+        Assert.AreEqual (stk2, getStack final)
+    with
+        | GMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testCompile2 () =
+    let code = compileSc ("X", [], ELet (false, [("k", ENum 3); ("t", ENum 2)], EVar "t"))
+    // env = [(0, "k"); (1, "t")]
+    Assert.AreEqual ( ("X", 0, [Pushint 3; Pushint 2; Push 0; Slide 2; Update 0; Pop 0; Unwind]), code )
+    // @3 @2 @2
+
+[<Test>]
+[<Ignore("turn off")>]
 let testLetRec1 () =
     let coreProg = [
         ("main", [], ELet (true, [("k", ENum 3); ("t", EVar "k")], EVar "t"))
     ]
     let initSt = compile coreProg
-    NUnit.Framework.TestContext.Progress.WriteLine("testLetRec1.initSt = {0}", sprintf "%A" initSt)
+    printTest initSt
     try
-        let finalSt = List.last (eval initSt)
+        let trace = eval initSt
+        printTest trace
+        let finalSt = List.last trace
         Assert.AreEqual(NNum 4, getResult finalSt)
     with
         | GMError s ->
