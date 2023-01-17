@@ -365,3 +365,18 @@ let testSKK3 () =
     let finalSt = List.last (eval initSt)
     NUnit.Framework.TestContext.Progress.WriteLine("testSKK3: steps = {0}", getStats finalSt)
     Assert.AreEqual( NNum 3, getResult finalSt )
+
+[<Test>]
+let testTwiceTwice () =
+    let coreProg = [
+        // twice f x = f (f x)
+        ("twice", ["f"; "x"], EAp (EVar "f", EAp (EVar "f", EVar "x")))
+        // id x = x
+        ("id", ["x"], EVar "x");
+         // main = twice twice id 3
+        ("main", [], EAp (EAp (EAp (EVar "twice", EVar "twice"), EVar "id"), ENum 3))
+    ]
+    let initSt = compile coreProg
+    let finalSt = List.last (eval initSt)
+    NUnit.Framework.TestContext.Progress.WriteLine("testTwiceTwice: steps = {0}", getStats finalSt)
+    Assert.AreEqual(NNum 3, getResult finalSt)
