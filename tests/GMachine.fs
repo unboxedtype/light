@@ -148,7 +148,7 @@ let at l n =
 
 let push n state =
     let as' = getStack state
-    let a = getApArg (heapLookup (getHeap state) (at as' (n + 1)))
+    let a = at as' n
     putStack (a :: as') state
 
 // remove n items from the stack
@@ -172,6 +172,10 @@ let update n state =
         | _ ->
             raise (GMError "stack underflow")
 
+let rearrange n heap s =
+    let s' = List.map (fun x -> heapLookup heap x |> getApArg) (List.take n (List.tail s))
+    s' @ (List.skip n s)
+
 let unwind state =
     match getStack state with
         | a :: as' ->
@@ -186,7 +190,7 @@ let unwind state =
                         if List.length as' < n then
                             raise (GMError "Unwinding with too few arguments")
                         else
-                            putCode c state
+                            putStack (rearrange n heap (a :: as')) (putCode c state)
                     | NInd a0 ->
                         putCode [Unwind] (putStack (a0 :: as') state)
             newState (heapLookup heap a)
