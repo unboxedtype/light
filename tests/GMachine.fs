@@ -19,7 +19,10 @@ type Instruction =
     | Alloc of n: int
     | Eval
     | Add
+    | Sub
+    | Mul
     | Eq
+    | Gt
     | Cond of t:GmCode * f:GmCode
 and
     GmCode = Instruction list
@@ -68,10 +71,6 @@ let getHeap (st:GmState) =
 let putHeap heap st =
     let (code, stack, dump, _, globals, stats) = st
     (code, stack, dump, heap, globals, stats)
-
-let getGlobals st =
-    let (_, _, _, _, globals, _) = st
-    globals
 
 let statInitial =
     0
@@ -234,7 +233,7 @@ let unwind state =
         | _ ->
             raise (GMError "stack underflow")
 
-let eval state =
+let evalInstr state =
     let code' = List.tail (getCode state)
     let (a :: s') = getStack state
     let dump' = (code',s') :: (getDump state)
@@ -253,12 +252,47 @@ let alloc n state =
     let (heap, addrs) = allocNodes n (getHeap state)
     putHeap heap (putStack (addrs @ getStack state) state)
 
-let add state =
+let True = 1
+let False = 0
+let NTrue = (NNum True)
+let NFalse = (NNum False)
+
+let cmpop (cmpr : int -> int -> bool) state =
     let heap = getHeap state
     let (a1 :: a2 :: s') = getStack state
-    let (NNum n1, NNum n2) = (heapLookup a1 heap, heapLookup a2 heap)
-    let (heap', a) = heapAlloc heap (NNum (n1 + n2))
+    let (NNum n1, NNum n2) = (heapLookup heap a1, heapLookup heap a2)
+    let (heap', a) = heapAlloc heap (NNum (if (cmpr n1 n2) then True else False))
     putStack (a :: s') (putHeap heap' state)
+
+
+let binop (op : int -> int -> int) state =
+    let heap = getHeap state
+    let (a1 :: a2 :: s') = getStack state
+    let (NNum n1, NNum n2) = (heapLookup heap a1, heapLookup heap a2)
+    let (heap', a) = heapAlloc heap (NNum (op n1 n2))
+    putStack (a :: s') (putHeap heap' state)
+
+let add state =
+    binop (fun a b -> a + b) state
+let sub state =
+    binop (fun a b -> a - b) state
+let mul state =
+    binop (fun a b -> a * b) state
+
+let eq state =
+    cmpop (fun a b -> a = b) state
+let gt state =
+    cmpop (fun a b -> a > b) state
+
+let cond i1 i2 state =
+    let (a :: _) = getStack state
+    match (heapLookup (getHeap state) a) with
+        | NNum a when a = 1 ->
+            putCode (i1 @ (getCode state)) state
+        | NNum a when a = 0 ->
+            putCode (i2 @ (getCode state)) state
+        | _ ->
+            raise (GMError "incorrect conditional variable")
 
 let dispatch i =
     match i with
@@ -281,9 +315,19 @@ let dispatch i =
         | Alloc n ->
             alloc n
         | Eval ->
-            eval
+            evalInstr
+        | Cond (i1, i2) ->
+            cond i1 i2
         | Add ->
             add
+        | Sub ->
+            sub
+        | Mul ->
+            mul
+        | Eq ->
+            eq
+        | Gt ->
+            gt
 
 // there is always at least one instruction in the code
 // otherwise the step function shouldn't have executed
@@ -311,10 +355,8 @@ type Expr =
     | ELet of isRec:bool * defs:GmDefinitions * body:Expr
 and GmDefinitions = (Name * Expr) list
 
+// combinator name, number of arguments, code
 type GmCompiledSC = Name * int * GmCode
-
-let initialCode : GmCode =
-    [Pushglobal "main"; Unwind]
 
 // Allocate supercombinator, i.e. add the given new supercombinator
 // into the heap and return newly allocated address together with
@@ -407,15 +449,25 @@ let compileSc ((name, vars, ast): SC) : GmCompiledSC =
     (name, List.length vars, compileR ast (List.indexed vars))
 
 // (GmHeap, GmGlobals)
-let buildInitialHeap program =
+let buildInitialHeap (program: CoreProgram) =
     let initialHeap = Map []
     let initialGlobals = Map []
+    let compiledPrimitives : GmCompiledSC list = [
+        ("+", 2, [Push 1; Eval; Push 1; Eval; Add; Update 2; Pop 2; Unwind]);
+        ("-", 2, [Push 1; Eval; Push 1; Eval; Sub; Update 2; Pop 2; Unwind]);
+        ("*", 2, [Push 1; Eval; Push 1; Eval; Mul; Update 2; Pop 2; Unwind]);
+        ("==",2, [Push 1; Eval; Push 1; Eval; Eq; Update 2; Pop 2; Unwind]);
+        (">", 2, [Push 1; Eval; Push 1; Eval; Gt; Update 2; Pop 2; Unwind]);
+        ("if",3, [Push 0; Eval; Cond ([Push 1], [Push 2]); Update 3; Pop 3; Unwind])
+    ]
     let acc = (initialHeap, initialGlobals)
-    let compiled1 = List.map compileSc program
+    let compiled1 = (List.map compileSc program) @ compiledPrimitives
     let (heap, globals) = List.fold allocateSc acc compiled1
     (heap, globals)
 
 let compile (program: CoreProgram) : GmState =
+    let initialCode : GmCode =
+        [Pushglobal "main"; Eval]
     let (heap, globals) = buildInitialHeap program
     (initialCode, [], [], heap, globals, statInitial)
 
@@ -565,10 +617,11 @@ let testCompile1 () =
 let testEval1 () =
     let heap = Map [(0, NNum 1)]
     let stk = [0]
-    let code = [Unwind]
+    let dump = []
+    let code = [Eval]
     let globals = Map [("0", 0)]
     let stats = 0
-    let final = List.last (eval (code, stk, heap, globals, stats))
+    let final = List.last (eval (code, stk, dump, heap, globals, stats))
     Assert.AreEqual (NNum 1, getResult final)
 
 [<Test>]
@@ -578,11 +631,12 @@ let testEval2 () =
                     (2, NAp (1, 0))
                    ]
     let stk = [2]
-    let code = [Unwind]
+    let dump = []
+    let code = [Eval]
     let globals = Map [("0", 0); ("f", 1)]
     let stats = 0
     try
-        let trace = eval (code, stk, heap, globals, stats)
+        let trace = eval (code, stk, dump, heap, globals, stats)
         let final = List.last (trace)
         let heap2 = Map [(0, NNum 0);
                          (1, NGlobal (1, [Push 0; Update 1; Pop 1; Unwind]));
@@ -602,11 +656,12 @@ let testEval3 () =
                     (2, NAp (1, 0))
                    ]
     let stk = [2; 2]
+    let dump = []
     let code = [Unwind]
     let globals = Map [("0", 0); ("f", 1)]
     let stats = 0
     try
-        let trace = eval (code, stk, heap, globals, stats)
+        let trace = eval (code, stk, dump, heap, globals, stats)
         let final = List.last (trace)
         let heap2 = Map [(0, NNum 0);
                          (1, NGlobal (1, [Push 0; Update 1; Pop 1; Unwind]));
@@ -624,11 +679,12 @@ let testEval4 () =
     let heap = Map [(0, NGlobal (0, [Pushint 3; Pushint 2; Push 0;
                                      Slide 2; Update 0; Pop 0; Unwind]))]
     let stk = []
+    let dump = []
     let code = [Pushglobal "X"; Unwind]
     let globals = Map [("X", 0)]
     let stats = 0
     try
-        let trace = eval (code, stk, heap, globals, stats)
+        let trace = eval (code, stk, dump, heap, globals, stats)
         Assert.AreEqual (NNum 2, getResult (List.last trace))
     with
         | GMError s ->
@@ -639,10 +695,11 @@ let testAlloc1 () =
     let heap = Map []
     let globals = Map []
     let stk = []
+    let dump = []
     let code = [Alloc 2]
     let stats = 0
     try
-        let trace = eval (code, stk, heap, globals, stats)
+        let trace = eval (code, stk, dump, heap, globals, stats)
         let final = List.last (trace)
         let heap2 = Map [(0, hNull); (1, hNull)]
         let stk2 = [1; 0]
@@ -657,10 +714,11 @@ let testAlloc2 () =
     let heap = Map []
     let globals = Map []
     let stk = [3]
+    let dump = []
     let code = [Alloc 2]
     let stats = 0
     try
-        let trace = eval (code, stk, heap, globals, stats)
+        let trace = eval (code, stk, dump, heap, globals, stats)
         let final = List.last (trace)
         let heap2 = Map [(0, hNull); (1, hNull)]
         let stk2 = [1; 0; 3]
