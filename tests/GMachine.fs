@@ -17,9 +17,14 @@ type Instruction =
     | Update of n: int
     | Slide of n: int
     | Alloc of n: int
-
+    | Eval
+    | Add
+    | Eq
+    | Cond of t:GmCode * f:GmCode
+and
+    GmCode = Instruction list
+    
 type Addr = int
-type GmCode = Instruction list
 type GmStack = Addr list
 // Expression node (when computing, not AST)
 type Node =
