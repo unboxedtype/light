@@ -805,3 +805,11 @@ let testIf () =
     let initSt = compile coreProg
     let res = getResult (List.last (eval initSt))
     Assert.AreEqual( NNum 10, res );
+
+[<Test>]
+let testIf2 () =
+    let coreProg =
+        [("main", [], EAp (EAp (EAp (EVar "if", ENum 1), ENum 10), ENum 20))]
+    let initSt = compile coreProg
+    let res = getResult (List.last (eval initSt))
+    Assert.AreEqual( NNum 10, res );
