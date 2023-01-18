@@ -6,6 +6,10 @@ open System.Collections.Generic
 
 exception GMError of string
 
+// Suppress the boring "Incomplete pattern matches on this expression."
+// compiler warning in tests.
+#nowarn "25"
+
 type Name = string
 type Instruction =
     | Unwind
@@ -34,7 +38,7 @@ type Node =
     | NNum of v: int
     | NAp of f: Addr * a: Addr // f(a)
     | NGlobal of args: int * code: GmCode
-    | NInd of v: int  // indirection node
+    | NInd of v: Addr  // indirection node
 type GmHeap = Map<Addr, Node>
 type GmGlobals = Map<Name, Addr>
 type GmStats = int
@@ -223,12 +227,12 @@ let unwind state =
                         failIf (List.length dump = 0) "Unwind with an empty dump"
                         let (code, stack) = List.head (getDump state)
                         let dump' = List.tail dump
-                        putDump dump' (putCode code (putStack (a :: stack) state))
+                        putCode code (putDump dump' (putStack (a :: stack) state))
                     | NAp (a1, a2) ->
                         putCode [Unwind] (putStack (a1 :: a :: as') state)
                     | NGlobal (n, c) ->
                         failIf (List.length as' < n) "Unwinding with too few arguments"
-                        putStack (rearrange n heap (a :: as')) (putCode c state)
+                        putCode c (putStack (rearrange n heap (a :: as')) state)
                     | NInd a0 ->
                         putCode [Unwind] (putStack (a0 :: as') state)
             newState (heapLookup heap a)
@@ -807,9 +811,18 @@ let testIf () =
     Assert.AreEqual( NNum 10, res );
 
 [<Test>]
-let testIf2 () =
+let testFact () =
     let coreProg =
-        [("main", [], EAp (EAp (EAp (EVar "if", ENum 1), ENum 10), ENum 20))]
-    let initSt = compile coreProg
-    let res = getResult (List.last (eval initSt))
-    Assert.AreEqual( NNum 10, res );
+        // fact n = if n == 0 then 1 else n * fact(n-1)
+        // main = fact 5
+        [("fact", ["n"],
+          EAp (EAp (EAp (EVar "if", EAp (EAp (EVar "==", EVar "n"), ENum 0)), ENum 1),
+          EAp (EAp (EVar "*", EVar "n"), (EAp (EVar "fact", EAp (EAp (EVar "-", EVar "n"), ENum 1))))));
+         ("main", [], EAp (EVar "fact", ENum 5))]
+    try
+      let initSt = compile coreProg
+      let res = getResult (List.last (eval initSt))
+      Assert.AreEqual( NNum 120, res );
+    with
+        | GMError s ->
+            Assert.Fail(s)
