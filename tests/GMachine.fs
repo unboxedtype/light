@@ -253,6 +253,13 @@ let alloc n state =
     let (heap, addrs) = allocNodes n (getHeap state)
     putHeap heap (putStack (addrs @ getStack state) state)
 
+let add state =
+    let heap = getHeap state
+    let (a1 :: a2 :: s') = getStack state
+    let (NNum n1, NNum n2) = (heapLookup a1 heap, heapLookup a2 heap)
+    let (heap', a) = heapAlloc heap (NNum (n1 + n2))
+    putStack (a :: s') (putHeap heap' state)
+
 let dispatch i =
     match i with
         | Pushglobal f ->
@@ -275,6 +282,8 @@ let dispatch i =
             alloc n
         | Eval ->
             eval
+        | Add ->
+            add
 
 // there is always at least one instruction in the code
 // otherwise the step function shouldn't have executed
