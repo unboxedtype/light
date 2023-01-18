@@ -23,7 +23,7 @@ type Instruction =
     | Cond of t:GmCode * f:GmCode
 and
     GmCode = Instruction list
-    
+
 type Addr = int
 type GmStack = Addr list
 // Expression node (when computing, not AST)
@@ -36,7 +36,7 @@ type GmHeap = Map<Addr, Node>
 type GmGlobals = Map<Name, Addr>
 type GmStats = int
 type GmDump =
-    GmCode * GmStack list
+    (GmCode * GmStack) list
 type GmState =
     GmCode * GmStack * GmDump * GmHeap * GmGlobals * GmStats
 
@@ -110,6 +110,9 @@ let heapAlloc heap node =
 let getDump st =
     let (_, _, dump, _, _, _) = st
     dump
+let putDump dump st =
+    let (code, stack, _, heap, globals, stats) = st
+    (code, stack, dump, heap, globals, stats)
 
 let getGlobals (st:GmState) : GmGlobals =
     let (_, _, _, _, globals, _) = st
@@ -209,25 +212,33 @@ let rearrange n heap s =
     s' @ (List.skip n s)
 
 let unwind state =
+    let failIf cond str =
+        if cond then raise (GMError str) else ()
     match getStack state with
         | a :: as' ->
             let heap = getHeap state
             let newState s =
                 match s with
                     | NNum n ->
-                        putCode [] state
+                        failIf (List.length (getDump state) = 0) "Unwind with an empty dump"
+                        let (code, stack) = List.head (getDump state)
+                        putCode code (putStack (a :: stack) state)
                     | NAp (a1, a2) ->
                         putCode [Unwind] (putStack (a1 :: a :: as') state)
                     | NGlobal (n, c) ->
-                        if List.length as' < n then
-                            raise (GMError "Unwinding with too few arguments")
-                        else
-                            putStack (rearrange n heap (a :: as')) (putCode c state)
+                        failIf (List.length as' < n) "Unwinding with too few arguments"
+                        putStack (rearrange n heap (a :: as')) (putCode c state)
                     | NInd a0 ->
                         putCode [Unwind] (putStack (a0 :: as') state)
             newState (heapLookup heap a)
         | _ ->
             raise (GMError "stack underflow")
+
+let eval state =
+    let code' = List.tail (getCode state)
+    let (a :: s') = getStack state
+    let dump' = (code',s') :: (getDump state)
+    putCode [Unwind] (putStack [a] (putDump dump' state))
 
 let rec allocNodes (n:int) (heap:GmHeap) =
     match n with
@@ -262,6 +273,8 @@ let dispatch i =
             unwind
         | Alloc n ->
             alloc n
+        | Eval ->
+            eval
 
 // there is always at least one instruction in the code
 // otherwise the step function shouldn't have executed
@@ -395,12 +408,12 @@ let buildInitialHeap program =
 
 let compile (program: CoreProgram) : GmState =
     let (heap, globals) = buildInitialHeap program
-    (initialCode, [], heap, globals, statInitial)
+    (initialCode, [], [], heap, globals, statInitial)
 
 let getResult (st:GmState) : Node =
-    match st with
-        | (_, resultAddr :: tl, heap, _, _) ->
-            heapLookup heap resultAddr
+    match getStack st with
+        | resultAddr :: _ ->
+            heapLookup (getHeap st) resultAddr
         | _ ->
             raise (GMError "incorrect VM final state")
 
