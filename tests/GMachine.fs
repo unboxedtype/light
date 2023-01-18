@@ -219,9 +219,11 @@ let unwind state =
             let newState s =
                 match s with
                     | NNum n ->
-                        failIf (List.length (getDump state) = 0) "Unwind with an empty dump"
+                        let dump = getDump state
+                        failIf (List.length dump = 0) "Unwind with an empty dump"
                         let (code, stack) = List.head (getDump state)
-                        putCode code (putStack (a :: stack) state)
+                        let dump' = List.tail dump
+                        putDump dump' (putCode code (putStack (a :: stack) state))
                     | NAp (a1, a2) ->
                         putCode [Unwind] (putStack (a1 :: a :: as') state)
                     | NGlobal (n, c) ->
@@ -234,12 +236,9 @@ let unwind state =
             raise (GMError "stack underflow")
 
 let evalInstr state =
-    let code' =
-        match (getCode state) with
-            | [] -> []
-            | c -> List.tail c
+    let code' = getCode state
     let (a :: s') = getStack state
-    let dump' = (code',s') :: (getDump state)
+    let dump' = (code', s') :: (getDump state)
     putCode [Unwind] (putStack [a] (putDump dump' state))
 
 let rec allocNodes (n:int) (heap:GmHeap) =
@@ -273,6 +272,7 @@ let binop (op : int -> int -> int) state =
     let (a1 :: a2 :: s') = getStack state
     let (NNum n1, NNum n2) = (heapLookup heap a1, heapLookup heap a2)
     let (heap', a) = heapAlloc heap (NNum (op n1 n2))
+    // a points to the result op(n1, n2)
     putStack (a :: s') (putHeap heap' state)
 
 let add state =
@@ -288,12 +288,12 @@ let gt state =
     cmpop (fun a b -> a > b) state
 
 let cond i1 i2 state =
-    let (a :: _) = getStack state
+    let (a :: s') = getStack state
     match (heapLookup (getHeap state) a) with
         | NNum a when a = 1 ->
-            putCode (i1 @ (getCode state)) state
+            putStack s' (putCode (i1 @ (getCode state)) state)
         | NNum a when a = 0 ->
-            putCode (i2 @ (getCode state)) state
+            putStack s' (putCode (i2 @ (getCode state)) state)
         | _ ->
             raise (GMError "incorrect conditional variable")
 
@@ -356,6 +356,8 @@ type Expr =
     | ENum of n:int
     | EAp of e1:Expr * e2:Expr
     | ELet of isRec:bool * defs:GmDefinitions * body:Expr
+//  | If of c:bool * t:Expr * f:Expr
+//  | EAdd of a1:Expr * a2:Expr
 and GmDefinitions = (Name * Expr) list
 
 // combinator name, number of arguments, code
@@ -485,8 +487,16 @@ let getResult (st:GmState) : Node =
 let Setup () =
     ()
 
-let printTest term =
+let printTerm term =
     let str = sprintf "%A" term
+    NUnit.Framework.TestContext.Progress.WriteLine("{0}", str)
+
+let printState st =
+    let code = getCode st
+    let stk = getStack st
+    let dump = getDump st
+    let objs = List.zip stk (List.map (heapLookup (getHeap st)) stk)
+    let str = sprintf " code:%A\n dump:%A\n stk:%A\n heap:%A\n*********" code dump stk objs
     NUnit.Framework.TestContext.Progress.WriteLine("{0}", str)
 
 [<Test>]
@@ -752,7 +762,7 @@ let testCompileLetRec1 () =
 let testCompileSCLetRec1 () =
     let coreProg =
         ("main", [], ELet (true, [("k", ENum 3); ("t", EVar "k")], EVar "t"))
-    printTest (compileSc coreProg)
+    printTerm (compileSc coreProg)
     Assert.Ignore()
 
 [<Test>]
@@ -763,3 +773,35 @@ let testEvalLetRec1 () =
     let initSt = compile coreProg
     let res = getResult (List.last (eval initSt))
     Assert.AreEqual( NNum 3, res );
+
+[<Test>]
+let testEvalAdd1 () =
+    let coreProg =
+        [("main", [], EAp (EAp (EVar "+", ENum 3), ENum 7))]
+    let initSt = compile coreProg
+    let res = getResult (List.last (eval initSt))
+    Assert.AreEqual( NNum 10, res );
+
+[<Test>]
+let testEvalMul1 () =
+    let coreProg =
+        [("main", [], EAp (EAp (EVar "*", EAp (EAp (EVar "+", ENum 3), ENum 7)), ENum 0))]
+    let initSt = compile coreProg
+    let res = getResult (List.last (eval initSt))
+    Assert.AreEqual( NNum 0, res );
+
+[<Test>]
+let testEvalEq () =
+    let coreProg =
+        [("main", [], EAp (EAp (EVar "==", ENum 7), ENum 3))]
+    let initSt = compile coreProg
+    let res = getResult (List.last (eval initSt))
+    Assert.AreEqual( NFalse, res );
+
+[<Test>]
+let testIf () =
+    let coreProg =
+        [("main", [], EAp (EAp (EAp (EVar "if", ENum 1), ENum 10), ENum 20))]
+    let initSt = compile coreProg
+    let res = getResult (List.last (eval initSt))
+    Assert.AreEqual( NNum 10, res );
