@@ -234,7 +234,10 @@ let unwind state =
             raise (GMError "stack underflow")
 
 let evalInstr state =
-    let code' = List.tail (getCode state)
+    let code' =
+        match (getCode state) with
+            | [] -> []
+            | c -> List.tail c
     let (a :: s') = getStack state
     let dump' = (code',s') :: (getDump state)
     putCode [Unwind] (putStack [a] (putDump dump' state))
@@ -657,7 +660,7 @@ let testEval3 () =
                    ]
     let stk = [2; 2]
     let dump = []
-    let code = [Unwind]
+    let code = [Eval]
     let globals = Map [("0", 0); ("f", 1)]
     let stats = 0
     try
@@ -680,7 +683,7 @@ let testEval4 () =
                                      Slide 2; Update 0; Pop 0; Unwind]))]
     let stk = []
     let dump = []
-    let code = [Pushglobal "X"; Unwind]
+    let code = [Pushglobal "X"; Eval]
     let globals = Map [("X", 0)]
     let stats = 0
     try
