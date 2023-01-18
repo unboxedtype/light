@@ -7,7 +7,6 @@ open System.Collections.Generic
 exception GMError of string
 
 type Name = string
-
 type Instruction =
     | Unwind
     | Pushglobal of name: Name
@@ -20,45 +19,54 @@ type Instruction =
     | Alloc of n: int
 
 type Addr = int
-
 type GmCode = Instruction list
-
-let getCode (i, _, _, _, _) =
-    i
-let putCode i' (i, stack, heap, globals, stats) =
-    (i', stack, heap, globals, stats)
-
 type GmStack = Addr list
-
-let getStack (i, stack, heap, globals, stats) =
-    stack
-
-let putStack s' (i, stack, heap, globals, stats) =
-    (i, s', heap, globals, stats)
-
 // Expression node (when computing, not AST)
 type Node =
     | NNum of v: int
     | NAp of f: Addr * a: Addr // f(a)
     | NGlobal of args: int * code: GmCode
     | NInd of v: int  // indirection node
-
 type GmHeap = Map<Addr, Node>
+type GmGlobals = Map<Name, Addr>
+type GmStats = int
+type GmDump =
+    GmCode * GmStack list
+type GmState =
+    GmCode * GmStack * GmDump * GmHeap * GmGlobals * GmStats
+
+let getCode (st:GmState) =
+    let (code, _, _, _, _, _) = st
+    code
+
+let putCode (code':GmCode) (st:GmState) =
+    let (_, stack, dump, heap, globals, stats) = st
+    (code', stack, dump, heap, globals, stats)
+
+let getStack (st:GmState) =
+    let (_, stack, _, _, _, _) = st
+    stack
+
+let putStack (s':GmStack) (st:GmState) =
+    let (code, _, dump, heap, globals, stats) = st
+    (code, s', dump, heap, globals, stats)
+
+
 
 // This is a placeholder value that will be overwritten
 // during the evaluation
 let hNull = NInd -1
 
-let getHeap (i, stack, heap, globals, stats) =
+let getHeap (st:GmState) =
+    let (_, _, _, heap, _, _) = st
     heap
-let putHeap h' (i, stack, heap, globals, stats) =
-    (i, stack, h', globals, stats)
+let putHeap heap st =
+    let (code, stack, dump, _, globals, stats) = st
+    (code, stack, dump, heap, globals, stats)
 
-type GmGlobals = Map<Name, Addr>
-
-let getGlobals (i, stack, heap, globals, stats) =
+let getGlobals st =
+    let (_, _, _, _, globals, _) = st
     globals
-type GmStats = int
 
 let statInitial =
     0
@@ -67,13 +75,12 @@ let statIncSteps s =
 let statGetSteps s =
     s
 
-let getStats (i, stack, heap, globals, stats) =
+let getStats st =
+    let (_, _, _, _, _, stats) = st
     stats
-let putStats stats' (i, stack, heap, globals, stats) =
-    (i, stack, heap, globals, stats')
-
-type GmState =
-    GmCode * GmStack * GmHeap * GmGlobals * GmStats
+let putStats stats' st =
+    let (code, stack, dump, heap, globals, stats) = st
+    (code, stack, dump, heap, globals, stats')
 
 // Evaluator:
 // test that we are in the final state, no more steps to do
@@ -95,9 +102,18 @@ let heapAlloc heap node =
     let addr = findNewAddr heap
     (Map.add addr node heap, addr)
 
-let putGlobals (name:Name) (addr:Addr) (code, stack, heap, globals, stats): GmState =
-    let globals' = Map.add name addr globals
-    (code, stack, heap, globals', stats)
+let getDump st =
+    let (_, _, dump, _, _, _) = st
+    dump
+
+let getGlobals (st:GmState) : GmGlobals =
+    let (_, _, _, _, globals, _) = st
+    globals
+
+let putGlobals (name:Name) (addr:Addr) (st:GmState) : GmState =
+    let globals' = Map.add name addr (getGlobals st)
+    let (code, stack, dump, heap, _, stats) = st
+    (code, stack, dump, heap, globals', stats)
 
 let pushglobal (f:Name) (state:GmState) =
     match Map.tryFind f (getGlobals state) with
