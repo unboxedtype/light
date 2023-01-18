@@ -245,13 +245,6 @@ let dispatch i =
 // there is always at least one instruction in the code
 // otherwise the step function shouldn't have executed
 let step state =
-    (**
-    let code_str = sprintf "%A" (getCode state)
-    let stack_str = sprintf "%A" (getStack state)
-    let heap_str = sprintf "%A" (getHeap state)
-    NUnit.Framework.TestContext.Progress.WriteLine("CODE : {0}\nSTACK: {1}\nHEAP: {2}",
-                                                  code_str, stack_str, heap_str)
-                                                  **)
     match getCode state with
         | i :: is ->
             dispatch i (putCode is state)
@@ -350,7 +343,7 @@ and compileLet'' defs env n =
         | [] ->
             []
         | (name,expr) :: defs' ->
-            (compileC expr env) @ [Update n] @ compileLet'' defs' (argOffset 1 env) (n - 1)
+            (compileC expr env) @ [Update n] @ compileLet'' defs' env (n - 1)
 
 // ast env -> Instruction list
 let compileR ast env =
@@ -547,7 +540,6 @@ let testEval2 () =
     let stats = 0
     try
         let trace = eval (code, stk, heap, globals, stats)
-//      printTest trace
         let final = List.last (trace)
         let heap2 = Map [(0, NNum 0);
                          (1, NGlobal (1, [Push 0; Update 1; Pop 1; Unwind]));
@@ -629,7 +621,6 @@ let testAlloc2 () =
         let final = List.last (trace)
         let heap2 = Map [(0, hNull); (1, hNull)]
         let stk2 = [1; 0; 3]
-        printTest (getStack final)
         Assert.AreEqual (heap2, getHeap final)
         Assert.AreEqual (stk2, getStack final)
     with
@@ -644,34 +635,27 @@ let testCompile2 () =
     // @3 @2 @2
 
 [<Test>]
-// [<Ignore("turn off")>]
+[<Ignore("for output")>]
 let testCompileLetRec1 () =
     let coreProg = [
         ("main", [], ELet (true, [("k", ENum 3); ("t", EVar "k")], EVar "t"))
     ]
     let initSt = compile coreProg
-//  printTest initSt
     Assert.Ignore()
 
 [<Test>]
-// [<Ignore("turn off")>]
+[<Ignore("for output")>]
+let testCompileSCLetRec1 () =
+    let coreProg =
+        ("main", [], ELet (true, [("k", ENum 3); ("t", EVar "k")], EVar "t"))
+    printTest (compileSc coreProg)
+    Assert.Ignore()
+
+[<Test>]
 let testEvalLetRec1 () =
     let coreProg = [
         ("main", [], ELet (true, [("k", ENum 3); ("t", EVar "k")], EVar "t"))
     ]
     let initSt = compile coreProg
-    printTest initSt
-    let rec repeat f n d =
-        match n with
-            | 0 -> d
-            | _ -> repeat f (n - 1) (f d)
-    try
-        printTest (repeat step 9 initSt)
-        printTest (repeat step 10 initSt)
-        printTest (repeat step 11 initSt)
-        printTest (repeat step 12 initSt)
-        printTest (repeat step 13 initSt)
-    with
-        | GMError s ->
-            Assert.Fail(s)
-    Assert.Ignore()
+    let res = getResult (List.last (eval initSt))
+    Assert.AreEqual( NNum 3, res );
