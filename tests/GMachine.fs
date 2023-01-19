@@ -460,12 +460,13 @@ and compileC (ast : Expr) (env: GmEnvironment) : GmCode =
 and compileLet (comp: GmCompiler) (defs: GmDefinitions) expr env =
     // inject new definitions into the environment
     let env' = compileArgs defs env
+    let n = List.length defs
     // compile the definitions using the old environment
     (compileLet' defs env) @
       // compile the expression using the new environment
       (comp expr env') @
       // remove stack items used to construct environment vars
-      [Slide (List.length defs)]
+      [Slide n]
 and compileLet' defs env =
     match defs with
         | [] ->
@@ -840,12 +841,20 @@ let testEvalEq () =
     Assert.AreEqual( NFalse, res );
 
 [<Test>]
-let testIf () =
+let testIfTrue () =
     let coreProg =
         [("main", [], EIf(ENum 1, ENum 10, ENum 20))]
     let initSt = compile coreProg
     let res = getResult (List.last (eval initSt))
     Assert.AreEqual( NNum 10, res );
+
+[<Test>]
+let testIfFalse () =
+    let coreProg =
+        [("main", [], EIf(ENum 0, ENum 10, ENum 20))]
+    let initSt = compile coreProg
+    let res = getResult (List.last (eval initSt))
+    Assert.AreEqual( NNum 20, res );
 
 [<Test>]
 let testSub () =
@@ -856,12 +865,19 @@ let testSub () =
     Assert.AreEqual( NNum 9, res );
 
 [<Test>]
-let testEq () =
+let testEqFalse () =
     let coreProg =
         [("main", [], EEq(ENum 10, ENum 1))]
     let initSt = compile coreProg
     let res = getResult (List.last (eval initSt))
     Assert.AreEqual( NFalse, res );
+
+let testEqTrue () =
+    let coreProg =
+        [("main", [], EEq(ENum 10, ENum 10))]
+    let initSt = compile coreProg
+    let res = getResult (List.last (eval initSt))
+    Assert.AreEqual( NTrue, res );
 
 [<Test>]
 let testMul () =
@@ -872,28 +888,51 @@ let testMul () =
     Assert.AreEqual( NNum 200, res );
 
 [<Test>]
-let testGt () =
+let testGtTrue () =
     let coreProg =
         [("main", [], EGt(ENum 10, ENum 1))]
     let initSt = compile coreProg
     let res = getResult (List.last (eval initSt))
     Assert.AreEqual( NTrue, res );
 
-// [<Timeout(1000)>] // infinite recursion
 [<Test>]
-let testRecSimple () =
+let testGtFalse () =
     let coreProg =
-        // rec n = if n > 1 then rec(n-1) else 10
-        // main = fact 5
-        [("rec", ["n"], EIf (EGt (EVar "n", ENum 1), EAp (EVar "rec", ESub (EVar "n", ENum 1)), ENum 10))
+        [("main", [], EGt(ENum 1, ENum 10))]
+    let initSt = compile coreProg
+    let res = getResult (List.last (eval initSt))
+    Assert.AreEqual( NFalse, res );
+
+[<Test>]
+let testRec1 () =
+    let coreProg =
+        [("rec", ["n"], EIf (EGt (EVar "n", ENum 1), EAp (EVar "rec", ESub (EVar "n", ENum 1)), ENum 20))
          ("main", [], EAp (EVar "rec", ENum 10))]
     try
       let initSt = compile coreProg
-      // List.map printTerm (eval initSt) |> ignore
       let finalSt = List.last (eval initSt)
       let res = getResult finalSt
-      printTerm (getStats finalSt)
-      Assert.AreEqual( NNum 10, res );
+      Assert.AreEqual( NNum 20, res );
+    with
+        | GMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testRec2 () =
+    let coreProg =
+        [("rec", ["n"; "m"],
+          EIf (
+            EGt (EVar "n", ENum 1),
+            EAp (EAp (EVar "rec", ESub (EVar "n", ENum 1)), EVar "n"),
+            EVar "m"
+            )
+          )
+         ("main", [], EAp (EAp (EVar "rec", ENum 10), ENum 0))]
+    try
+      let initSt = compile coreProg
+      let finalSt = List.last (eval initSt)
+      let res = getResult finalSt
+      Assert.AreEqual( NNum 2, res );
     with
         | GMError s ->
             Assert.Fail(s)
@@ -908,7 +947,8 @@ let testSumRec () =
             EVar "acc"
             )
           );
-         ("main", [], EAp (EAp (EVar "sum", ENum 4), ENum 0))]
+         ("main", [], EAp (EAp (EVar "sum", ENum 4), ENum 0))
+         ]
     try
       let initSt = compile coreProg
       // List.map printTerm (eval initSt) |> ignore
