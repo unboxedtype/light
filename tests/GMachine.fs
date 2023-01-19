@@ -22,13 +22,12 @@ type Instruction =
     | Slide of n: int
     | Alloc of n: int
     | Eval
-    | Add
-    | Sub
-    | Mul
-    | Div
-    | Eq
-    | Gt
+    | Add | Sub | Mul | Div
+    | Eq | Gt
     | Cond of t:GmCode * f:GmCode
+    | Pack of tag:int * n:int
+    | Casejump of (int * GmCode) list
+    | Split of n:int
 and
     GmCode = Instruction list
 
@@ -40,6 +39,8 @@ type Node =
     | NAp of f: Addr * a: Addr // f(a)
     | NGlobal of args: int * code: GmCode
     | NInd of v: Addr  // indirection node
+    // data type constructor with n params
+    | NConstr of n: int * exprs: Addr list
 type GmHeap = Map<Addr, Node>
 type GmGlobals = Map<Name, Addr>
 type GmStats = int
@@ -314,6 +315,18 @@ let cond i1 i2 state =
         | _ ->
             raise (GMError "incorrect conditional variable")
 
+let pack tag n state =
+    let args = List.take n (getStack state)
+    let (heap', a) = heapAlloc (getHeap state) (NConstr (tag, args))
+    let s' = List.skip n (getStack state)
+    putHeap heap' (putStack (a::s') state)
+
+let casejump cs state =
+    state
+
+let split n state =
+    state
+
 let dispatch i =
     match i with
         | Pushglobal f ->
@@ -350,6 +363,12 @@ let dispatch i =
             eq
         | Gt ->
             gt
+        | Pack (tag, n) ->
+            pack tag n
+        | Casejump cases ->
+            casejump cases
+        | Split n ->
+            split n
 
 // there is always at least one instruction in the code
 // otherwise the step function shouldn't have executed
