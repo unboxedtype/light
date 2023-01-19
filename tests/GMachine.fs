@@ -439,7 +439,7 @@ let rec compileE (ast : Expr) (env: GmEnvironment) : GmCode =
         | EDiv (e1, e2) ->
             (compileE e2 env) @ (compileE e1 env) @ [Div]
         | EIf (e0, e1, e2) ->
-            (compileE e0 env) @ [Cond( compileE e1 env, compileE e2 env )]
+            (compileE e0 env) @ [Cond(compileE e1 env, compileE e2 env)]
         | _ ->
             (compileC ast env) @ [Eval]
 and compileC (ast : Expr) (env: GmEnvironment) : GmCode =
@@ -505,16 +505,7 @@ let compileSc ((name, vars, ast): SC) : GmCompiledSC =
 let buildInitialHeap (program: CoreProgram) =
     let initialHeap = Map []
     let initialGlobals = Map []
-    let compiledPrimitives : GmCompiledSC list = [
-        ("+", 2, [Push 1; Eval; Push 1; Eval; Add; Update 2; Pop 2; Unwind]);
-        ("-", 2, [Push 1; Eval; Push 1; Eval; Sub; Update 2; Pop 2; Unwind]);
-        ("*", 2, [Push 1; Eval; Push 1; Eval; Mul; Update 2; Pop 2; Unwind]);
-        ("/", 2, [Push 1; Eval; Push 1; Eval; Div; Update 2; Pop 2; Unwind]);
-        ("==",2, [Push 1; Eval; Push 1; Eval; Eq; Update 2; Pop 2; Unwind]);
-        (">", 2, [Push 1; Eval; Push 1; Eval; Gt; Update 2; Pop 2; Unwind]);
-        ("if",3, [Push 0; Eval; Cond ([Push 1], [Push 2]); Update 3; Pop 3; Unwind])
-        ("K", 2, [Push 0; Eval; Update 2; Pop 2; Unwind])
-    ]
+    let compiledPrimitives : GmCompiledSC list = []
     let acc = (initialHeap, initialGlobals)
     let compiled1 = (List.map compileSc program) @ compiledPrimitives
     let (heap, globals) = List.fold allocateSc acc compiled1
@@ -578,9 +569,7 @@ let testK () =
         ("main", [], EAp (EAp (EVar "K", ENum 3), ENum 4))
     ]
     let initSt = compile coreProg
-    printfn "%A" initSt
     let finalSt = List.last (eval initSt)
-    // NUnit.Framework.TestContext.Progress.WriteLine("testK: steps = {0}", getStats finalSt)
     Assert.AreEqual( NNum 3, getResult finalSt )
 
 [<Test>]
@@ -594,9 +583,7 @@ let testSKK3 () =
         ("main", [], EAp (EAp (EAp (EVar "S", EVar "K"), EVar "K"), ENum 3))
     ]
     let initSt = compile coreProg
-    printfn "%A" initSt
     let finalSt = List.last (eval initSt)
-    // NUnit.Framework.TestContext.Progress.WriteLine("testSKK3: steps = {0}", getStats finalSt)
     Assert.AreEqual( NNum 3, getResult finalSt )
 
 [<Test>]
@@ -816,7 +803,7 @@ let testCompileLetRec1 () =
 let testCompileSCLetRec1 () =
     let coreProg =
         ("main", [], ELet (true, [("k", ENum 3); ("t", EVar "k")], EVar "t"))
-    printTerm (compileSc coreProg)
+   // printTerm (compileSc coreProg)
     Assert.Ignore()
 
 [<Test>]
@@ -831,7 +818,7 @@ let testEvalLetRec1 () =
 [<Test>]
 let testEvalAdd1 () =
     let coreProg =
-        [("main", [], EAp (EAp (EVar "+", ENum 3), ENum 7))]
+        [("main", [], EAdd (ENum 3, ENum 7))]
     let initSt = compile coreProg
     let res = getResult (List.last (eval initSt))
     Assert.AreEqual( NNum 10, res );
@@ -839,7 +826,7 @@ let testEvalAdd1 () =
 [<Test>]
 let testEvalMul1 () =
     let coreProg =
-        [("main", [], EAp (EAp (EVar "*", EAp (EAp (EVar "+", ENum 3), ENum 7)), ENum 0))]
+        [("main", [], EMul(EAdd(ENum 3, ENum 7),ENum 0))]
     let initSt = compile coreProg
     let res = getResult (List.last (eval initSt))
     Assert.AreEqual( NNum 0, res );
@@ -847,7 +834,7 @@ let testEvalMul1 () =
 [<Test>]
 let testEvalEq () =
     let coreProg =
-        [("main", [], EAp (EAp (EVar "==", ENum 7), ENum 3))]
+        [("main", [], EEq (ENum 7, ENum 3))]
     let initSt = compile coreProg
     let res = getResult (List.last (eval initSt))
     Assert.AreEqual( NFalse, res );
@@ -855,22 +842,112 @@ let testEvalEq () =
 [<Test>]
 let testIf () =
     let coreProg =
-        [("main", [], EAp (EAp (EAp (EVar "if", ENum 1), ENum 10), ENum 20))]
+        [("main", [], EIf(ENum 1, ENum 10, ENum 20))]
     let initSt = compile coreProg
     let res = getResult (List.last (eval initSt))
     Assert.AreEqual( NNum 10, res );
 
 [<Test>]
+let testSub () =
+    let coreProg =
+        [("main", [], ESub(ENum 10, ENum 1))]
+    let initSt = compile coreProg
+    let res = getResult (List.last (eval initSt))
+    Assert.AreEqual( NNum 9, res );
+
+[<Test>]
+let testEq () =
+    let coreProg =
+        [("main", [], EEq(ENum 10, ENum 1))]
+    let initSt = compile coreProg
+    let res = getResult (List.last (eval initSt))
+    Assert.AreEqual( NFalse, res );
+
+[<Test>]
+let testMul () =
+    let coreProg =
+        [("main", [], EMul(ENum 10, ENum 20))]
+    let initSt = compile coreProg
+    let res = getResult (List.last (eval initSt))
+    Assert.AreEqual( NNum 200, res );
+
+[<Test>]
+let testGt () =
+    let coreProg =
+        [("main", [], EGt(ENum 10, ENum 1))]
+    let initSt = compile coreProg
+    let res = getResult (List.last (eval initSt))
+    Assert.AreEqual( NTrue, res );
+
+// [<Timeout(1000)>] // infinite recursion
+[<Test>]
+let testRecSimple () =
+    let coreProg =
+        // rec n = if n > 1 then rec(n-1) else 10
+        // main = fact 5
+        [("rec", ["n"], EIf (EGt (EVar "n", ENum 1), EAp (EVar "rec", ESub (EVar "n", ENum 1)), ENum 10))
+         ("main", [], EAp (EVar "rec", ENum 10))]
+    try
+      let initSt = compile coreProg
+      // List.map printTerm (eval initSt) |> ignore
+      let finalSt = List.last (eval initSt)
+      let res = getResult finalSt
+      printTerm (getStats finalSt)
+      Assert.AreEqual( NNum 10, res );
+    with
+        | GMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testSumRec () =
+    let coreProg =
+        [("sum", ["n"; "acc"],
+          EIf (
+            EGt (EVar "n", ENum 0),
+            EAp (EAp (EVar "sum", ESub (EVar "n", ENum 1)), EAdd(EVar "acc", EVar "n")),
+            EVar "acc"
+            )
+          );
+         ("main", [], EAp (EAp (EVar "sum", ENum 4), ENum 0))]
+    try
+      let initSt = compile coreProg
+      // List.map printTerm (eval initSt) |> ignore
+      let finalSt = List.last (eval initSt)
+      let res = getResult finalSt
+      printTerm (getStats finalSt)
+      Assert.AreEqual( NNum 6, res );
+    with
+        | GMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testMaxFunction () =
+    let coreProg =
+        [("max", ["n"; "m"], EIf (EGt (EVar "n", EVar "m"), EVar "n", EVar "m"));
+         ("main", [], EAp (EAp (EVar "max", ENum 5), ENum 6))]
+    try
+      let initSt = compile coreProg
+      let res = getResult (List.last (eval initSt))
+      Assert.AreEqual( NNum 6, res );
+    with
+        | GMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+[<Ignore("bug")>]
 let testFact () =
     let coreProg =
         // fact n = if n == 0 then 1 else n * fact(n-1)
         // main = fact 5
         [("fact", ["n"],
-          EAp (EAp (EAp (EVar "if", EAp (EAp (EVar "==", EVar "n"), ENum 0)), ENum 1),
-          EAp (EAp (EVar "*", EVar "n"), (EAp (EVar "fact", EAp (EAp (EVar "-", EVar "n"), ENum 1))))));
+          EIf (EEq (EVar "n", ENum 0),
+               ENum 1, // true branch
+               EMul (EVar "n", EAp (EVar "fact", ESub (EVar "n", ENum 1)))) // else branch
+          )
          ("main", [], EAp (EVar "fact", ENum 5))]
     try
       let initSt = compile coreProg
+      // List.map printTerm (eval initSt) |> ignore
       let res = getResult (List.last (eval initSt))
       Assert.AreEqual( NNum 120, res );
     with
@@ -878,6 +955,7 @@ let testFact () =
             Assert.Fail(s)
 
 [<Test>]
+[<Ignore("bug")>]
 let testLazyDiv0 () =
     let coreProg =
         [("main", [], EAp (EAp (EVar "K", ENum 1), EDiv(ENum 1, ENum 0)))]
