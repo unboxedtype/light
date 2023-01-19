@@ -40,7 +40,7 @@ type Node =
     | NGlobal of args: int * code: GmCode
     | NInd of v: Addr  // indirection node
     // data type constructor with n params
-    | NConstr of n: int * exprs: Addr list
+    | NConstr of int * Addr list
 type GmHeap = Map<Addr, Node>
 type GmGlobals = Map<Name, Addr>
 type GmStats = int
@@ -307,7 +307,8 @@ let gt state =
 
 let cond i1 i2 state =
     let (a :: s') = getStack state
-    match (heapLookup (getHeap state) a) with
+    let heap = getHeap state
+    match (heapLookup heap a) with
         | NNum a when a = 1 ->
             putStack s' (putCode (i1 @ (getCode state)) state)
         | NNum a when a = 0 ->
@@ -321,8 +322,18 @@ let pack tag n state =
     let s' = List.skip n (getStack state)
     putHeap heap' (putStack (a::s') state)
 
-let casejump cs state =
-    state
+let casejump cases state =
+    let (a :: stack) = getStack state
+    let code = getCode state
+    let heap = getHeap state
+    match (heapLookup heap a) with
+        | NConstr (tag, args) ->
+            let cs = List.pick (fun (tag', code') ->
+                                if (tag' = tag) then (Some code') else None
+                                ) cases
+            putCode (cs @ code) state
+        | _ ->
+            raise (GMError "no constructor object found on the heap")
 
 let split n state =
     state
