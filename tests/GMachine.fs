@@ -25,6 +25,7 @@ type Instruction =
     | Add
     | Sub
     | Mul
+    | Div
     | Eq
     | Gt
     | Cond of t:GmCode * f:GmCode
@@ -295,6 +296,8 @@ let sub state =
     binop (fun a b -> a - b) state
 let mul state =
     binop (fun a b -> a * b) state
+let div state =
+    binop (fun a b -> a / b) state
 
 let eq state =
     cmpop (fun a b -> a = b) state
@@ -341,6 +344,8 @@ let dispatch i =
             sub
         | Mul ->
             mul
+        | Div ->
+            div
         | Eq ->
             eq
         | Gt ->
@@ -376,6 +381,7 @@ type Expr =
     | EMul of e0:Expr * e1:Expr
     | EEq of e0:Expr * e1:Expr
     | EGt of e0:Expr * e1:Expr
+    | EDiv of e0:Expr * e1:Expr
 and GmDefinitions = (Name * Expr) list
 
 // combinator name, number of arguments, code
@@ -430,6 +436,8 @@ let rec compileE (ast : Expr) (env: GmEnvironment) : GmCode =
             (compileE e2 env) @ (compileE e1 env) @ [Eq]
         | EGt (e1, e2) ->
             (compileE e2 env) @ (compileE e1 env) @ [Gt]
+        | EDiv (e1, e2) ->
+            (compileE e2 env) @ (compileE e1 env) @ [Div]
         | EIf (e0, e1, e2) ->
             (compileE e0 env) @ [Cond( compileE e1 env, compileE e2 env )]
         | _ ->
@@ -501,9 +509,11 @@ let buildInitialHeap (program: CoreProgram) =
         ("+", 2, [Push 1; Eval; Push 1; Eval; Add; Update 2; Pop 2; Unwind]);
         ("-", 2, [Push 1; Eval; Push 1; Eval; Sub; Update 2; Pop 2; Unwind]);
         ("*", 2, [Push 1; Eval; Push 1; Eval; Mul; Update 2; Pop 2; Unwind]);
+        ("/", 2, [Push 1; Eval; Push 1; Eval; Div; Update 2; Pop 2; Unwind]);
         ("==",2, [Push 1; Eval; Push 1; Eval; Eq; Update 2; Pop 2; Unwind]);
         (">", 2, [Push 1; Eval; Push 1; Eval; Gt; Update 2; Pop 2; Unwind]);
         ("if",3, [Push 0; Eval; Cond ([Push 1], [Push 2]); Update 3; Pop 3; Unwind])
+        ("K", 2, [Push 0; Eval; Update 2; Pop 2; Unwind])
     ]
     let acc = (initialHeap, initialGlobals)
     let compiled1 = (List.map compileSc program) @ compiledPrimitives
@@ -541,8 +551,8 @@ let printState st =
 
 [<Test>]
 let compileScKTest () =
-    let code = compileSc ("K", ["x"; "y"], (EVar "x"))
-    Assert.AreEqual( ("K", 2, [Push 0; Eval; Update 2; Pop 2; Unwind]), code );
+    let code = compileSc ("K1", ["x"; "y"], (EVar "x"))
+    Assert.AreEqual( ("K1", 2, [Push 0; Eval; Update 2; Pop 2; Unwind]), code );
 
 [<Test>]
 let compileScFTest () =
@@ -866,3 +876,12 @@ let testFact () =
     with
         | GMError s ->
             Assert.Fail(s)
+
+[<Test>]
+let testLazyDiv0 () =
+    let coreProg =
+        [("main", [], EAp (EAp (EVar "K", ENum 1), EDiv(ENum 1, ENum 0)))]
+    printTerm (compile coreProg)
+    let initSt = compile coreProg
+    let res = getResult (List.last (eval initSt))
+    Assert.AreEqual( NNum 10, res );
