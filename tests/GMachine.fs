@@ -426,7 +426,7 @@ type Expr =
     | EDiv of e0:Expr * e1:Expr
     | ECase of c:Expr * cs:CaseAlt list
     | EPack of tag:int * arity:int * args:Expr list
-and CaseAlt = int * (Name list) * Expr
+and CaseAlt = int * (Name list) * Expr   // case (tag:0) (vars: ["x","y"]) -> x + y
 and BoundVarDefs = (Name * Expr) list
 
 
@@ -487,7 +487,7 @@ let rec compileE (ast : Expr) (env: GmEnvironment) : GmCode =
         | EIf (e0, e1, e2) ->
             (compileE e0 env) @ [Cond(compileE e1 env, compileE e2 env)]
         | ECase (c, alts) ->
-            (compileE c env) @ [Casejump (compileAlts alts env)]
+            (compileE c env) @ [Casejump(compileAlts alts env)]
         | EPack (tag, n, args) ->
             List.concat (List.map (fun (i, e) -> compileC e (argOffset i env))
                (List.indexed (List.rev args))) @ [Pack (tag, n)]
@@ -540,7 +540,7 @@ and compileAlts alts env =
                  let indexed = List.indexed names
                  let env_len = List.length names
                  let env' = indexed @ (argOffset env_len env)
-                 (tag, compileE' env_len body env)
+                 (tag, compileE' env_len body env')
               ) alts
 and compileE' offset expr env =
     [Split offset] @ (compileE expr env) @ [Slide offset]
@@ -1096,6 +1096,31 @@ let testConstr2 () =
     Assert.AreEqual( heapLookup heap 6, NNum 3 );
     Assert.AreEqual( heapLookup heap 3, NNum 5 );
 
+[<Test>]
+let testConstr3 () =
+    // nested constructors
+    let coreProg =
+        [("main", [], EPack (0, 1, [EPack (1, 0, [])]))]
+    // printTerm (compile coreProg)
+    let initSt = compile coreProg
+    let finalSt = List.last (eval initSt)
+    let res = getResult finalSt
+    let heap = getHeap finalSt
+    Assert.AreEqual( NConstr (0, [1]), res );
+    Assert.AreEqual( heapLookup heap 1, NConstr (1, []) );
+
+[<Test>]
+let testCase1 () =
+    // nested constructors
+    let coreProg =
+        [("some", [], EPack (0, 1, [EPack (1, 0, [])]));
+         ("main", [], ECase (EVar "some", [(0, ["x"], EVar "x")]))
+         ]
+    let initSt = compile coreProg
+    let finalSt = List.last (eval initSt)
+    let res = getResult finalSt
+    let heap = getHeap finalSt
+    Assert.AreEqual( NConstr (1, []), res );
 
 [<Test>]
 [<Ignore("bug")>]
