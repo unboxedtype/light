@@ -247,6 +247,12 @@ let unwind state =
                             putCode c (putStack (rearrange n heap (a :: as')) state)
                     | NInd a0 ->
                         putCode [Unwind] (putStack (a0 :: as') state)
+                    | NConstr (_, _) ->
+                        let dump = getDump state
+                        failIf (List.length dump = 0) "Unwind with an empty dump"
+                        let (code, stack) = List.head (getDump state)
+                        let dump' = List.tail dump
+                        putCode code (putDump dump' (putStack (a :: stack) state))
             newState (heapLookup heap a)
         | _ ->
             raise (GMError "stack underflow")
@@ -336,7 +342,13 @@ let casejump cases state =
             raise (GMError "no constructor object found on the heap")
 
 let split n state =
-    state
+    let (a :: stack) = getStack state
+    let heap = getHeap state
+    match (heapLookup heap a) with
+        | NConstr (tag, args) ->
+            putStack (args @ stack) state
+        | _ ->
+            raise (GMError "no constructor object found on the heap")
 
 let dispatch i =
     match i with
@@ -380,7 +392,8 @@ let dispatch i =
             casejump cases
         | Split n ->
             split n
-
+        | _ ->
+            raise (GMError "not implemented")
 // there is always at least one instruction in the code
 // otherwise the step function shouldn't have executed
 let step state =
@@ -398,13 +411,12 @@ let rec eval (state:GmState) =
             eval nextState
     state :: restStates
 
-
 // AST Expression node
 type Expr =
     | EVar of name:Name
     | ENum of n:int
     | EAp of e1:Expr * e2:Expr
-    | ELet of isRec:bool * defs:GmDefinitions * body:Expr
+    | ELet of isRec:bool * defs:BoundVarDefs * body:Expr
     | EIf of e0:Expr * e1:Expr * e2:Expr
     | EAdd of e0:Expr * e1:Expr
     | ESub of e0:Expr * e1:Expr
@@ -412,7 +424,11 @@ type Expr =
     | EEq of e0:Expr * e1:Expr
     | EGt of e0:Expr * e1:Expr
     | EDiv of e0:Expr * e1:Expr
-and GmDefinitions = (Name * Expr) list
+    | ECase of c:Expr * cs:CaseAlt list
+    | EPack of tag:int * arity:int * args:Expr list
+and CaseAlt = int * (Name list) * Expr
+and BoundVarDefs = (Name * Expr) list
+
 
 // combinator name, number of arguments, code
 type GmCompiledSC = Name * int * GmCode
@@ -435,7 +451,7 @@ type GmEnvironment = (int * Name) list
 let argOffset (m:int) (env: GmEnvironment) =
     [for (n, v) in env -> (n + m, v)]
 
-let compileArgs (defs:GmDefinitions) (env:GmEnvironment) : GmEnvironment =
+let compileArgs (defs:BoundVarDefs) (env:GmEnvironment) : GmEnvironment =
     let n = List.length defs
     let indexes = List.rev [for i in 0 .. (n-1) -> i]
     let names = List.map fst defs
@@ -470,6 +486,11 @@ let rec compileE (ast : Expr) (env: GmEnvironment) : GmCode =
             (compileE e2 env) @ (compileE e1 (argOffset 1 env)) @ [Div]
         | EIf (e0, e1, e2) ->
             (compileE e0 env) @ [Cond(compileE e1 env, compileE e2 env)]
+        | ECase (c, alts) ->
+            (compileE c env) @ [Casejump (compileAlts alts env)]
+        | EPack (tag, n, args) ->
+            List.concat (List.map (fun (i, e) -> compileC e (argOffset i env))
+               (List.indexed (List.rev args))) @ [Pack (tag, n)]
         | _ ->
             (compileC ast env) @ [Eval]
 and compileC (ast : Expr) (env: GmEnvironment) : GmCode =
@@ -487,7 +508,7 @@ and compileC (ast : Expr) (env: GmEnvironment) : GmCode =
         | _ ->
             compileE ast env
             // raise (GMError "unexpected term")
-and compileLet (comp: GmCompiler) (defs: GmDefinitions) expr env =
+and compileLet (comp: GmCompiler) (defs: BoundVarDefs) expr env =
     // inject new definitions into the environment
     let env' = compileArgs defs env
     let n = List.length defs
@@ -503,7 +524,7 @@ and compileLet' defs env =
             []
         | (name,expr) :: defs' ->
             (compileC expr env) @ compileLet' defs' (argOffset 1 env)
-and compileLetRec (comp: GmCompiler) (defs: GmDefinitions) expr env =
+and compileLetRec (comp: GmCompiler) (defs: BoundVarDefs) expr env =
     let env' = compileArgs defs env
     let n = List.length defs
     [Alloc n] @ (compileLet'' defs env' (n - 1)) @ (comp expr env') @ [Slide n]
@@ -513,6 +534,16 @@ and compileLet'' defs env n =
             []
         | (name,expr) :: defs' ->
             (compileC expr env) @ [Update n] @ compileLet'' defs' env (n - 1)
+and compileAlts alts env =
+    List.map (fun a ->
+                 let (tag, names, body) = a
+                 let indexed = List.indexed names
+                 let env_len = List.length names
+                 let env' = indexed @ (argOffset env_len env)
+                 (tag, compileE' env_len body env)
+              ) alts
+and compileE' offset expr env =
+    [Split offset] @ (compileE expr env) @ [Slide offset]
 
 // ast env -> Instruction list
 let compileR ast env =
@@ -963,7 +994,7 @@ let testRec2 () =
          ("main", [], EAp (EAp (EVar "rec", ENum 10), ENum 3))]
     try
       let initSt = compile coreProg
-      printTerm initSt
+      // printTerm initSt
       let finalSt = List.last (eval initSt)
       let res = getResult finalSt
       Assert.AreEqual( NNum 2, res );
@@ -1028,6 +1059,43 @@ let testFact () =
     with
         | GMError s ->
             Assert.Fail(s)
+
+[<Test>]
+let testConstr0 () =
+    let coreProg =
+        [("main", [], EPack (0, 0, []))]
+    // printTerm (compile coreProg)
+    let initSt = compile coreProg
+    let finalSt = List.last (eval initSt)
+    let res = getResult finalSt
+    Assert.AreEqual( NConstr (0, []), res );
+
+[<Test>]
+let testConstr1 () =
+    let coreProg =
+        [("main", [], EPack (0, 2, [ENum 1; ENum 2]))]
+    // printTerm (compile coreProg)
+    let initSt = compile coreProg
+    let finalSt = List.last (eval initSt)
+    let res = getResult finalSt
+    let heap = getHeap finalSt
+    Assert.AreEqual( NConstr (0, [2; 1]), res );
+    Assert.AreEqual( heapLookup heap 2, NNum 1 );
+    Assert.AreEqual( heapLookup heap 1, NNum 2 );
+
+[<Test>]
+let testConstr2 () =
+    let coreProg =
+        [("main", [], EPack (0, 2, [EAdd (ENum 1, ENum 2); ESub (ENum 10, ENum 5)]))]
+    // printTerm (compile coreProg)
+    let initSt = compile coreProg
+    let finalSt = List.last (eval initSt)
+    let res = getResult finalSt
+    let heap = getHeap finalSt
+    Assert.AreEqual( NConstr (0, [6; 3]), res );
+    Assert.AreEqual( heapLookup heap 6, NNum 3 );
+    Assert.AreEqual( heapLookup heap 3, NNum 5 );
+
 
 [<Test>]
 [<Ignore("bug")>]
