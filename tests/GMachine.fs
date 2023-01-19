@@ -427,17 +427,17 @@ let rec compileE (ast : Expr) (env: GmEnvironment) : GmCode =
                 | false ->
                     compileLet compileE defs e env
         | EAdd (e1, e2) ->
-            (compileE e2 env) @ (compileE e1 env) @ [Add]
+            (compileE e2 env) @ (compileE e1 (argOffset 1 env)) @ [Add]
         | ESub (e1, e2) ->
-            (compileE e2 env) @ (compileE e1 env) @ [Sub]
+            (compileE e2 env) @ (compileE e1 (argOffset 1 env)) @ [Sub]
         | EMul (e1, e2) ->
-            (compileE e2 env) @ (compileE e1 env) @ [Mul]
+            (compileE e2 env) @ (compileE e1 (argOffset 1 env)) @ [Mul]
         | EEq (e1, e2) ->
-            (compileE e2 env) @ (compileE e1 env) @ [Eq]
+            (compileE e2 env) @ (compileE e1 (argOffset 1 env)) @ [Eq]
         | EGt (e1, e2) ->
-            (compileE e2 env) @ (compileE e1 env) @ [Gt]
+            (compileE e2 env) @ (compileE e1 (argOffset 1 env)) @ [Gt]
         | EDiv (e1, e2) ->
-            (compileE e2 env) @ (compileE e1 env) @ [Div]
+            (compileE e2 env) @ (compileE e1 (argOffset 1 env)) @ [Div]
         | EIf (e0, e1, e2) ->
             (compileE e0 env) @ [Cond(compileE e1 env, compileE e2 env)]
         | _ ->
@@ -920,6 +920,9 @@ let testRec1 () =
 [<Test>]
 let testRec2 () =
     let coreProg =
+        // rec n m = if (n > 1) then (rec (n-1) n) else m
+        // rec 10 3 = rec 9 10  = rec 8 9 = rec 7 8 = rec 6 7 = ...
+        //  ... = rec 1 2 = 2
         [("rec", ["n"; "m"],
           EIf (
             EGt (EVar "n", ENum 1),
@@ -927,9 +930,10 @@ let testRec2 () =
             EVar "m"
             )
           )
-         ("main", [], EAp (EAp (EVar "rec", ENum 10), ENum 0))]
+         ("main", [], EAp (EAp (EVar "rec", ENum 10), ENum 3))]
     try
       let initSt = compile coreProg
+      printTerm initSt
       let finalSt = List.last (eval initSt)
       let res = getResult finalSt
       Assert.AreEqual( NNum 2, res );
@@ -940,6 +944,8 @@ let testRec2 () =
 [<Test>]
 let testSumRec () =
     let coreProg =
+        // sum n acc = if (n > 0) then (sum (n-1) (acc+n)) else acc
+        // sum 4 0 = sum 3 4 = sum 2 7 = sum 1 9 = sum 0 10 = 10
         [("sum", ["n"; "acc"],
           EIf (
             EGt (EVar "n", ENum 0),
@@ -954,8 +960,8 @@ let testSumRec () =
       // List.map printTerm (eval initSt) |> ignore
       let finalSt = List.last (eval initSt)
       let res = getResult finalSt
-      printTerm (getStats finalSt)
-      Assert.AreEqual( NNum 6, res );
+      // printTerm (getStats finalSt)
+      Assert.AreEqual( NNum 10, res );
     with
         | GMError s ->
             Assert.Fail(s)
@@ -974,7 +980,6 @@ let testMaxFunction () =
             Assert.Fail(s)
 
 [<Test>]
-[<Ignore("bug")>]
 let testFact () =
     let coreProg =
         // fact n = if n == 0 then 1 else n * fact(n-1)
