@@ -6,27 +6,99 @@ open System.Collections.Generic
 
 exception GMError of string
 
-// Suppress the boring "Incomplete pattern matches on this expression."
-// compiler warning in tests.
+// Incomplete pattern matches on this expression.
 #nowarn "25"
+
+// This rule will never be matched
+#nowarn "26"
 
 type Name = string
 type Instruction =
-    | Unwind
+    // Pushglobal f:Name
+    // Extract the address of function name from the globals
+    // and put it on the stack; if the function with the given
+    // name is not found, raise exception.
     | Pushglobal of name: Name
+
+    // Pushint v:int
+    // Allocate a node for the integer on the heap and put the
+    // address of that node on the stack;
     | Pushint of v: int
-    | Push of e: int
+
+    // Push n:int
+    // Put the n-th element of the stack on top of the stack;
+    // 0 denotes the current top value of the stack.
+    | Push of n: int
+
+    // Pop n:int
+    // Remove n consecutive elements from the stack
     | Pop of n: int
+
+    // Mkap
+    // Allocate a node for function application on the heap and
+    // put the address of that node on the stack
     | Mkap
+
+    // Update n:int
+    // Change the node pointed by the n-th + 1 element of the stack
+    // to the Indirection node pointing to the node with the address
+    // located on top of the stack.
     | Update of n: int
+
+    // Slide n:int
+    // Remove n elements from the stack, starting from the second
+    // element of the stack, i.e. leaving the top stack element inplace.
     | Slide of n: int
+
+    // Alloc n:int
+    // Allocate n dummy nodes on the heap and return put their addresses
+    // on the stack
     | Alloc of n: int
+
+    // Unwind
+    // If the current top stack element is:
+    //  - a value, i.e. a number or a saturated constructor,
+    //    then switch to the frame (instructions,stack pair) located on top of the dump.
+    //  - an Indirection node, then put the indirection
+    //    address on the stack and Unwind further
+    //  - a global function, then put the parameters
+    //    of the function onto the stack and execute the function instructions.
+    //    If there are not enough arguments on the stack (partial application), then
+    //    switch to dump code/stack pair
+    //  - an application node, then put the function address (i.e. first element of the application)
+    //    on the stack and Unwind further
+    | Unwind
+
+    // Eval
+    // Save the current code and stack (without the top element) to the dump,
+    // and Unwind with current top stack element.
     | Eval
+
+    // Add, Sub, Mul, Div
+    // lookup arguments on the heap and do the corresponding arithmetic
+    // operation, placing the boxed result on the stack
     | Add | Sub | Mul | Div
+
+    // same for logical operations
     | Eq | Gt
+
+    // Cond (t, f)
+    // If the top stack element evaluates to True, transfer control
+    // to the t branch; else to the f branch
     | Cond of t:GmCode * f:GmCode
+
+    // Pack (tag, n)
+    // Put the boxed constructor object onto the stack
     | Pack of tag:int * n:int
+
+    // Casejump [(int, GmCode)]
+    // Extract the constructor object's tag and transfer
+    // control the code given in the corresponding case branch
     | Casejump of (int * GmCode) list
+
+    // Split (n:int)
+    // Deconstruct the constructor object located on the stack,
+    // having n arguments. All arguments are placed onto the stack.
     | Split of n:int
 and
     GmCode = Instruction list
@@ -442,7 +514,7 @@ let allocateSc (heap: GmHeap, globals: GmGlobals) ((name, nargs, code):GmCompile
     (heap', globals')
 
 // index + variable name
-// [(1,"x"), (2,"y") ..]
+// [(1,"x"); (2,"y"); ...]
 // index is needed to know the offset of the variables pointer
     // in the stack
 type GmEnvironment = (int * Name) list
