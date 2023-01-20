@@ -1123,6 +1123,23 @@ let testCase1 () =
     Assert.AreEqual( NConstr (1, []), res );
 
 [<Test>]
+let testCase2 () =
+    // nested constructors
+    let coreProg =
+        [("some", [], EPack (1, 2, [ENum 1; ENum 2]));
+         ("main", [], ECase (EVar "some", [(0, ["x"], EVar "x");
+                                           (1, ["x"; "y"], EAdd (EVar "x", EVar "y"))
+                                           ]
+                             )
+          )
+         ]
+    let initSt = compile coreProg
+    let finalSt = List.last (eval initSt)
+    let res = getResult finalSt
+    let heap = getHeap finalSt
+    Assert.AreEqual( NNum 3, res );
+
+[<Test>]
 [<Ignore("bug")>]
 let testLazyDiv0 () =
     let coreProg =
