@@ -483,25 +483,24 @@ let testGreater3 () =
     // let f n g =
     //    if n > 10 then (g (n - 1)) else n
     // eval (f 12 f)
-    let st = initialState [PushInt 12;  // n
-                           PushCont [Push 1;    // n f n
-                                     PushInt 10; // 10 n f n
-                                     Greater; // (n > 10?) f n
+    let st = initialState [PushCont [Push 1;    // n f n
+                                     PushInt 0; // 0 n f n
+                                     Greater; // (n > 0?) f n
                                      PushCont [Xchg 1; // n f
                                                PushInt 1; // 1 n f
                                                Sub;  // (n-1) f
                                                Xchg 1; // f (n-1)
                                                Push 0; // f f (n-1)
                                                Execute]; //
-                                     PushCont [Push 1] // c2 c1 (n>10?) f n
+                                     PushCont [Push 1; DumpStk] // c2 c1 (n>0?) f n
                                      IfElse]; // f n
                            Push 0; // f f n
                            Execute // -> f n
                            ]
-    st.cc.stack <- []
+    st.cc.stack <- [Int 12]
     try
         let finalSt = List.last (runVM st false)
-        Assert.AreEqual (Some (Int 10), getResult finalSt)
+        Assert.AreEqual (Some (Int 0), getResult finalSt)
     with
         | TVMError s ->
             Assert.Fail(s)
