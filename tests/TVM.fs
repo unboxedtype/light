@@ -17,6 +17,8 @@ type Instruction =
     | Add
     | Sub
     | Execute
+    | DumpStk
+    | Nop
 and Code =
     Instruction list
 
@@ -85,6 +87,10 @@ type TVMState = {
 let Setup () =
     ()
 
+let printTerm term =
+    let str = sprintf "%A" term
+    NUnit.Framework.TestContext.Progress.WriteLine("{0}", str)
+
 let initialState (code:Code) : TVMState =
     { cc = { code = code; stack = [] } }
 
@@ -136,6 +142,16 @@ let xchg n st =
     st.cc.stack <- stack'
     st
 
+let unboxInt f =
+    match f with
+        | Int n ->
+            n
+        | _ ->
+            raise (TVMError "unboxInt on non-integer value")
+
+let True = -1
+let False = 0
+
 let ifelse st =
     let (fb :: tb :: f :: stack') = st.cc.stack
     failIfNot (isInt f) "IfElse: stack item must be integer"
@@ -143,11 +159,12 @@ let ifelse st =
     failIfNot (isCont fb) "IfElse: stack item must be continuation"
     let (Cont true_branch_cont) = tb
     let (Cont false_branch_cont) = fb
-    match f with
-        | TVM_False ->
-            st.cc.code <- st.cc.code @ false_branch_cont.code
-        | _ ->
-            st.cc.code <- st.cc.code @ true_branch_cont.code
+    let code' =
+        if f = TVM_True then
+            st.cc.code @ true_branch_cont.code
+        else
+            st.cc.code @ false_branch_cont.code
+    st.cc.code <- code'
     st.cc.stack <- stack'
     st
 
@@ -168,6 +185,14 @@ let add v1 v2 =
 
 let gt v1 v2 =
     if v1 > v2 then -1 else 0
+
+let dumpstk st =
+    let stk = st.cc.stack
+    printfn "STACK: %A"  stk
+    st
+
+let nop st =
+    st
 
 let dispatch (i:Instruction) =
     match i with
@@ -191,6 +216,10 @@ let dispatch (i:Instruction) =
             execute
         | IfElse ->
             ifelse
+        | DumpStk ->
+            dumpstk
+        | Nop ->
+            nop
         | _ ->
             raise (TVMError "unsupported instruction")
 
@@ -202,10 +231,6 @@ let step (st:TVMState) : TVMState =
             printfn "Executing %A" i
             st.cc.code <- code'
             dispatch i st
-
-let printTerm term =
-    let str = sprintf "%A" term
-    NUnit.Framework.TestContext.Progress.WriteLine("{0}", str)
 
 let rec runVM st (trace:bool) =
     let st' = step st
@@ -376,6 +401,7 @@ let testIfElse0 () =
     let st = initialState [PushInt 0;
                            PushCont [PushInt 10];
                            PushCont [PushInt 20];
+                           DumpStk;
                            IfElse]
     try
         let finalSt = List.last (runVM st false)
@@ -453,21 +479,24 @@ let testGreater2 () =
 
 [<Test>]
 let testGreater3 () =
+    // Recursion
     // let f n g =
-    // if n > 10 then (g (n - 1)) else n
-    let st = initialState [PushInt 12;
+    //    if n > 10 then (g (n - 1)) else n
+    // eval (f 12 f)
+    let st = initialState [PushInt 12;  // n
                            PushCont [Push 1;    // n f n
-                                     PushInt 10; // n f n 10
-                                     Greater; // n f (n > 10?)
-                                     PushCont [Push 1; // n f n
-                                               PushInt 1; // n f n 1
-                                               Sub;  // n f (n-1)
-                                               Push 1; // n f (n-1) f
-                                               Execute];
-                                     PushCont [Push 1] // n f (n>10?) c1 c2
-                                     IfElse];
-                           Push 0;
-                           Execute
+                                     PushInt 10; // 10 n f n
+                                     Greater; // (n > 10?) f n
+                                     PushCont [Xchg 1; // n f
+                                               PushInt 1; // 1 n f
+                                               Sub;  // (n-1) f
+                                               Xchg 1; // f (n-1)
+                                               Push 0; // f f (n-1)
+                                               Execute]; //
+                                     PushCont [Push 1] // c2 c1 (n>10?) f n
+                                     IfElse]; // f n
+                           Push 0; // f f n
+                           Execute // -> f n
                            ]
     st.cc.stack <- []
     try
