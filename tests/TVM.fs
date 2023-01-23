@@ -137,17 +137,17 @@ let xchg n st =
     st
 
 let ifelse st =
-    let (c' :: c :: f :: stack') = st.cc.stack
+    let (fb :: tb :: f :: stack') = st.cc.stack
     failIfNot (isInt f) "IfElse: stack item must be integer"
-    failIfNot (isCont c) "IfElse: stack item must be continuation"
-    failIfNot (isCont c') "IfElse: stack item must be continuation"
-    let (Cont vc) = c
-    let (Cont vc') = c'
+    failIfNot (isCont tb) "IfElse: stack item must be continuation"
+    failIfNot (isCont fb) "IfElse: stack item must be continuation"
+    let (Cont true_branch_cont) = tb
+    let (Cont false_branch_cont) = fb
     match f with
         | TVM_False ->
-            st.cc.code <- st.cc.code @ vc'.code
+            st.cc.code <- st.cc.code @ false_branch_cont.code
         | _ ->
-            st.cc.code <- st.cc.code @ vc.code
+            st.cc.code <- st.cc.code @ true_branch_cont.code
     st.cc.stack <- stack'
     st
 
@@ -199,6 +199,7 @@ let step (st:TVMState) : TVMState =
         | [] ->
             st
         | i :: code' ->
+            printfn "Executing %A" i
             st.cc.code <- code'
             dispatch i st
 
@@ -429,6 +430,49 @@ let testGreater1 () =
     try
         let finalSt = List.last (runVM st false)
         Assert.AreEqual (Some (Int 0), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testGreater2 () =
+    // let f n = if n > 10 then n else (n - 1)
+    let st = initialState [Push 0;
+                           PushInt 10;
+                           Greater;
+                           PushCont [];
+                           PushCont [PushInt 1; Sub];
+                           IfElse]
+    st.cc.stack <- [Int 7]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual (Some (Int 6), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testGreater3 () =
+    // let f n g =
+    // if n > 10 then (g (n - 1)) else n
+    let st = initialState [PushInt 12;
+                           PushCont [Push 1;    // n f n
+                                     PushInt 10; // n f n 10
+                                     Greater; // n f (n > 10?)
+                                     PushCont [Push 1; // n f n
+                                               PushInt 1; // n f n 1
+                                               Sub;  // n f (n-1)
+                                               Push 1; // n f (n-1) f
+                                               Execute];
+                                     PushCont [Push 1] // n f (n>10?) c1 c2
+                                     IfElse];
+                           Push 0;
+                           Execute
+                           ]
+    st.cc.stack <- []
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual (Some (Int 10), getResult finalSt)
     with
         | TVMError s ->
             Assert.Fail(s)
