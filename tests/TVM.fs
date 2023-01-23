@@ -9,7 +9,16 @@ exception TVMError of string
 type Instruction =
     | Push of n:int
     | Pop of n:int
-    | Pushint of n:int
+    | Xchg of n:int     // Xchg s0, s(i)
+    | Greater
+    | PushInt of n:int
+    | PushCont of c:Code
+    | IfElse
+    | Add
+    | Sub
+    | Execute
+and Code =
+    Instruction list
 
 // codepage number is an unsigned integer
 type CodePage =
@@ -17,9 +26,6 @@ type CodePage =
 
 type Action =
     SendMsg
-
-type Code =
-    Instruction list
 
 type Cell =
     Cell
@@ -32,45 +38,47 @@ type Value =
 and Continuation = {
     mutable code:Code;
     mutable stack:Stack;
-    mutable save:SaveList option;
-    cp:CodePage;
-    nargs:int;
 }
 and Stack =
     Value list
-and SaveList =
-    ControlRegs
-and ControlRegs = {
-    c0:Continuation; // next 'return' continuation
-    c1:Continuation; // alt continuation
-    c2:Continuation; // exception handler
-    c3:Continuation; // current dictionary of functions
-    c4:Cell option; // persistent data
-    c5:Action list; // list of actions
-    c7:Value list; // root of temp data
-}
 
-let emptyCont = {
-    code = [];
-    stack = [];
-    save = None;
-    cp = 0;
-    nargs = 0
-}
+let TVM_True = (Int -1)
+let TVM_False = (Int 0)
 
-type GasLimit = {
-    gl:int;
-    gm:int;
-    gr:int;
-    gc:int
+let isInt a =
+    match a with
+        | Int v ->
+            true
+        | _ ->
+            false
+
+let isCont a =
+    match a with
+        | Cont v ->
+            true
+        | _ ->
+            false
+
+let isOverflow n =
+    // skip the test for now
+    false
+
+let failIfNot b str =
+    if (not b) then
+        raise (TVMError str)
+    else
+        ()
+
+let failIf b str =
+    failIfNot (not b) str
+
+let emptyContinuation = {
+    code = []; stack = [];
 }
+let emptyCont = Cont emptyContinuation
 
 type TVMState = {
-    mutable stack:Stack;
-    mutable ctrls:ControlRegs;
     mutable cc:Continuation;
-    cp:CodePage;
-    mutable gas:GasLimit
 }
 
 [<OneTimeSetUp>]
@@ -78,34 +86,26 @@ let Setup () =
     ()
 
 let initialState (code:Code) : TVMState =
-    let ctrls = {
-        c0 = emptyCont;
-        c1 = emptyCont;
-        c2 = emptyCont;
-        c3 = emptyCont;
-        c4 = None;
-        c5 = [];
-        c7 = []
-    }
-    let cc = {
-        code = code;
-        stack = [];
-        save = None;
-        cp = 0;
-        nargs = 0
-    }
-    let gas = {
-        gl = 1000000;
-        gc = 0;
-        gr = 1000000;
-        gm = 1000000
-    }
+    { cc = { code = code; stack = [] } }
 
-    { stack = [ Int(0) ]; // push 0 at start
-      ctrls = ctrls;
-      cc = cc;
-      cp = 0;
-      gas = gas }
+let execute st =
+    let stack = st.cc.stack
+    failIf (List.length stack < 1) ("EXECUTE: stack underflow")
+    let (c :: stack') = stack
+    match c with
+        | Cont v ->
+            let code' = st.cc.code
+            st.cc.stack <- stack'
+            st.cc.code <- (v.code @ code')
+            st
+        | _ ->
+            raise (TVMError "EXECUTE: stack item must be continuation")
+
+let pushcont c st =
+    let stack' = st.cc.stack
+    let cont = { code = c ; stack = []; }
+    st.cc.stack <- (Cont cont) :: stack'
+    st
 
 let pushint n st =
     let stack' = st.cc.stack
@@ -114,8 +114,7 @@ let pushint n st =
 
 let push n st =
     let stack' = st.cc.stack
-    if List.length stack' <= n then
-        raise (TVMError "PUSH: stack underflow")
+    failIf (List.length stack' <= n) "PUSH: stack underflow"
     let sn = List.item n stack'
     st.cc.stack <- sn :: stack'
     st
@@ -125,14 +124,73 @@ let pop n st =
     st.cc.stack <- List.tail (List.updateAt n a st.cc.stack)
     st
 
+let xchg n st =
+    failIf (List.length st.cc.stack <= n) "XCHG: Stack underflow"
+    let stk = List.toArray st.cc.stack
+    let s0 = stk.[0]
+    let sn = stk.[n]
+    let stack' =
+        Array.updateAt n s0 stk |>
+        Array.updateAt 0 sn |>
+        Array.toList
+    st.cc.stack <- stack'
+    st
+
+let ifelse st =
+    let (c' :: c :: f :: stack') = st.cc.stack
+    failIfNot (isInt f) "IfElse: stack item must be integer"
+    failIfNot (isCont c) "IfElse: stack item must be continuation"
+    failIfNot (isCont c') "IfElse: stack item must be continuation"
+    let (Cont vc) = c
+    let (Cont vc') = c'
+    match f with
+        | TVM_False ->
+            st.cc.code <- st.cc.code @ vc'.code
+        | _ ->
+            st.cc.code <- st.cc.code @ vc.code
+    st.cc.stack <- stack'
+    st
+
+let binop f st =
+    let (a2 :: a1 :: stack') = st.cc.stack
+    failIfNot (isInt a1) "binop: stack item must be integer"
+    failIfNot (isInt a2) "binop: stack item must be integer"
+    let (Int v1, Int v2) = (a1, a2)
+    let res = f v1 v2
+    st.cc.stack <- (Int res) :: stack'
+    st
+
+let sub v1 v2 =
+    v1 - v2
+
+let add v1 v2 =
+    v1 + v2
+
+let gt v1 v2 =
+    if v1 > v2 then -1 else 0
+
 let dispatch (i:Instruction) =
     match i with
-        | Pushint n ->
+        | PushInt n ->
             pushint n
         | Push n ->
             push n
         | Pop n ->
             pop n
+        | Xchg n ->
+            xchg n
+        | Greater ->
+            binop gt
+        | Add ->
+            binop add
+        | Sub ->
+            binop sub
+        | PushCont c ->
+            pushcont c
+        | Execute ->
+            execute
+        | IfElse ->
+            ifelse
         | _ ->
             raise (TVMError "unsupported instruction")
 
@@ -141,9 +199,8 @@ let step (st:TVMState) : TVMState =
         | [] ->
             st
         | i :: code' ->
-            dispatch i st
             st.cc.code <- code'
-            st
+            dispatch i st
 
 let printTerm term =
     let str = sprintf "%A" term
@@ -153,12 +210,23 @@ let rec runVM st (trace:bool) =
     let st' = step st
     match st'.cc.code with
         | [] ->
+            // if we managed to get here, everything is good.
+            // Error code 0 is put on the stack
+            st'.cc.stack <- (Int 0) :: (st'.cc.stack)
             [st']
         | _ ->
             st' :: (runVM st' trace)
 
-let getResult st =
-    List.head (st.cc.stack)
+let getResult st : Value option =
+    match st.cc.stack with
+        | (Int 0) :: s ->
+            match s with
+                | [] ->
+                    None
+                | a :: _ ->
+                    Some a
+        | _ ->
+            raise (TVMError "Virtual machine executed with error")
 
 [<Test>]
 let testInitState () =
@@ -166,64 +234,201 @@ let testInitState () =
     Assert.AreEqual (st, step st)
 
 [<Test>]
-let testPushint0 () =
-    let st = initialState [Pushint 10]
+let testPushInt0 () =
+    let st = initialState [PushInt 10]
     let finalSt = List.last (runVM st false)
-    Assert.AreEqual ( Int 10, getResult finalSt )
+    Assert.AreEqual ( Some (Int 10), getResult finalSt )
 
 [<Test>]
-let testPushint1 () =
-    let st = initialState [Pushint 10; Pushint 20]
+let testPushInt1 () =
+    let st = initialState [PushInt 10; PushInt 20]
     let finalSt = List.last (runVM st false)
-    Assert.AreEqual ( Int 20, getResult finalSt )
+    Assert.AreEqual ( Some (Int 20), getResult finalSt )
 
 [<Test>]
 let testPush0 () =
-    let st = initialState [Pushint 10; Pushint 20; Push 1]
+    let st = initialState [PushInt 10; PushInt 20; Push 1]
     try
         let states = runVM st true
         let finalSt = List.last states
-        Assert.AreEqual ( Int 10, getResult finalSt )
+//        printTerm finalSt
+        Assert.AreEqual ( Some (Int 10), getResult finalSt )
     with
         | TVMError s ->
             Assert.Fail(s)
 
 [<Test>]
 let testPush1 () =
-    let st = initialState [Pushint 10; Pushint 20; Push 0]
+    let st = initialState [PushInt 10; PushInt 20; Push 0]
     try
         let finalSt = List.last (runVM st false)
-        Assert.AreEqual ( Int 20, getResult finalSt )
+//        printTerm finalSt
+        Assert.AreEqual ( Some (Int 20), getResult finalSt )
     with
         | TVMError s ->
             Assert.Fail(s)
 
 [<Test>]
 let testPop0 () =
-    let st = initialState [Pushint 10; Pushint 20; Pop 0]
+    let st = initialState [PushInt 10; PushInt 20; Pop 0]
     try
         let finalSt = List.last (runVM st false)
-        Assert.AreEqual ( Int 10, getResult finalSt )
+        Assert.AreEqual ( Some (Int 10), getResult finalSt )
     with
         | TVMError s ->
             Assert.Fail(s)
 
 [<Test>]
 let testPop1 () =
-    let st = initialState [Pushint 10; Pushint 20; Pop 1]
+    let st = initialState [PushInt 10; PushInt 20; Pop 1]
     try
         let finalSt = List.last (runVM st false)
-        Assert.AreEqual ( Int 20, getResult finalSt )
+        Assert.AreEqual ( Some (Int 20), getResult finalSt )
     with
         | TVMError s ->
             Assert.Fail(s)
 
 [<Test>]
 let testPop2 () =
-    let st = initialState [Pushint 30; Pushint 10; Pushint 20; Pop 1; Pop 0]
+    let st = initialState [PushInt 30; PushInt 10; PushInt 20; Pop 1; Pop 0]
     try
         let finalSt = List.last (runVM st false)
-        Assert.AreEqual ( Int 30, getResult finalSt )
+        Assert.AreEqual ( Some (Int 30), getResult finalSt )
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testAdd () =
+    let st = initialState [PushInt 30; PushInt 10; Add]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual ( Some (Int 40), getResult finalSt )
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testSub () =
+    let st = initialState [PushInt 30; PushInt 10; Sub]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual ( Some (Int 20), getResult finalSt )
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testExecute0 () =
+    let st = initialState [PushCont []]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual (Some emptyCont, getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testExecute1 () =
+    let st = initialState [PushCont []; Execute]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual (None, getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testExecute2 () =
+    let st = initialState [PushCont [PushInt 10]; Execute]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual (Some (Int 10), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testExecute3 () =
+    let st = initialState [PushInt 10; PushCont [PushInt 20; Add]; Execute]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual (Some (Int 30), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testExecute4 () =
+    let st = initialState [PushInt 10;
+                           PushCont [PushCont [PushInt 20]; Execute; Add];
+                           Execute]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual (Some (Int 30), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testIfElse0 () =
+    let st = initialState [PushInt 0;
+                           PushCont [PushInt 10];
+                           PushCont [PushInt 20];
+                           IfElse]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual (Some (Int 20), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testXchg0 () =
+    let st = initialState [PushInt 10; PushInt 20; Xchg 1]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual (Some (Int 10), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testXchg1 () =
+    let st = initialState [PushInt 30; PushInt 10; PushInt 20; Xchg 2]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual (Some (Int 30), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testXchgId () =
+    let st = initialState [PushInt 30; PushInt 10; PushInt 20; Xchg 0]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual (Some (Int 20), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testGreater0 () =
+    let st = initialState [PushInt 30; PushInt 10; Greater]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual (Some (Int -1), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testGreater1 () =
+    let st = initialState [PushInt 10; PushInt 30; Greater]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual (Some (Int 0), getResult finalSt)
     with
         | TVMError s ->
             Assert.Fail(s)
