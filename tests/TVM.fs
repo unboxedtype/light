@@ -10,7 +10,7 @@ type Instruction =
     | Push of n:int
     | Pop of n:int
     | Pushint of n:int
-    
+
 // codepage number is an unsigned integer
 type CodePage =
     int
@@ -23,12 +23,12 @@ type Code =
 
 type Cell =
     Cell
-    
+
 type Value =
     | Int of v:int
     | Tuple of v:Value list
     | Null
-    | Cont of v:Continuation    
+    | Cont of v:Continuation
 and Continuation = {
     mutable code:Code;
     mutable stack:Stack;
@@ -49,7 +49,7 @@ and ControlRegs = {
     c5:Action list; // list of actions
     c7:Value list; // root of temp data
 }
-    
+
 let emptyCont = {
     code = [];
     stack = [];
@@ -100,7 +100,7 @@ let initialState (code:Code) : TVMState =
         gr = 1000000;
         gm = 1000000
     }
-    
+
     { stack = [ Int(0) ]; // push 0 at start
       ctrls = ctrls;
       cc = cc;
@@ -121,11 +121,10 @@ let push n st =
     st
 
 let pop n st =
-    let (a :: stack') = st.cc.stack
-    let stack'' = List.insertAt n a stack'
-    st.cc.stack <- stack''
+    let (a :: _) = st.cc.stack
+    st.cc.stack <- List.tail (List.updateAt n a st.cc.stack)
     st
-    
+
 let dispatch (i:Instruction) =
     match i with
         | Pushint n ->
@@ -136,7 +135,7 @@ let dispatch (i:Instruction) =
             pop n
         | _ ->
             raise (TVMError "unsupported instruction")
-    
+
 let step (st:TVMState) : TVMState =
     match (st.cc.code) with
         | [] ->
@@ -197,4 +196,34 @@ let testPush1 () =
         Assert.AreEqual ( Int 20, getResult finalSt )
     with
         | TVMError s ->
-            Assert.Fail(s)        
+            Assert.Fail(s)
+
+[<Test>]
+let testPop0 () =
+    let st = initialState [Pushint 10; Pushint 20; Pop 0]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual ( Int 10, getResult finalSt )
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testPop1 () =
+    let st = initialState [Pushint 10; Pushint 20; Pop 1]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual ( Int 20, getResult finalSt )
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testPop2 () =
+    let st = initialState [Pushint 30; Pushint 10; Pushint 20; Pop 1; Pop 0]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual ( Int 30, getResult finalSt )
+    with
+        | TVMError s ->
+            Assert.Fail(s)
