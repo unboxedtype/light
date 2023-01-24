@@ -1,5 +1,8 @@
 module TVM
 
+// Incomplete pattern matches on this expression.
+#nowarn "25"
+
 open NUnit.Framework
 open System
 open System.Collections.Generic
@@ -9,7 +12,7 @@ exception TVMError of string
 type Instruction =
     | Push of n:int
     | Pop of n:int
-    | Xchg of n:int     // Xchg s0, s(i)
+    | Xchg of i:int     // Xchg s0, s(i)
     | Greater
     | PushInt of n:int
     | PushCont of c:Code
@@ -19,6 +22,13 @@ type Instruction =
     | Execute
     | DumpStk
     | Nop
+    | Tuple of n:int
+    | Nil
+    | Index of k:int
+    | Untuple of n:int
+    | SetIndex of k:int
+    | Newc
+    | Endc
 and Code =
     Instruction list
 
@@ -29,14 +39,13 @@ type CodePage =
 type Action =
     SendMsg
 
-type Cell =
-    Cell
-
 type Value =
     | Int of v:int
-    | Tuple of v:Value list
+    | Tup of v:Value list
     | Null
     | Cont of v:Continuation
+    | Builder of vs:Value list // this list is restricted
+    | Cell of v:Value          // v has to be builder here
 and Continuation = {
     mutable code:Code;
     mutable stack:Stack;
@@ -57,6 +66,13 @@ let isInt a =
 let isCont a =
     match a with
         | Cont v ->
+            true
+        | _ ->
+            false
+
+let isBuilder a =
+    match a with
+        | Builder _ ->
             true
         | _ ->
             false
@@ -93,6 +109,21 @@ let printTerm term =
 
 let initialState (code:Code) : TVMState =
     { cc = { code = code; stack = [] } }
+
+let mkBuilder =
+    Builder []
+
+let newc st =
+    let stack = st.cc.stack
+    st.cc.stack <- mkBuilder :: stack
+    st
+
+let endc st =
+    let (b :: stack) = st.cc.stack
+    failIfNot (isBuilder b) "ENDC: not a builder"
+    st.cc.stack <- (Cell b) :: stack
+    st
+
 
 let execute st =
     let stack = st.cc.stack
@@ -142,12 +173,26 @@ let xchg n st =
     st.cc.stack <- stack'
     st
 
+let unboxBuilder b =
+    match b with
+        | Builder vs ->
+            vs
+        | _ ->
+            raise (TVMError "unboxBuilder on non-builder value")
+
 let unboxInt f =
     match f with
         | Int n ->
             n
         | _ ->
             raise (TVMError "unboxInt on non-integer value")
+
+let unboxTuple t =
+    match t with
+        | Tup l ->
+            l
+        | _ ->
+            raise (TVMError "unboxTuple on non-tuple value")
 
 let True = -1
 let False = 0
@@ -194,6 +239,42 @@ let dumpstk st =
 let nop st =
     st
 
+let tuple n st =
+    let stk = st.cc.stack
+    failIf (n < 0) "TUPLE: incorrect argument"
+    failIf (n > 15) "TUPLE: incorrect argument"
+    failIf (List.length stk < n) "TUPLE: Stack underflow"
+    let args = List.rev (List.take n stk)
+    let t = Tup args
+    st.cc.stack <- t :: (List.skip n stk)
+    st
+
+let untuple n st =
+    let (t :: stack') = st.cc.stack
+    let v = unboxTuple t
+    failIf (List.length v <> n) "INDEX: Type check exception"
+    st.cc.stack <- v @ stack'
+    st
+
+let nil st =
+    tuple 0 st
+
+let index k st =
+    let (t :: stack') = st.cc.stack
+    let v = unboxTuple t
+    failIf (List.length v <= k) "INDEX: Range check exception"
+    let elem = List.item k v
+    st.cc.stack <- elem :: stack'
+    st
+
+let setindex k st =
+    let (x :: t :: stack') = st.cc.stack
+    let v = unboxTuple t
+    failIf (List.length v <= k) "INDEX: Range check exception"
+    let v' = List.updateAt k x v
+    st.cc.stack <- (Tup v') :: stack'
+    st
+
 let dispatch (i:Instruction) =
     match i with
         | PushInt n ->
@@ -220,6 +301,16 @@ let dispatch (i:Instruction) =
             dumpstk
         | Nop ->
             nop
+        | Tuple n ->
+            tuple n
+        | Nil ->
+            nil
+        | Index k ->
+            index k
+        | Untuple n ->
+            untuple n
+        | SetIndex k ->
+            setindex k
         | _ ->
             raise (TVMError "unsupported instruction")
 
@@ -504,3 +595,83 @@ let testGreater3 () =
     with
         | TVMError s ->
             Assert.Fail(s)
+
+[<Test>]
+let testTuple0 () =
+    let st = initialState [Nil]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual (Some (Tup []), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testTuple1 () =
+    let st = initialState [Nil; Tuple 1]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual (Some (Tup [Tup []]), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testTuple2 () =
+    let st = initialState [PushInt 1; PushInt 2; Tuple 2]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual (Some (Tup [Int 1; Int 2]), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testIndex0 () =
+    let st = initialState [PushInt 1; PushInt 2; Tuple 2; Index 0]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual (Some (Int 1), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testIndex1 () =
+    let st = initialState [Nil; Index 0]
+    try
+        runVM st false |> ignore
+    with
+        | TVMError s ->
+            Assert.Pass()
+
+[<Test>]
+let testUntuple0 () =
+    let st = initialState [PushInt 1; PushInt 2; Tuple 2; Untuple 2]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual (Some (Int 1), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testUntuple1 () =
+    // exception is anticipated here
+    let st = initialState [Nil; Untuple 2]
+    try
+        runVM st false |> ignore
+    with
+        | TVMError s ->
+            Assert.Pass()
+
+[<Test>]
+let testSetIndex0 () =
+    let st = initialState [PushInt 1; PushInt 2; Tuple 2;
+                           PushInt 3; SetIndex 0]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual (Some (Tup [Int 3; Int 2]), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Pass()
