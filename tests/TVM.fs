@@ -808,10 +808,14 @@ let testStu0 () =
 
 [<Test>]
 let testStu1 () =
-    let st = initialState [PushInt 200; PushInt 100; Newc; StU 255; StU 255]
+    let st = initialState [PushInt 200; PushInt 100; Newc;
+                           StU 255; StU 255]
     try
         let finalSt = List.last (runVM st false)
-        Assert.AreEqual (Some (Builder [Int 100; Int 200]), getResult finalSt)
+        Assert.AreEqual (
+            Some (Builder [Int 100; Int 200]),
+            getResult finalSt
+        )
     with
         | TVMError s ->
             Assert.Fail(s)
@@ -827,7 +831,10 @@ let testDict0 () =
                            DictUSetB] // D'
     try
         let finalSt = List.last (runVM st false)
-        Assert.AreEqual (Some (SliceDict (Map [(200, Slice [Int 10])])), getResult finalSt)
+        Assert.AreEqual (
+            Some (SliceDict (Map [(200, Slice [Int 10])])),
+            getResult finalSt
+        )
     with
         | TVMError s ->
             Assert.Fail(s)
@@ -835,7 +842,8 @@ let testDict0 () =
 [<Test>]
 let testDict1 () =
     let st = initialState [DictUGet] // k D' i -> v
-    st.cc.stack <- [Int 255;  SliceDict (Map [(200, Slice [Int 10])]); Int 200]
+    st.cc.stack <- [Int 255;
+                    SliceDict (Map [(200, Slice [Int 10])]); Int 200]
     try
         let finalSt = List.last (runVM st false)
         Assert.AreEqual (Some (Slice [Int 10]), getResult finalSt)
@@ -855,7 +863,8 @@ let testPushctr0 () =
 
 [<Test>]
 let testPopctr0 () =
-    let st = initialState [PushCtr 7; PushInt 200; TPush; PopCtr 7; PushCtr 7]
+    let st = initialState [PushCtr 7; PushInt 200; TPush;
+                           PopCtr 7; PushCtr 7]
     try
         let finalSt = List.last (runVM st false)
         Assert.AreEqual (Some (Tup [Int 200]), getResult finalSt)
