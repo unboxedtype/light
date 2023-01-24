@@ -11,8 +11,11 @@ exception TVMError of string
 
 type Instruction =
     | Push of n:int
+    | Dup               // Push 0 alias
     | Pop of n:int
+    | Drop              // Pop 0 alias
     | Xchg of i:int     // Xchg s0, s(i)
+    | Swap              // Xchg 0 alias
     | Greater
     | PushInt of n:int
     | PushCont of c:Code
@@ -64,7 +67,6 @@ type Value =
 and Continuation = {
     mutable code:Code;
     mutable stack:Stack;
-    mutable c7:Value; // it is tuple
 }
 and Stack =
     Value list
@@ -86,12 +88,13 @@ let failIf b str =
     failIfNot (not b) str
 
 let emptyContinuation = {
-    code = []; stack = []; c7 = Tup [];
+    code = []; stack = []
 }
 let emptyCont = Cont emptyContinuation
 
 type TVMState = {
     mutable cc:Continuation;
+    mutable c7:Value;
 }
 
 [<OneTimeSetUp>]
@@ -103,7 +106,7 @@ let printTerm term =
     NUnit.Framework.TestContext.Progress.WriteLine("{0}", str)
 
 let initialState (code:Code) : TVMState =
-    { cc = { code = code; stack = []; c7 = Tup [] } }
+    { cc = { code = code; stack = [] }; c7 = Tup [] }
 
 let mkBuilder vs =
     Builder vs
@@ -154,7 +157,7 @@ let execute st =
 
 let pushcont c st =
     let stack' = st.cc.stack
-    let cont = { code = c ; stack = []; c7 = Tup [] }
+    let cont = { code = c ; stack = [] }
     st.cc.stack <- (Cont cont) :: stack'
     st
 
@@ -177,7 +180,7 @@ let push n st =
 
 let pushctr n st =
     failIf (n <> 7) "PUSHCTR: only c7 is supported"
-    let stack = st.cc.c7 :: st.cc.stack
+    let stack = st.c7 :: st.cc.stack
     st.cc.stack <- stack
     st
 
@@ -186,7 +189,7 @@ let popctr n st =
     let (c7 :: stack) = st.cc.stack
     failIfNot (Value.isTuple c7) "POPCTR: c7 is a tuple"
     st.cc.stack <- stack
-    st.cc.c7 <- c7
+    st.c7 <- c7
     st
 
 let pop n st =
@@ -354,22 +357,28 @@ let dispatch (i:Instruction) =
             pushint n
         | Push n ->
             push n
+        | Dup ->
+            push 0
         | PushCtr n ->
             pushctr n
+        | PushCont c ->
+            pushcont c
         | Pop n ->
             pop n
+        | Drop ->
+            pop 0
         | PopCtr n ->
             popctr n
         | Xchg n ->
             xchg n
+        | Swap ->
+            xchg 0
         | Greater ->
             binop gt
         | Add ->
             binop add
         | Sub ->
             binop sub
-        | PushCont c ->
-            pushcont c
         | Execute ->
             execute
         | IfElse ->
