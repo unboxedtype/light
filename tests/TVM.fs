@@ -29,6 +29,11 @@ type Instruction =
     | SetIndex of k:int
     | Newc
     | Endc
+    | StU of cc:int
+    | StRef
+    | NewDict    // ... -> ... D
+    | DictUGet   // i D n -> x (-1),  or 0
+    | DictUSetB  // b i D n -> D'
 and Code =
     Instruction list
 
@@ -44,8 +49,14 @@ type Value =
     | Tup of v:Value list
     | Null
     | Cont of v:Continuation
-    | Builder of vs:Value list // this list is restricted
-    | Cell of v:Value          // v has to be builder here
+    | Builder of vs:Value list
+    | Cell of v:Value list
+    | Slice of vs:Value list
+    | SliceDict of v:Map<int,Value> // this one is artificial
+    static member isInt = function | Int _ -> true | _ -> false
+    static member isCont = function | Cont _ -> true | _ -> false
+    static member isBuilder = function | Builder _ -> true | _ -> false
+    static member isSlice = function | Slice _ -> true | _ -> false
 and Continuation = {
     mutable code:Code;
     mutable stack:Stack;
@@ -55,27 +66,6 @@ and Stack =
 
 let TVM_True = (Int -1)
 let TVM_False = (Int 0)
-
-let isInt a =
-    match a with
-        | Int v ->
-            true
-        | _ ->
-            false
-
-let isCont a =
-    match a with
-        | Cont v ->
-            true
-        | _ ->
-            false
-
-let isBuilder a =
-    match a with
-        | Builder _ ->
-            true
-        | _ ->
-            false
 
 let isOverflow n =
     // skip the test for now
@@ -110,18 +100,37 @@ let printTerm term =
 let initialState (code:Code) : TVMState =
     { cc = { code = code; stack = [] } }
 
-let mkBuilder =
-    Builder []
+let mkBuilder vs =
+    Builder vs
+
+let unboxBuilder b =
+    match b with
+        | Builder vs ->
+            vs
+        | _ ->
+            raise (TVMError "unboxBuilder on non-builder value")
+
+let mkCell b =
+    Cell (unboxBuilder b)
+
+let stu cc st =
+    let (b :: x :: stack') = st.cc.stack
+    failIfNot (Value.isBuilder b) "STU: not a builder"
+    failIfNot (Value.isInt x) "STU: not an integer"
+    let vs = unboxBuilder b
+    // failIf (x > float 2 ** cc) "STU: Range check exception"
+    st.cc.stack <- mkBuilder (vs @ [x]) :: stack'
+    st
 
 let newc st =
     let stack = st.cc.stack
-    st.cc.stack <- mkBuilder :: stack
+    st.cc.stack <- (mkBuilder []) :: stack
     st
 
 let endc st =
     let (b :: stack) = st.cc.stack
-    failIfNot (isBuilder b) "ENDC: not a builder"
-    st.cc.stack <- (Cell b) :: stack
+    failIfNot (Value.isBuilder b) "ENDC: not a builder"
+    st.cc.stack <- (mkCell b) :: stack
     st
 
 
@@ -149,6 +158,11 @@ let pushint n st =
     st.cc.stack <- (Int n) :: stack'
     st
 
+let pushnull st =
+    let stack' = st.cc.stack
+    st.cc.stack <- Null :: stack'
+    st
+
 let push n st =
     let stack' = st.cc.stack
     failIf (List.length stack' <= n) "PUSH: stack underflow"
@@ -173,13 +187,6 @@ let xchg n st =
     st.cc.stack <- stack'
     st
 
-let unboxBuilder b =
-    match b with
-        | Builder vs ->
-            vs
-        | _ ->
-            raise (TVMError "unboxBuilder on non-builder value")
-
 let unboxInt f =
     match f with
         | Int n ->
@@ -199,9 +206,9 @@ let False = 0
 
 let ifelse st =
     let (fb :: tb :: f :: stack') = st.cc.stack
-    failIfNot (isInt f) "IfElse: stack item must be integer"
-    failIfNot (isCont tb) "IfElse: stack item must be continuation"
-    failIfNot (isCont fb) "IfElse: stack item must be continuation"
+    failIfNot (Value.isInt f) "IfElse: stack item must be integer"
+    failIfNot (Value.isCont tb) "IfElse: stack item must be continuation"
+    failIfNot (Value.isCont fb) "IfElse: stack item must be continuation"
     let (Cont true_branch_cont) = tb
     let (Cont false_branch_cont) = fb
     let code' =
@@ -215,8 +222,8 @@ let ifelse st =
 
 let binop f st =
     let (a2 :: a1 :: stack') = st.cc.stack
-    failIfNot (isInt a1) "binop: stack item must be integer"
-    failIfNot (isInt a2) "binop: stack item must be integer"
+    failIfNot (Value.isInt a1) "binop: stack item must be integer"
+    failIfNot (Value.isInt a2) "binop: stack item must be integer"
     let (Int v1, Int v2) = (a1, a2)
     let res = f v1 v2
     st.cc.stack <- (Int res) :: stack'
@@ -275,6 +282,43 @@ let setindex k st =
     st.cc.stack <- (Tup v') :: stack'
     st
 
+let newdict st =
+    pushnull st
+
+let mkDict slice : Map<int,Value> =
+    match slice with
+        | Null ->
+            Map []
+        | SliceDict d ->
+            d
+        | _ ->
+            raise (TVMError "mkDict: dict has to be presented as sliceDict")
+
+// i D n – x −1 or 0
+let dictuget st =
+    let (n :: sD :: i :: stack') = st.cc.stack
+    let D = mkDict sD
+    failIfNot (Value.isInt i) "DICTUGET: Integer expected"
+    // UFits n i check has to be done here as well
+    let v' =
+        match D.TryFind (unboxInt i) with
+            | None ->
+                raise (TVMError "Key not found")
+            | Some v ->
+                v // this is a slice
+    st.cc.stack <- v' :: stack'
+    st
+
+// b i D n --> D'
+let dictusetb st =
+    let (n :: sD :: i :: b :: stack') = st.cc.stack
+    let D = mkDict sD
+    failIfNot (Value.isInt i) "DICTUSET: Integer expected"
+    failIfNot (Value.isBuilder b) "DICTUSET: Builder expected"
+    let D' = D.Add (unboxInt i, Slice (unboxBuilder b))
+    st.cc.stack <- SliceDict D' :: stack'
+    st
+
 let dispatch (i:Instruction) =
     match i with
         | PushInt n ->
@@ -311,6 +355,18 @@ let dispatch (i:Instruction) =
             untuple n
         | SetIndex k ->
             setindex k
+        | Newc ->
+            newc
+        | Endc ->
+            endc
+        | StU cc ->
+            stu cc
+        | NewDict ->
+            newdict
+        | DictUGet ->
+            dictuget
+        | DictUSet ->
+            dictusetb
         | _ ->
             raise (TVMError "unsupported instruction")
 
@@ -674,4 +730,71 @@ let testSetIndex0 () =
         Assert.AreEqual (Some (Tup [Int 3; Int 2]), getResult finalSt)
     with
         | TVMError s ->
-            Assert.Pass()
+            Assert.Fail(s)
+
+[<Test>]
+let testNewC () =
+    let st = initialState [Newc]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual (Some (Builder []), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testEndC () =
+    let st = initialState [Newc; Endc]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual (Some (Cell []), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testStu0 () =
+    let st = initialState [PushInt 100; Newc; StU 255]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual (Some (Builder [Int 100]), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testStu1 () =
+    let st = initialState [PushInt 200; PushInt 100; Newc; StU 255; StU 255]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual (Some (Builder [Int 100; Int 200]), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testDict0 () =
+    let st = initialState [(PushInt 10); // 10
+                           Newc; // 10 b
+                           (StU 128); // b' (value)
+                           (PushInt 200); // b' 200(key)
+                           NewDict; // b' 200 D
+                           (PushInt 10); // b' 200 D 10
+                           DictUSetB] // D'
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual (Some (SliceDict (Map [(200, Slice [Int 10])])), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testDict1 () =
+    let st = initialState [DictUGet] // D'
+    st.cc.stack <- [Int 255;  SliceDict (Map [(200, Slice [Int 10])]); Int 200]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual (Some (Slice [Int 10]), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
