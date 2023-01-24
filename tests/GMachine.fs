@@ -184,6 +184,17 @@ let heapAlloc heap node =
     let addr = findNewAddr heap
     (Map.add addr node heap, addr)
 
+let heapLookup (heap:GmHeap) (key:Addr) : Node =
+    match Map.tryFind key heap with
+        | Some v ->
+            v
+        | None ->
+            let msg = sprintf "key %A not found in the map" key
+            raise (GMError msg)
+
+let heapUpdate (heap:GmHeap) (key:Addr) (v:Node) =
+    Map.add key v heap
+
 let getDump st =
     let (_, _, dump, _, _, _) = st
     dump
@@ -237,17 +248,6 @@ let getApArg n =
             v
         | _ ->
             raise (GMError "node must be of NAp type")
-
-let heapLookup (heap:GmHeap) (key:Addr) : Node =
-    match Map.tryFind key heap with
-        | Some v ->
-            v
-        | None ->
-            let msg = sprintf "key %A not found in the map" key
-            raise (GMError msg)
-
-let heapUpdate (heap:GmHeap) (key:Addr) (v:Node) =
-    Map.add key v heap
 
 let at l n =
     List.item n l

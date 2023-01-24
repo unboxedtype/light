@@ -16,6 +16,8 @@ type Instruction =
     | Greater
     | PushInt of n:int
     | PushCont of c:Code
+    | PushCtr of n:int
+    | PopCtr of n:int
     | IfElse
     | Add
     | Sub
@@ -27,6 +29,7 @@ type Instruction =
     | Index of k:int
     | Untuple of n:int
     | SetIndex of k:int
+    | TPush
     | Newc
     | Endc
     | StU of cc:int
@@ -57,9 +60,11 @@ type Value =
     static member isCont = function | Cont _ -> true | _ -> false
     static member isBuilder = function | Builder _ -> true | _ -> false
     static member isSlice = function | Slice _ -> true | _ -> false
+    static member isTuple = function | Tup _ -> true | _ -> false
 and Continuation = {
     mutable code:Code;
     mutable stack:Stack;
+    mutable c7:Value; // it is tuple
 }
 and Stack =
     Value list
@@ -81,7 +86,7 @@ let failIf b str =
     failIfNot (not b) str
 
 let emptyContinuation = {
-    code = []; stack = [];
+    code = []; stack = []; c7 = Tup [];
 }
 let emptyCont = Cont emptyContinuation
 
@@ -98,7 +103,7 @@ let printTerm term =
     NUnit.Framework.TestContext.Progress.WriteLine("{0}", str)
 
 let initialState (code:Code) : TVMState =
-    { cc = { code = code; stack = [] } }
+    { cc = { code = code; stack = []; c7 = Tup [] } }
 
 let mkBuilder vs =
     Builder vs
@@ -136,7 +141,7 @@ let endc st =
 
 let execute st =
     let stack = st.cc.stack
-    failIf (List.length stack < 1) ("EXECUTE: stack underflow")
+    failIf (List.length stack < 1) "EXECUTE: stack underflow"
     let (c :: stack') = stack
     match c with
         | Cont v ->
@@ -149,7 +154,7 @@ let execute st =
 
 let pushcont c st =
     let stack' = st.cc.stack
-    let cont = { code = c ; stack = []; }
+    let cont = { code = c ; stack = []; c7 = Tup [] }
     st.cc.stack <- (Cont cont) :: stack'
     st
 
@@ -168,6 +173,20 @@ let push n st =
     failIf (List.length stack' <= n) "PUSH: stack underflow"
     let sn = List.item n stack'
     st.cc.stack <- sn :: stack'
+    st
+
+let pushctr n st =
+    failIf (n <> 7) "PUSHCTR: only c7 is supported"
+    let stack = st.cc.c7 :: st.cc.stack
+    st.cc.stack <- stack
+    st
+
+let popctr n st =
+    failIf (n <> 7) "POPCTR: only c7 is supported"
+    let (c7 :: stack) = st.cc.stack
+    failIfNot (Value.isTuple c7) "POPCTR: c7 is a tuple"
+    st.cc.stack <- stack
+    st.cc.c7 <- c7
     st
 
 let pop n st =
@@ -266,6 +285,15 @@ let untuple n st =
 let nil st =
     tuple 0 st
 
+// TPUSH (t x – t')
+let tpush st =
+    let (x :: t :: stack) = st.cc.stack
+    let ut = unboxTuple t
+    failIf (List.length ut = 255) "TPUSH: Type check exception"
+    st.cc.stack <- Tup (x :: ut) :: stack
+    st
+
+// INDEX k (t - t[k]), 0 <= k <= 15
 let index k st =
     let (t :: stack') = st.cc.stack
     let v = unboxTuple t
@@ -274,6 +302,7 @@ let index k st =
     st.cc.stack <- elem :: stack'
     st
 
+// SETINDEX k (t x – t')
 let setindex k st =
     let (x :: t :: stack') = st.cc.stack
     let v = unboxTuple t
@@ -325,8 +354,12 @@ let dispatch (i:Instruction) =
             pushint n
         | Push n ->
             push n
+        | PushCtr n ->
+            pushctr n
         | Pop n ->
             pop n
+        | PopCtr n ->
+            popctr n
         | Xchg n ->
             xchg n
         | Greater ->
@@ -355,6 +388,8 @@ let dispatch (i:Instruction) =
             untuple n
         | SetIndex k ->
             setindex k
+        | TPush ->
+            tpush
         | Newc ->
             newc
         | Endc ->
@@ -774,12 +809,12 @@ let testStu1 () =
 
 [<Test>]
 let testDict0 () =
-    let st = initialState [(PushInt 10); // 10
+    let st = initialState [PushInt 10; // 10
                            Newc; // 10 b
-                           (StU 128); // b' (value)
-                           (PushInt 200); // b' 200(key)
+                           StU 128; // b' (value)
+                           PushInt 200; // b' 200(key)
                            NewDict; // b' 200 D
-                           (PushInt 10); // b' 200 D 10
+                           PushInt 10; // b' 200 D 10
                            DictUSetB] // D'
     try
         let finalSt = List.last (runVM st false)
@@ -790,11 +825,31 @@ let testDict0 () =
 
 [<Test>]
 let testDict1 () =
-    let st = initialState [DictUGet] // D'
+    let st = initialState [DictUGet] // k D' i -> v
     st.cc.stack <- [Int 255;  SliceDict (Map [(200, Slice [Int 10])]); Int 200]
     try
         let finalSt = List.last (runVM st false)
         Assert.AreEqual (Some (Slice [Int 10]), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testPushctr0 () =
+    let st = initialState [PushCtr 7] // k D' i -> v
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual (Some (Tup []), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testPopctr0 () =
+    let st = initialState [PushCtr 7; PushInt 200; TPush; PopCtr 7; PushCtr 7]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual (Some (Tup [Int 200]), getResult finalSt)
     with
         | TVMError s ->
             Assert.Fail(s)
