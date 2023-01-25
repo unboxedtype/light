@@ -22,9 +22,11 @@ type Instruction =
     | PushCtr of n:int
     | PopCtr of n:int
     | IfElse
+    | Inc
     | Add
     | Sub
     | Execute
+    | CallDict of n:int
     | DumpStk
     | Nop
     | Tuple of n:int
@@ -40,6 +42,10 @@ type Instruction =
     | NewDict    // ... -> ... D
     | DictUGet   // i D n -> x (-1),  or 0
     | DictUSetB  // b i D n -> D'
+    | ThrowIfNot of nn:int
+    | Throw of nn:int
+    | Equal
+    | IfExec     // If
 and Code =
     Instruction list
 
@@ -68,10 +74,26 @@ type Value =
     static member unboxCont = function | Cont x -> x | _ -> raise (TVMError "unbox")
     static member unboxTuple = function | Tup x -> x | _ -> raise (TVMError "unbox")
     static member unboxBuilder = function | Builder x -> x | _ -> raise (TVMError "unbox")
-and Continuation = {
-    mutable code:Code;
-    mutable stack:Stack;
-}
+and ControlData =
+    { mutable stack: Stack
+      mutable save: ControlRegs
+      mutable nargs: int }
+    static member Default = {
+        stack = []; save = ControlRegs.Default; nargs = -1
+    }
+and ControlRegs =
+    { mutable c0:Continuation option;
+      mutable c3:Continuation option;
+      mutable c7:Value list; }
+    static member Default = {
+        c0 = None; c3 = None; c7 = []
+    }
+and Continuation =
+    { mutable code:Code;
+      mutable data:ControlData }
+    static member Default = {
+        code = []; data = ControlData.Default;
+    }
 and Stack =
     Value list
 
@@ -91,18 +113,45 @@ let failIfNot b str =
 let failIf b str =
     failIfNot (not b) str
 
-let emptyContinuation = {
-    code = []; stack = []
-}
-let emptyCont = Cont emptyContinuation
 let emptyTuple = []
-let emptyTup = Tup emptyTuple
+let emptyContinuation = Continuation.Default
 
-type TVMState = {
-    mutable cc:Continuation;
-    mutable c3:Continuation;
-    mutable c7:Value list;
-}
+type TVMState =
+    { mutable code:Code;
+      mutable stack:Stack;
+      mutable cr:ControlRegs; }
+    static member Default = {
+        code = []; stack = []; cr = ControlRegs.Default }
+    member this.adjust_cr regs =
+        this.cr.c0 <- regs.c0
+        this.cr.c3 <- regs.c3
+        this.cr.c7 <- regs.c7
+    member this.put_code code =
+        this.code <- code
+
+// do the ordinary jump into continuation cont
+let jump cont (st:TVMState) =
+    st.adjust_cr cont.data.save
+    st.put_code cont.code
+    st
+
+let jump_to cont (st:TVMState) =
+    jump cont st
+
+let call cont (st:TVMState) =
+    if cont.data.save.c0.IsSome then
+        jump cont st
+    elif cont.data.stack <> [] then
+       raise (TVMError "non-empty stack for continuation is not supported")
+    else
+        let ret = { Continuation.Default with code = st.code; data = { ControlData.Default with save = { ControlRegs.Default with c0 = st.cr.c0 } } }
+        st.cr.c0 <- Some ret
+        jump_to cont st
+
+// RET instruction handler
+let ret st =
+    let retCont = { Continuation.Default with code = st.code; data = { ControlData.Default with save = { ControlRegs.Default with c0 = st.cr.c0 } } }
+    jump retCont st
 
 [<OneTimeSetUp>]
 let Setup () =
@@ -113,7 +162,7 @@ let printTerm term =
     NUnit.Framework.TestContext.Progress.WriteLine("{0}", str)
 
 let initialState (code:Code) : TVMState =
-    { cc = { code = code; stack = [] }; c3 = emptyContinuation; c7 = emptyTuple }
+    { code = code; stack = []; cr = ControlRegs.Default }
 
 let mkBuilder vs =
     Builder vs
@@ -122,108 +171,107 @@ let mkCell b =
     Cell (Value.unboxBuilder b)
 
 let stu cc st =
-    let (b :: x :: stack') = st.cc.stack
+    let (b :: x :: stack') = st.stack
     failIfNot (Value.isBuilder b) "STU: not a builder"
     failIfNot (Value.isInt x) "STU: not an integer"
     let vs = Value.unboxBuilder b
     // failIf (x > float 2 ** cc) "STU: Range check exception"
-    st.cc.stack <- mkBuilder (vs @ [x]) :: stack'
+    st.stack <- mkBuilder (vs @ [x]) :: stack'
     st
 
 let newc st =
-    let stack = st.cc.stack
-    st.cc.stack <- (mkBuilder []) :: stack
+    let stack = st.stack
+    st.stack <- (mkBuilder []) :: stack
     st
 
 let endc st =
-    let (b :: stack) = st.cc.stack
+    let (b :: stack) = st.stack
     failIfNot (Value.isBuilder b) "ENDC: not a builder"
-    st.cc.stack <- (mkCell b) :: stack
+    st.stack <- (mkCell b) :: stack
     st
 
+let switch_to cont st =
+    st
 
 let execute st =
-    let stack = st.cc.stack
-    failIf (List.length stack < 1) "EXECUTE: stack underflow"
-    let (c :: stack') = stack
-    match c with
-        | Cont v ->
-            let code' = st.cc.code
-            st.cc.stack <- stack'
-            st.cc.code <- (v.code @ code')
-            st
-        | _ ->
-            raise (TVMError "EXECUTE: stack item must be continuation")
+    failIf (List.length st.stack < 1) "EXECUTE: stack underflow"
+    let (cont :: stack') = st.stack
+    st.stack <- stack'
+    call (Value.unboxCont cont) st
 
 let pushcont c st =
-    let stack' = st.cc.stack
-    let cont = { code = c ; stack = [] }
-    st.cc.stack <- (Cont cont) :: stack'
+    let stack' = st.stack
+    let cont = { Continuation.Default with code = c }
+    st.stack <- (Cont cont) :: stack'
     st
 
 let pushint n st =
-    let stack' = st.cc.stack
-    st.cc.stack <- (Int n) :: stack'
+    let stack' = st.stack
+    st.stack <- (Int n) :: stack'
     st
 
 let pushnull st =
-    let stack' = st.cc.stack
-    st.cc.stack <- Null :: stack'
+    let stack' = st.stack
+    st.stack <- Null :: stack'
     st
 
 let push n st =
-    let stack' = st.cc.stack
+    let stack' = st.stack
     failIf (List.length stack' <= n) "PUSH: stack underflow"
     let sn = List.item n stack'
-    st.cc.stack <- sn :: stack'
+    st.stack <- sn :: stack'
     st
 
 let pushctr n st =
-    failIf (n <> 7 && n <> 3) "PUSHCTR: only c3 and c7 are supported"
     let stack =
         if n = 7 then
-            Tup st.c7 :: st.cc.stack
+            (Tup st.cr.c7) :: st.stack
+        elif n = 3 then
+            if st.cr.c3.IsSome then
+                (Cont st.cr.c3.Value) :: st.stack
+            else
+                raise (TVMError "PUSHCTR: Register c3 is not initialized")
         else
-            Cont st.c3 :: st.cc.stack
-    st.cc.stack <- stack
+            raise (TVMError "PUSHCTR: only c3 and c7 are supported")
+    st.stack <- stack
     st
 
 let popctr n st =
     failIf (n <> 7 && n <> 3) "POPCTR: only c3 and c7 are supported"
     if n = 7 then
-        let (c7 :: stack) = st.cc.stack
+        let (c7 :: stack) = st.stack
         failIfNot (Value.isTuple c7) "POPCTR: c7 is a tuple"
-        st.cc.stack <- stack
-        st.c7 <- Value.unboxTuple c7
+        st.stack <- stack
+        st.cr.c7 <- Value.unboxTuple c7
     else
-        let (c3 :: stack) = st.cc.stack
+        let (c3 :: stack) = st.stack
         failIfNot (Value.isCont c3) "POPCTR: c3 is a continuation"
-        st.cc.stack <- stack
-        st.c3 <- Value.unboxCont c3
+        st.stack <- stack
+        st.cr.c3 <- Some (Value.unboxCont c3)
     st
 
 let pop n st =
-    let (a :: _) = st.cc.stack
-    st.cc.stack <- List.tail (List.updateAt n a st.cc.stack)
+    let (a :: _) = st.stack
+    st.stack <- List.tail (List.updateAt n a st.stack)
     st
 
 let xchg n st =
-    failIf (List.length st.cc.stack <= n) "XCHG: Stack underflow"
-    let stk = List.toArray st.cc.stack
+    failIf (List.length st.stack <= n) "XCHG: Stack underflow"
+    let stk = List.toArray st.stack
     let s0 = stk.[0]
     let sn = stk.[n]
     let stack' =
         Array.updateAt n s0 stk |>
         Array.updateAt 0 sn |>
         Array.toList
-    st.cc.stack <- stack'
+    st.stack <- stack'
     st
 
 let True = -1
 let False = 0
 
 let ifelse st =
-    let (fb :: tb :: f :: stack') = st.cc.stack
+    let (fb :: tb :: f :: stack') = st.stack
     failIfNot (Value.isInt f) "IfElse: stack item must be integer"
     failIfNot (Value.isCont tb) "IfElse: stack item must be continuation"
     failIfNot (Value.isCont fb) "IfElse: stack item must be continuation"
@@ -231,20 +279,20 @@ let ifelse st =
     let (Cont false_branch_cont) = fb
     let code' =
         if f = TVM_True then
-            st.cc.code @ true_branch_cont.code
+            st.code @ true_branch_cont.code
         else
-            st.cc.code @ false_branch_cont.code
-    st.cc.code <- code'
-    st.cc.stack <- stack'
+            st.code @ false_branch_cont.code
+    st.code <- code'
+    st.stack <- stack'
     st
 
 let binop f st =
-    let (a2 :: a1 :: stack') = st.cc.stack
+    let (a2 :: a1 :: stack') = st.stack
     failIfNot (Value.isInt a1) "binop: stack item must be integer"
     failIfNot (Value.isInt a2) "binop: stack item must be integer"
     let (Int v1, Int v2) = (a1, a2)
     let res = f v1 v2
-    st.cc.stack <- (Int res) :: stack'
+    st.stack <- (Int res) :: stack'
     st
 
 let sub v1 v2 =
@@ -256,8 +304,18 @@ let add v1 v2 =
 let gt v1 v2 =
     if v1 > v2 then -1 else 0
 
+let eq v1 v2 =
+    if v1 = v2 then -1 else 0
+
+let inc st =
+    let (a1 :: stack') = st.stack
+    failIfNot (Value.isInt a1) "INC: stack item must be integer"
+    // TODO: overflow check
+    st.stack <- Int (Value.unboxInt a1 + 1) :: stack'
+    st
+
 let dumpstk st =
-    let stk = st.cc.stack
+    let stk = st.stack
     printfn "STACK: %A"  stk
     st
 
@@ -265,20 +323,20 @@ let nop st =
     st
 
 let tuple n st =
-    let stk = st.cc.stack
+    let stk = st.stack
     failIf (n < 0) "TUPLE: incorrect argument"
     failIf (n > 15) "TUPLE: incorrect argument"
     failIf (List.length stk < n) "TUPLE: Stack underflow"
     let args = List.rev (List.take n stk)
     let t = Tup args
-    st.cc.stack <- t :: (List.skip n stk)
+    st.stack <- t :: (List.skip n stk)
     st
 
 let untuple n st =
-    let (t :: stack') = st.cc.stack
+    let (t :: stack') = st.stack
     let v = Value.unboxTuple t
     failIf (List.length v <> n) "INDEX: Type check exception"
-    st.cc.stack <- v @ stack'
+    st.stack <- v @ stack'
     st
 
 let nil st =
@@ -286,28 +344,28 @@ let nil st =
 
 // TPUSH (t x – t')
 let tpush st =
-    let (x :: t :: stack) = st.cc.stack
+    let (x :: t :: stack) = st.stack
     let ut = Value.unboxTuple t
     failIf (List.length ut = 255) "TPUSH: Type check exception"
-    st.cc.stack <- Tup (x :: ut) :: stack
+    st.stack <- Tup (x :: ut) :: stack
     st
 
 // INDEX k (t - t[k]), 0 <= k <= 15
 let index k st =
-    let (t :: stack') = st.cc.stack
+    let (t :: stack') = st.stack
     let v = Value.unboxTuple t
     failIf (List.length v <= k) "INDEX: Range check exception"
     let elem = List.item k v
-    st.cc.stack <- elem :: stack'
+    st.stack <- elem :: stack'
     st
 
 // SETINDEX k (t x – t')
 let setindex k st =
-    let (x :: t :: stack') = st.cc.stack
+    let (x :: t :: stack') = st.stack
     let v = Value.unboxTuple t
     failIf (List.length v <= k) "INDEX: Range check exception"
     let v' = List.updateAt k x v
-    st.cc.stack <- (Tup v') :: stack'
+    st.stack <- (Tup v') :: stack'
     st
 
 let newdict st =
@@ -322,9 +380,9 @@ let mkDict slice : Map<int,Value> =
         | _ ->
             raise (TVMError "mkDict: dict has to be presented as sliceDict")
 
-// i D n – x −1 or 0
+// i D n – x -1 or 0
 let dictuget st =
-    let (n :: sD :: i :: stack') = st.cc.stack
+    let (n :: sD :: i :: stack') = st.stack
     let D = mkDict sD
     failIfNot (Value.isInt i) "DICTUGET: Integer expected"
     // UFits n i check has to be done here as well
@@ -334,18 +392,51 @@ let dictuget st =
                 raise (TVMError "Key not found")
             | Some v ->
                 v // this is a slice
-    st.cc.stack <- v' :: stack'
+    st.stack <- v' :: stack'
     st
 
 // b i D n --> D'
 let dictusetb st =
-    let (n :: sD :: i :: b :: stack') = st.cc.stack
+    let (n :: sD :: i :: b :: stack') = st.stack
     let D = mkDict sD
     failIfNot (Value.isInt i) "DICTUSET: Integer expected"
     failIfNot (Value.isBuilder b) "DICTUSET: Builder expected"
     let D' = D.Add (Value.unboxInt i, Slice (Value.unboxBuilder b))
-    st.cc.stack <- SliceDict D' :: stack'
+    st.stack <- SliceDict D' :: stack'
     st
+
+let calldict n st =
+    st
+    |> pushint n
+    |> pushctr 3
+    |> execute
+
+let throwifnot n st =
+    let (i :: stack') = st.stack
+    failIfNot (Value.isInt i) "THROWIFNOT: Integer expected"
+    if (Value.unboxInt i) = 0 then
+        raise (TVMError ("TVM exception was thrown: " + string n))
+    else
+        ()
+    st.stack <- stack'
+    st
+
+// this implementation is incorrect,
+// it should transfer control to C3 cont, but
+// for now we skip it
+let throw nn st =
+    raise (TVMError ("TVM exception was thrown: " + (string nn)))
+
+let ifexec st =
+    let (c :: f :: stack') = st.stack
+    failIfNot (Value.isInt f) "IF: Integer expected"
+    failIfNot (Value.isCont c) "IF: Continuation expected"
+    if (Value.unboxInt f <> 0) then
+        st.stack <- (c :: stack')
+        execute st
+    else
+        st.stack <- stack'
+        st
 
 let dispatch (i:Instruction) =
     match i with
@@ -368,15 +459,21 @@ let dispatch (i:Instruction) =
         | Xchg n ->
             xchg n
         | Swap ->
-            xchg 0
+            xchg 1
+        | Equal ->
+            binop eq
         | Greater ->
             binop gt
+        | Inc ->
+            inc
         | Add ->
             binop add
         | Sub ->
             binop sub
         | Execute ->
             execute
+        | CallDict n ->
+            calldict n
         | IfElse ->
             ifelse
         | DumpStk ->
@@ -405,33 +502,38 @@ let dispatch (i:Instruction) =
             newdict
         | DictUGet ->
             dictuget
-        | DictUSet ->
+        | DictUSetB ->
             dictusetb
+        | ThrowIfNot n ->
+            throwifnot n
+        | Throw nn ->
+            throw nn
+        | IfExec ->
+            ifexec
         | _ ->
             raise (TVMError "unsupported instruction")
 
 let step (st:TVMState) : TVMState =
-    match (st.cc.code) with
+    match (st.code) with
         | [] ->
-            st
+            printfn "Implicit RET"
+            ret st
         | i :: code' ->
             printfn "Executing %A" i
-            st.cc.code <- code'
+            st.code <- code'
             dispatch i st
 
 let rec runVM st (trace:bool) =
     let st' = step st
-    match st'.cc.code with
+    match st'.code with
         | [] ->
-            // if we managed to get here, everything is good.
-            // Error code 0 is put on the stack
-            st'.cc.stack <- (Int 0) :: (st'.cc.stack)
+            st'.stack <- (Int 0) :: (st'.stack)
             [st']
         | _ ->
             st' :: (runVM st' trace)
 
 let getResult st : Value option =
-    match st.cc.stack with
+    match st.stack with
         | (Int 0) :: s ->
             match s with
                 | [] ->
@@ -534,6 +636,7 @@ let testSub () =
 [<Test>]
 let testExecute0 () =
     let st = initialState [PushCont []]
+    let emptyCont = Cont emptyContinuation
     try
         let finalSt = List.last (runVM st false)
         Assert.AreEqual (Some emptyCont, getResult finalSt)
@@ -553,7 +656,7 @@ let testExecute1 () =
 
 [<Test>]
 let testExecute2 () =
-    let st = initialState [PushCont [PushInt 10]; Execute]
+    let st = initialState [PushCont [PushInt 10]; DumpStk; Execute]
     try
         let finalSt = List.last (runVM st false)
         Assert.AreEqual (Some (Int 10), getResult finalSt)
@@ -656,7 +759,7 @@ let testGreater2 () =
                            PushCont [];
                            PushCont [PushInt 1; Sub];
                            IfElse]
-    st.cc.stack <- [Int 7]
+    st.stack <- [Int 7]
     try
         let finalSt = List.last (runVM st false)
         Assert.AreEqual (Some (Int 6), getResult finalSt)
@@ -684,7 +787,7 @@ let testGreater3 () =
                            Push 0; // f f n
                            Execute // -> f n
                            ]
-    st.cc.stack <- [Int 12]
+    st.stack <- [Int 12]
     try
         let finalSt = List.last (runVM st false)
         Assert.AreEqual (Some (Int 0), getResult finalSt)
@@ -838,8 +941,8 @@ let testDict0 () =
 [<Test>]
 let testDict1 () =
     let st = initialState [DictUGet] // k D' i -> v
-    st.cc.stack <- [Int 255;
-                    SliceDict (Map [(200, Slice [Int 10])]); Int 200]
+    st.stack <- [Int 255;
+                 SliceDict (Map [(200, Slice [Int 10])]); Int 200]
     try
         let finalSt = List.last (runVM st false)
         Assert.AreEqual (Some (Slice [Int 10]), getResult finalSt)
@@ -859,11 +962,99 @@ let testPushctr0 () =
 
 [<Test>]
 let testPopctr0 () =
-    let st = initialState [PushCtr 7; PushInt 200; TPush;
-                           PopCtr 7; PushCtr 7]
+    let st = { TVMState.Default with code = [PushCtr 7; PushInt 200; TPush;
+                                             PopCtr 7; PushCtr 7] }
     try
         let finalSt = List.last (runVM st false)
         Assert.AreEqual (Some (Tup [Int 200]), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testPopctr1 () =
+    let st = initialState [PushCont [PushInt 10]; PopCtr 3; PushCtr 3; Execute]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual (Some (Int 10), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testCalldict0 () =
+    let st = initialState [PushCont [Drop; PushInt 10]; PopCtr 3; CallDict 5]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual (Some (Int 10), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testCalldict1 () =
+    // input = [], output = heap
+    let (heapGetId, heapGet) = (0, [PushCtr 7; Index 0])
+    // input = heap, output = []
+    let (heapUpdateId, heapUpdate) = (1, [PushCtr 7; SetIndex 0; Drop])
+    // input = [], output = nextAddr
+    let (heapNextAddrId, heapNextAddr) =
+        (2, [
+            PushCtr 7; // c7
+            Index 1;   // ctr
+            Inc;       // ctr'
+            Dup;       // ctr' ctr'
+            PushCtr 7; // ctr' ctr' c7
+            Swap;      // ctr' c7 ctr'
+            SetIndex 1;// ctr' c7'
+            PopCtr 7;  // ctr'
+        ]
+    )
+    // input = k, output = heap[k]
+    let (heapLookupId, heapLookup) =
+        (3, heapGet @ [PushInt 128; DictUGet; ThrowIfNot 1])
+
+    // the structure of C7 is as follows:
+    // C7[0] = heap
+    // C7[1] = heap address counter
+    //
+    // heap is represented as a dictionary (SliceDict type)
+    // heap address counter is an integer, starting from 0
+    let initC7 = [
+        Nil;       // ()
+        PushInt 0; // () 0
+        TPush;     // (0)
+        Nil;       // (0) ()
+        TPush;     // ((), 0)
+        PopCtr 7;
+    ]
+    // input = args... n
+    // output = C3[n](args)
+    let compileSelectorFunction (id, cont) =
+        [Dup; PushInt id; Equal; PushCont cont; DumpStk; IfExec]
+
+    let selectorFunctions = [
+        (heapLookupId, heapLookup);
+        (heapUpdateId, heapUpdate);
+        (heapGetId, heapGet);
+        (heapNextAddrId, heapNextAddr)
+    ]
+
+    let functionNotFoundException =
+        [Throw 100]
+
+    let selectorFunction =
+        ((List.map compileSelectorFunction selectorFunctions)
+        |> List.concat)
+        @ functionNotFoundException
+
+    let st = initialState (
+        initC7 @
+        [PushCont selectorFunction; PopCtr 3; CallDict heapNextAddrId]
+    )
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual (Some (Int 1), getResult finalSt)
     with
         | TVMError s ->
             Assert.Fail(s)
