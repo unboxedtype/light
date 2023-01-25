@@ -64,6 +64,10 @@ type Value =
     static member isBuilder = function | Builder _ -> true | _ -> false
     static member isSlice = function | Slice _ -> true | _ -> false
     static member isTuple = function | Tup _ -> true | _ -> false
+    static member unboxInt = function | Int x -> x | _ -> raise (TVMError "unbox")
+    static member unboxCont = function | Cont x -> x | _ -> raise (TVMError "unbox")
+    static member unboxTuple = function | Tup x -> x | _ -> raise (TVMError "unbox")
+    static member unboxBuilder = function | Builder x -> x | _ -> raise (TVMError "unbox")
 and Continuation = {
     mutable code:Code;
     mutable stack:Stack;
@@ -91,10 +95,13 @@ let emptyContinuation = {
     code = []; stack = []
 }
 let emptyCont = Cont emptyContinuation
+let emptyTuple = []
+let emptyTup = Tup emptyTuple
 
 type TVMState = {
     mutable cc:Continuation;
-    mutable c7:Value;
+    mutable c3:Continuation;
+    mutable c7:Value list;
 }
 
 [<OneTimeSetUp>]
@@ -106,26 +113,19 @@ let printTerm term =
     NUnit.Framework.TestContext.Progress.WriteLine("{0}", str)
 
 let initialState (code:Code) : TVMState =
-    { cc = { code = code; stack = [] }; c7 = Tup [] }
+    { cc = { code = code; stack = [] }; c3 = emptyContinuation; c7 = emptyTuple }
 
 let mkBuilder vs =
     Builder vs
 
-let unboxBuilder b =
-    match b with
-        | Builder vs ->
-            vs
-        | _ ->
-            raise (TVMError "unboxBuilder on non-builder value")
-
 let mkCell b =
-    Cell (unboxBuilder b)
+    Cell (Value.unboxBuilder b)
 
 let stu cc st =
     let (b :: x :: stack') = st.cc.stack
     failIfNot (Value.isBuilder b) "STU: not a builder"
     failIfNot (Value.isInt x) "STU: not an integer"
-    let vs = unboxBuilder b
+    let vs = Value.unboxBuilder b
     // failIf (x > float 2 ** cc) "STU: Range check exception"
     st.cc.stack <- mkBuilder (vs @ [x]) :: stack'
     st
@@ -179,17 +179,27 @@ let push n st =
     st
 
 let pushctr n st =
-    failIf (n <> 7) "PUSHCTR: only c7 is supported"
-    let stack = st.c7 :: st.cc.stack
+    failIf (n <> 7 && n <> 3) "PUSHCTR: only c3 and c7 are supported"
+    let stack =
+        if n = 7 then
+            Tup st.c7 :: st.cc.stack
+        else
+            Cont st.c3 :: st.cc.stack
     st.cc.stack <- stack
     st
 
 let popctr n st =
-    failIf (n <> 7) "POPCTR: only c7 is supported"
-    let (c7 :: stack) = st.cc.stack
-    failIfNot (Value.isTuple c7) "POPCTR: c7 is a tuple"
-    st.cc.stack <- stack
-    st.c7 <- c7
+    failIf (n <> 7 && n <> 3) "POPCTR: only c3 and c7 are supported"
+    if n = 7 then
+        let (c7 :: stack) = st.cc.stack
+        failIfNot (Value.isTuple c7) "POPCTR: c7 is a tuple"
+        st.cc.stack <- stack
+        st.c7 <- Value.unboxTuple c7
+    else
+        let (c3 :: stack) = st.cc.stack
+        failIfNot (Value.isCont c3) "POPCTR: c3 is a continuation"
+        st.cc.stack <- stack
+        st.c3 <- Value.unboxCont c3
     st
 
 let pop n st =
@@ -208,20 +218,6 @@ let xchg n st =
         Array.toList
     st.cc.stack <- stack'
     st
-
-let unboxInt f =
-    match f with
-        | Int n ->
-            n
-        | _ ->
-            raise (TVMError "unboxInt on non-integer value")
-
-let unboxTuple t =
-    match t with
-        | Tup l ->
-            l
-        | _ ->
-            raise (TVMError "unboxTuple on non-tuple value")
 
 let True = -1
 let False = 0
@@ -280,7 +276,7 @@ let tuple n st =
 
 let untuple n st =
     let (t :: stack') = st.cc.stack
-    let v = unboxTuple t
+    let v = Value.unboxTuple t
     failIf (List.length v <> n) "INDEX: Type check exception"
     st.cc.stack <- v @ stack'
     st
@@ -291,7 +287,7 @@ let nil st =
 // TPUSH (t x – t')
 let tpush st =
     let (x :: t :: stack) = st.cc.stack
-    let ut = unboxTuple t
+    let ut = Value.unboxTuple t
     failIf (List.length ut = 255) "TPUSH: Type check exception"
     st.cc.stack <- Tup (x :: ut) :: stack
     st
@@ -299,7 +295,7 @@ let tpush st =
 // INDEX k (t - t[k]), 0 <= k <= 15
 let index k st =
     let (t :: stack') = st.cc.stack
-    let v = unboxTuple t
+    let v = Value.unboxTuple t
     failIf (List.length v <= k) "INDEX: Range check exception"
     let elem = List.item k v
     st.cc.stack <- elem :: stack'
@@ -308,7 +304,7 @@ let index k st =
 // SETINDEX k (t x – t')
 let setindex k st =
     let (x :: t :: stack') = st.cc.stack
-    let v = unboxTuple t
+    let v = Value.unboxTuple t
     failIf (List.length v <= k) "INDEX: Range check exception"
     let v' = List.updateAt k x v
     st.cc.stack <- (Tup v') :: stack'
@@ -333,7 +329,7 @@ let dictuget st =
     failIfNot (Value.isInt i) "DICTUGET: Integer expected"
     // UFits n i check has to be done here as well
     let v' =
-        match D.TryFind (unboxInt i) with
+        match D.TryFind (Value.unboxInt i) with
             | None ->
                 raise (TVMError "Key not found")
             | Some v ->
@@ -347,7 +343,7 @@ let dictusetb st =
     let D = mkDict sD
     failIfNot (Value.isInt i) "DICTUSET: Integer expected"
     failIfNot (Value.isBuilder b) "DICTUSET: Builder expected"
-    let D' = D.Add (unboxInt i, Slice (unboxBuilder b))
+    let D' = D.Add (Value.unboxInt i, Slice (Value.unboxBuilder b))
     st.cc.stack <- SliceDict D' :: stack'
     st
 
