@@ -149,9 +149,15 @@ let call cont (st:TVMState) =
         jump_to cont st
 
 // RET instruction handler
+// Transfer control to c0 continuation
 let ret st =
-    let retCont = { Continuation.Default with code = st.code; data = { ControlData.Default with save = { ControlRegs.Default with c0 = st.cr.c0 } } }
-    jump retCont st
+    let c0 = st.cr.c0
+    st.cr.c0 <- None
+    match c0 with
+        | Some c ->
+            jump c st
+        | _ ->
+            st
 
 [<OneTimeSetUp>]
 let Setup () =
@@ -188,9 +194,6 @@ let endc st =
     let (b :: stack) = st.stack
     failIfNot (Value.isBuilder b) "ENDC: not a builder"
     st.stack <- (mkCell b) :: stack
-    st
-
-let switch_to cont st =
     st
 
 let execute st =
