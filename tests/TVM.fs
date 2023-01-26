@@ -123,9 +123,9 @@ type TVMState =
     static member Default = {
         code = []; stack = []; cr = ControlRegs.Default }
     member this.adjust_cr regs =
-        this.cr.c0 <- regs.c0
-        this.cr.c3 <- regs.c3
-        this.cr.c7 <- regs.c7
+        this.cr.c0 <- if regs.c0.IsSome then regs.c0 else this.cr.c0
+        this.cr.c3 <- if regs.c3.IsSome then regs.c3 else this.cr.c0
+        // this.cr.c7 <- if regs.c7.IsSome then regs.c7 else this.cr.c7
     member this.put_code code =
         this.code <- code
 
@@ -152,11 +152,11 @@ let call cont (st:TVMState) =
 // Transfer control to c0 continuation
 let ret st =
     let c0 = st.cr.c0
-    st.cr.c0 <- None
     match c0 with
         | Some c ->
+            st.cr.c0 <- None
             jump c st
-        | _ ->
+        | None ->
             st
 
 [<OneTimeSetUp>]
@@ -528,12 +528,11 @@ let step (st:TVMState) : TVMState =
 
 let rec runVM st (trace:bool) =
     let st' = step st
-    match st'.code with
-        | [] ->
-            st'.stack <- (Int 0) :: (st'.stack)
-            [st']
-        | _ ->
-            st' :: (runVM st' trace)
+    if st.code = [] && st.cr.c0 = None then
+        st'.stack <- (Int 0) :: (st'.stack)
+        [st']
+    else
+        st' :: (runVM st' trace)
 
 let getResult st : Value option =
     match st.stack with
@@ -688,6 +687,16 @@ let testExecute4 () =
     with
         | TVMError s ->
             Assert.Fail(s)
+
+let testExecute5 () =
+    let st = initialState [PushCont [PushCont [PushInt 30]]; Execute; Execute; PushInt 20]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual (Some (Int 20), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
 
 [<Test>]
 let testIfElse0 () =
