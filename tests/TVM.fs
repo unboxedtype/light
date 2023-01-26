@@ -27,6 +27,7 @@ type Instruction =
     | Sub
     | Execute
     | CallDict of n:int
+    | JumpX
     | DumpStk
     | Nop
     | Tuple of n:int
@@ -46,6 +47,7 @@ type Instruction =
     | Throw of nn:int
     | Equal
     | IfExec     // If
+    | IfJmp
 and Code =
     Instruction list
 
@@ -128,6 +130,8 @@ type TVMState =
         // this.cr.c7 <- if regs.c7.IsSome then regs.c7 else this.cr.c7
     member this.put_code code =
         this.code <- code
+    member this.put_stack stk =
+        this.stack <- stk
 
 // do the ordinary jump into continuation cont
 let jump cont (st:TVMState) =
@@ -182,12 +186,12 @@ let stu cc st =
     failIfNot (Value.isInt x) "STU: not an integer"
     let vs = Value.unboxBuilder b
     // failIf (x > float 2 ** cc) "STU: Range check exception"
-    st.stack <- mkBuilder (vs @ [x]) :: stack'
+    st.put_stack (mkBuilder (vs @ [x]) :: stack')
     st
 
 let newc st =
     let stack = st.stack
-    st.stack <- (mkBuilder []) :: stack
+    st.put_stack (mkBuilder [] :: stack)
     st
 
 let endc st =
@@ -414,6 +418,12 @@ let calldict n st =
     |> pushctr 3
     |> execute
 
+let jumpx st =
+    let (cont :: stack') = st.stack
+    failIfNot (Value.isCont cont) "JUMPX: continuation is expected"
+    st.put_stack stack'
+    jump (Value.unboxCont cont) st
+
 let throwifnot n st =
     let (i :: stack') = st.stack
     failIfNot (Value.isInt i) "THROWIFNOT: Integer expected"
@@ -437,6 +447,17 @@ let ifexec st =
     if (Value.unboxInt f <> 0) then
         st.stack <- (c :: stack')
         execute st
+    else
+        st.stack <- stack'
+        st
+
+let ifjmp st =
+    let (c :: f :: stack') = st.stack
+    failIfNot (Value.isInt f) "IFJMP: Integer expected"
+    failIfNot (Value.isCont c) "IFJMP: Continuation expected"
+    if (Value.unboxInt f <> 0) then
+        st.stack <- (c :: stack')
+        jump (Value.unboxCont c) st
     else
         st.stack <- stack'
         st
@@ -477,6 +498,8 @@ let dispatch (i:Instruction) =
             execute
         | CallDict n ->
             calldict n
+        | JumpX ->
+            jumpx
         | IfElse ->
             ifelse
         | DumpStk ->
@@ -513,6 +536,8 @@ let dispatch (i:Instruction) =
             throw nn
         | IfExec ->
             ifexec
+        | IfJmp ->
+            ifjmp
         | _ ->
             raise (TVMError "unsupported instruction")
 
@@ -1043,7 +1068,7 @@ let testCalldict1 () =
     // input = args... n
     // output = C3[n](args)
     let compileSelectorFunction (id, cont) =
-        [Dup; PushInt id; Equal; PushCont cont; DumpStk; IfExec]
+        [Dup; PushInt id; Equal; PushCont cont; DumpStk; IfJmp]
 
     let selectorFunctions = [
         (heapLookupId, heapLookup);
