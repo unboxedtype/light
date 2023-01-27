@@ -48,6 +48,7 @@ type Instruction =
     | Equal
     | IfExec     // If
     | IfJmp
+    | SetNumArgs of n:int
 and Code =
     Instruction list
 
@@ -124,6 +125,10 @@ type TVMState =
       mutable cr:ControlRegs; }
     static member Default = {
         code = []; stack = []; cr = ControlRegs.Default }
+    member this.preclear_cr (save:ControlRegs) =
+        if save.c0.IsSome then this.cr.c0 <- None else ()
+        if save.c3.IsSome then this.cr.c3 <- None else ()
+        // if save.c7.IsSome then this.cr.c7 <- None else ()
     member this.adjust_cr regs =
         this.cr.c0 <- if regs.c0.IsSome then regs.c0 else this.cr.c0
         this.cr.c3 <- if regs.c3.IsSome then regs.c3 else this.cr.c0
@@ -134,21 +139,52 @@ type TVMState =
         this.stack <- stk
 
 // do the ordinary jump into continuation cont
-let jump cont (st:TVMState) =
+let switch_to_cont cont (st:TVMState) =
     st.adjust_cr cont.data.save
     st.put_code cont.code
     st
 
+// cont = continuation to jump to
+// pass_args = number of arguments to pass to the continuation
+        // -1 = the whole current stack needs to be passed
+        // before doing the jump
+let jump_stk cont pass_args st =
+    let depth = List.length st.stack
+    if (pass_args > depth || cont.data.nargs > depth) then
+        raise (TVMError "jump_stk: stack underflow: not enough args on the stack")
+    elif (cont.data.nargs > pass_args && pass_args >= 0) then
+        raise (TVMError "jump_stk: stack underflow: not enough arguments passed")
+    st.preclear_cr cont.data.save
+    let copy =
+        if (cont.data.nargs < 0) && (pass_args >= 0) then
+            pass_args
+        else
+            cont.data.nargs
+    let copy' = if copy < 0 then depth else copy
+    let new_stk = cont.data.stack @ (List.take copy' st.stack)
+    st.put_stack new_stk
+    switch_to_cont cont st
+
 let jump_to cont (st:TVMState) =
-    jump cont st
+    switch_to_cont cont st
+
+let jump cont (st:TVMState) =
+    if (cont.data.stack <> []) || (cont.data.nargs >= 0) then
+        jump_stk cont -1 st         // the stack needs to be adjusted before the CC switch
+    else
+        switch_to_cont cont st         // do the CC switch immediately
 
 let call cont (st:TVMState) =
     if cont.data.save.c0.IsSome then
         jump cont st
     elif cont.data.stack <> [] then
-       raise (TVMError "non-empty stack for continuation is not supported")
+        failIf (cont.data.nargs <> -1) "CALL: nargs different from -1 is not supported"
+        let ret = { code = st.code; data = { ControlData.Default with stack = st.stack; save = { c0 = st.cr.c0; c3 = st.cr.c3; c7 = st.cr.c7 } } }
+        st.put_stack cont.data.stack
+        st.cr.c0 <- Some ret
+        jump_to cont st
     else
-        let ret = { Continuation.Default with code = st.code; data = { ControlData.Default with save = { ControlRegs.Default with c0 = st.cr.c0 } } }
+        let ret = { code = st.code; data = { ControlData.Default with save = { c0 = st.cr.c0; c3 = st.cr.c3; c7 = st.cr.c7 } } }
         st.cr.c0 <- Some ret
         jump_to cont st
 
@@ -413,10 +449,9 @@ let dictusetb st =
     st
 
 let calldict n st =
-    st
-    |> pushint n
-    |> pushctr 3
-    |> execute
+    failIf (st.cr.c3.IsNone) "CALLDICT: c3 is not initialized"
+    st.cr.c3.Value.data.stack <- [Int n]
+    call (st.cr.c3.Value) st
 
 let jumpx st =
     let (cont :: stack') = st.stack
@@ -455,12 +490,22 @@ let ifjmp st =
     let (c :: f :: stack') = st.stack
     failIfNot (Value.isInt f) "IFJMP: Integer expected"
     failIfNot (Value.isCont c) "IFJMP: Continuation expected"
+    st.put_stack stack'
     if (Value.unboxInt f <> 0) then
-        st.stack <- (c :: stack')
         jump (Value.unboxCont c) st
     else
-        st.stack <- stack'
         st
+
+let setnumargs n st =
+    let (cont :: stack') = st.stack
+    failIfNot (Value.isCont cont) "SETNUMARGS: continuation expected"
+    let c = Value.unboxCont cont
+    if c.data.nargs < 0 then
+        c.data.nargs <- n + (List.length c.data.stack)
+    else
+        ()
+    st.put_stack (Cont c :: stack')
+    st
 
 let dispatch (i:Instruction) =
     match i with
@@ -538,6 +583,8 @@ let dispatch (i:Instruction) =
             ifexec
         | IfJmp ->
             ifjmp
+        | SetNumArgs n ->
+            setnumargs n
         | _ ->
             raise (TVMError "unsupported instruction")
 
@@ -1031,11 +1078,11 @@ let testCalldict0 () =
 [<Test>]
 let testCalldict1 () =
     // input = [], output = heap
-    let (heapGetId, heapGet) = (0, [PushCtr 7; Index 0])
+    let (heapGet, heapGetCode) = (0, [PushCtr 7; Index 0])
     // input = heap, output = []
-    let (heapUpdateId, heapUpdate) = (1, [PushCtr 7; SetIndex 0; Drop])
+    let (heapUpdate, heapUpdateCode) = (1, [PushCtr 7; SetIndex 0; Drop])
     // input = [], output = nextAddr
-    let (heapNextAddrId, heapNextAddr) =
+    let (heapNextAddr, heapNextAddrCode) =
         (2, [
             PushCtr 7; // c7
             Index 1;   // ctr
@@ -1048,8 +1095,8 @@ let testCalldict1 () =
         ]
     )
     // input = k, output = heap[k]
-    let (heapLookupId, heapLookup) =
-        (3, heapGet @ [PushInt 128; DictUGet; ThrowIfNot 1])
+    let (heapLookup, heapLookupCode) =
+        (3, heapGetCode @ [PushInt 128; DictUGet; ThrowIfNot 1])
 
     // the structure of C7 is as follows:
     // C7[0] = heap
@@ -1067,14 +1114,14 @@ let testCalldict1 () =
     ]
     // input = args... n
     // output = C3[n](args)
-    let compileSelectorFunction (id, cont) =
-        [Dup; PushInt id; Equal; PushCont cont; DumpStk; IfJmp]
+    let compileSelectorFunction (id, args_cnt, cont) =
+        [Dup; PushInt id; Equal; PushCont cont; SetNumArgs args_cnt; IfJmp]
 
     let selectorFunctions = [
-        (heapLookupId, heapLookup);
-        (heapUpdateId, heapUpdate);
-        (heapGetId, heapGet);
-        (heapNextAddrId, heapNextAddr)
+        (heapLookup, 1, heapLookupCode);
+        (heapUpdate, 1, heapUpdateCode);
+        (heapGet, 1, heapGetCode);
+        (heapNextAddr, 0, heapNextAddrCode)
     ]
 
     let functionNotFoundException =
@@ -1087,11 +1134,16 @@ let testCalldict1 () =
 
     let st = initialState (
         initC7 @
-        [PushCont selectorFunction; PopCtr 3; CallDict heapNextAddrId]
+        [PushCont selectorFunction;
+         PopCtr 3;
+         CallDict heapNextAddr;
+         Drop;
+         CallDict heapNextAddr
+         ]
     )
     try
         let finalSt = List.last (runVM st false)
-        Assert.AreEqual (Some (Int 1), getResult finalSt)
+        Assert.AreEqual (Some (Int 2), getResult finalSt)
     with
         | TVMError s ->
             Assert.Fail(s)
