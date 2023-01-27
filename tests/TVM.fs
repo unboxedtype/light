@@ -32,6 +32,7 @@ type Instruction =
     | Nop
     | Tuple of n:int
     | Nil
+    | PushNull
     | Index of k:int
     | Untuple of n:int
     | SetIndex of k:int
@@ -77,6 +78,8 @@ type Value =
     static member unboxCont = function | Cont x -> x | _ -> raise (TVMError "unbox")
     static member unboxTuple = function | Tup x -> x | _ -> raise (TVMError "unbox")
     static member unboxBuilder = function | Builder x -> x | _ -> raise (TVMError "unbox")
+    static member boxInt = fun n -> Int n
+
 and ControlData =
     { mutable stack: Stack
       mutable save: ControlRegs
@@ -509,6 +512,8 @@ let setnumargs n st =
 
 let dispatch (i:Instruction) =
     match i with
+        | PushNull ->
+            pushnull
         | PushInt n ->
             pushint n
         | Push n ->
@@ -1075,12 +1080,55 @@ let testCalldict0 () =
         | TVMError s ->
             Assert.Fail(s)
 
+let rec instrToFift (i:Instruction) : string =
+    match i with
+        | Nil -> "NIL"
+        | PushNull -> "PUSHNULL"
+        | TPush -> "TPUSH"
+        | Equal -> "EQUAL"
+        | Swap -> "SWAP"
+        | IfJmp -> "IFJMP"
+        | Dup -> "DUP"
+        | DictUGet -> "DICTUGET"
+        | Inc -> "INC"
+        | Newc -> "NEWC"
+        | Drop -> "DROP"
+        | DictUSetB -> "DICTUSETB"
+        | StU n -> string(n) + " STU"
+        | PushCtr n -> "c" + string(n) + " PUSHCTR"
+        | PopCtr n -> "c" + string(n) + " POPCTR"
+        | PushInt n -> string(n) + " INT"
+        | Index n -> string(n) + " INDEX"
+        | ThrowIfNot n -> string(n) + " THROWIFNOT"
+        | SetNumArgs n -> string(n) + " SETNUMARGS"
+        | Throw n -> string(n) + " THROW"
+        | CallDict n -> string(n) + " CALLDICT"
+        | SetIndex n -> string(n) + " SETINDEX"
+        | PushCont c -> "<{ " + String.concat "\n" (List.map instrToFift c) + " }> PUSHCONT"
+        | _ ->
+            raise (TVMError (sprintf "unsupported instruction: %A" i))
+
+let outputFift (st:TVMState) : string =
+    String.concat "\n" [
+        "\"Asm.fif\" include";
+        "<{";
+        String.concat "\n" (List.map instrToFift st.code);
+        "}>s";
+        "runvmcode";
+        "drop";
+        ".s"
+    ]
+
+let dumpFiftScript (fname:string) (str:string)  =
+    use f = System.IO.File.CreateText(fname)
+    f.WriteLine(str)
+
 [<Test>]
 let testCalldict1 () =
     // input = [], output = heap
     let (heapGet, heapGetCode) = (0, [PushCtr 7; Index 0])
     // input = heap, output = []
-    let (heapUpdate, heapUpdateCode) = (1, [PushCtr 7; SetIndex 0; Drop])
+    let (heapPut, heapPutCode) = (1, [PushCtr 7; Swap; SetIndex 0; Drop])
     // input = [], output = nextAddr
     let (heapNextAddr, heapNextAddrCode) =
         (2, [
@@ -1098,18 +1146,29 @@ let testCalldict1 () =
     let (heapLookup, heapLookupCode) =
         (3, heapGetCode @ [PushInt 128; DictUGet; ThrowIfNot 1])
 
+    // input = (k:int) (v:Builder); output = heap'[k := v]
+    let (heapUpdateAt, heapUpdateAtCode) =
+        (4, heapGetCode @ [PushInt 128; DictUSetB] )
+
+    // intput = n , output = builder (contains n as uint)
+    let (intToBuilder, intToBuilderCode) =
+        (5, [Newc; StU 128])
+
     // the structure of C7 is as follows:
-    // C7[0] = heap
-    // C7[1] = heap address counter
-    //
+    // C7[0] = heap (dict)
+    // C7[1] = heap address counter (int)
+    // C7[2] = globals (dict) (funcId -> address)
+
     // heap is represented as a dictionary (SliceDict type)
     // heap address counter is an integer, starting from 0
     let initC7 = [
         Nil;       // ()
-        PushInt 0; // () 0
-        TPush;     // (0)
-        Nil;       // (0) ()
-        TPush;     // ((), 0)
+        PushNull;  // (0) null
+        TPush;     // (null)
+        PushInt 0; // (null) 0
+        TPush;     // (0, null)
+        PushNull;  // (0, null) null
+        TPush;     // (null, 0, null)
         PopCtr 7;
     ]
     // input = args... n
@@ -1119,9 +1178,11 @@ let testCalldict1 () =
 
     let selectorFunctions = [
         (heapLookup, 1, heapLookupCode);
-        (heapUpdate, 1, heapUpdateCode);
+        (heapPut, 1, heapPutCode);
         (heapGet, 1, heapGetCode);
-        (heapNextAddr, 0, heapNextAddrCode)
+        (heapNextAddr, 0, heapNextAddrCode);
+        (heapUpdateAt, 2, heapUpdateAtCode);
+        (intToBuilder, 1, intToBuilderCode)
     ]
 
     let functionNotFoundException =
@@ -1142,8 +1203,66 @@ let testCalldict1 () =
          ]
     )
     try
+        dumpFiftScript "testCalldict1.fif" (outputFift st)
         let finalSt = List.last (runVM st false)
         Assert.AreEqual (Some (Int 2), getResult finalSt)
     with
         | TVMError s ->
             Assert.Fail(s)
+
+// -------------------------------
+// encoding for GMachine.Node type
+// -------------------------------
+// type Node =
+//     | NNum of v: int
+//     | NAp of f: Addr * a: Addr // f(a)
+//     | NGlobal of args: int * code: GmCode
+//     | NInd of v: Addr  // indirection node
+//     // data type constructor with n params
+//     | NConstr of int * Addr list
+
+// (tag, args)
+// NNum v = (0, v)
+// NAp (f, v) = (1, f, v)
+// NGlobal (n, code) = (2, n, code); code is a slice
+// NInd v = (3, v)
+// NConstr (n, [a]) = (4, n, (a0, a1, ...))
+
+let compileToTVM (c:GMachine.GmCode) =
+    []
+
+let encodeNode (n:GMachine.Node) : Value =
+    match n with
+        | GMachine.NNum v ->
+            Builder [Int 0; Int v]
+        | GMachine.NAp (f, a) ->
+            Builder [Int 1; Int f; Int a]
+        | GMachine.NGlobal (n, c) ->
+            let c' = compileToTVM c
+            Builder [Int 2; Int n; Cell c']
+        | GMachine.NInd v ->
+            Builder [Int 3; Int v]
+        | GMachine.NConstr (n, vs) ->
+            Builder ([Int 4; Int n] @ (List.map Value.boxInt vs))
+        | _ ->
+            raise (TVMError "encodeNode: unknown type")
+
+let compileValue v =
+    match v with
+        | Int n ->
+            [PushInt n]
+        | _ ->
+            raise (TVMError "unsupported value type")
+
+// Generates code that constructs the needed Builder object
+// on the TVM stack. It does not get converted into Cell intentionally,
+// not to pay for serialization, which is unnecessary in our case.
+let compileBuilder (b:Value) =
+    failIfNot (Value.isBuilder b) "compileBuilder: builder expected"
+    let l = Value.unboxBuilder b
+    // Builder [Int 2; Int 3]
+    // -->
+    // PUSHINT 3; PUSHINT 2; NEWC; STU 128; STU 128;
+    let vals =
+        List.map compileValue (List.rev l) |> List.concat
+    vals @ [Newc] @ (List.replicate (List.length l) (StU 128))
