@@ -1104,7 +1104,8 @@ let rec instrToFift (i:Instruction) : string =
         | Throw n -> string(n) + " THROW"
         | CallDict n -> string(n) + " CALLDICT"
         | SetIndex n -> string(n) + " SETINDEX"
-        | PushCont c -> "<{ " + String.concat "\n" (List.map instrToFift c) + " }> PUSHCONT"
+        | PushCont c ->
+            "<{ " + String.concat "\n" (List.map instrToFift c) + " }> PUSHCONT"
         | _ ->
             raise (TVMError (sprintf "unsupported instruction: %A" i))
 
@@ -1266,3 +1267,52 @@ let compileBuilder (b:Value) =
     let vals =
         List.map compileValue (List.rev l) |> List.concat
     vals @ [Newc] @ (List.replicate (List.length l) (StU 128))
+
+// let pushglobal (f:Name) (state:GmState) =
+//     match Map.tryFind f (getGlobals state) with
+//         | Some a ->
+//             putStack (a :: getStack state) state
+//         | None ->
+//             let msg = sprintf "Global name %A not found in the globals dictionary" f
+//             raise (GMError msg)
+
+type C7_Indexes =
+    | C7_Heap = 0
+    | C7_HeapCounter = 1
+    | C7_Globals = 2
+
+type Name = int
+type Addr = int
+
+// put globals dict onto the stack
+let getGlobals =
+    [PushCtr 7; Index C7_Globals]
+
+
+// bv = value in a form of a builder
+// k = integer key
+// n = integer key length
+let DictUSetB (bv:Code) (k:Code) (D:Code) (n:Code) =
+    bv @ k @ D @ n @ [DictUSetB]
+
+
+// i D n -> x -1 | 0
+let DictUGet (k:Code) (D:Code) (n:Code) =
+    i @ D @ n @ [DictUGet]
+
+let intToBuilder (k:int) : Code =
+    [Newc; Pushint k; Stu 128]
+
+let dictUpdateInt128 (k:int) (v:int) (d:Code) =
+    DictUSetB (intToBuilder k) (intToBuilder v) d (intToBuilder 128)
+
+let putGlobals (k:Name) (v:Addr) =
+    let d = getGlobals
+    dictUpdateInt128 k v d
+
+// find the given id in globals dict d
+let globalLookup (k:Name) (d:Code) =
+    [PushInt k] @ d @ [PushInt 128; DictUGet]
+
+let pushglobal (k:Name) =
+    globalLookup k (globalsGet)
