@@ -50,6 +50,7 @@ type Instruction =
     | IfExec     // If
     | IfJmp
     | SetNumArgs of n:int
+    | RollRev of n:int
 and Code =
     Instruction list
 
@@ -263,8 +264,9 @@ let pushnull st =
 
 let push n st =
     let stack' = st.stack
+    failIf (n < 0) "PUSH: type check error"
     failIf (List.length stack' <= n) "PUSH: stack underflow"
-    let sn = List.item n stack'
+    let sn = stack'.Item n
     st.stack <- sn :: stack'
     st
 
@@ -510,6 +512,24 @@ let setnumargs n st =
     st.put_stack (Cont c :: stack')
     st
 
+// rollrev 1:
+// s0 :: s1 :: s2 :: ... ->
+    // s1 :: s0 :: s2 ...
+// rollrev n:
+// s0 :: s1 :: s2 :: ... :: sn :: sn+1 ->
+    // s1 :: s2 :: sn-1 :: s0 :: sn :: sn+1
+let rollrev n (st:TVMState) =
+    if n > 0 then
+        if n >= List.length st.stack then
+            raise (TVMError "stack underflow")
+        else
+            let (a0 :: stack) = st.stack
+            let (l, r) = (List.take n stack, List.skip n stack)
+            st.put_stack (l @ [a0] @ r)
+            st
+    else
+        st
+
 let dispatch (i:Instruction) =
     match i with
         | PushNull ->
@@ -590,6 +610,8 @@ let dispatch (i:Instruction) =
             ifjmp
         | SetNumArgs n ->
             setnumargs n
+        | RollRev n ->
+            rollrev n
         | _ ->
             raise (TVMError "unsupported instruction")
 
@@ -1211,108 +1233,130 @@ let testCalldict1 () =
         | TVMError s ->
             Assert.Fail(s)
 
-// -------------------------------
-// encoding for GMachine.Node type
-// -------------------------------
-// type Node =
-//     | NNum of v: int
-//     | NAp of f: Addr * a: Addr // f(a)
-//     | NGlobal of args: int * code: GmCode
-//     | NInd of v: Addr  // indirection node
-//     // data type constructor with n params
-//     | NConstr of int * Addr list
+[<Test>]
+let testRollRev0 () =
+    let st = initialState [RollRev 0]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual ([Int 0], finalSt.stack) // success int
+    with
+        | TVMError s ->
+            Assert.Fail(s)
 
-// (tag, args)
-// NNum v = (0, v)
-// NAp (f, v) = (1, f, v)
-// NGlobal (n, code) = (2, n, code); code is a slice
-// NInd v = (3, v)
-// NConstr (n, [a]) = (4, n, (a0, a1, ...))
+[<Test>]
+let testRollRev1 () =
+    let st = initialState [PushInt 1; RollRev 0]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual ([Int 0; Int 1], finalSt.stack) // success int
+    with
+        | TVMError s ->
+            Assert.Fail(s)
 
-let compileToTVM (c:GMachine.GmCode) =
-    []
+[<Test>]
+let testRollRev2 () =
+    let st = initialState [PushInt 1; RollRev 1]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.Fail("must not reach this point")
+    with
+        | TVMError s ->
+            Assert.Pass() // Stack underflow
 
-let encodeNode (n:GMachine.Node) : Value =
-    match n with
-        | GMachine.NNum v ->
-            Builder [Int 0; Int v]
-        | GMachine.NAp (f, a) ->
-            Builder [Int 1; Int f; Int a]
-        | GMachine.NGlobal (n, c) ->
-            let c' = compileToTVM c
-            Builder [Int 2; Int n; Cell c']
-        | GMachine.NInd v ->
-            Builder [Int 3; Int v]
-        | GMachine.NConstr (n, vs) ->
-            Builder ([Int 4; Int n] @ (List.map Value.boxInt vs))
-        | _ ->
-            raise (TVMError "encodeNode: unknown type")
+[<Test>]
+let testRollRev3 () =
+    let st = initialState [PushInt 1; PushInt 2; RollRev 1]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual([Int 0; Int 1; Int 2], finalSt.stack)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
 
-let compileValue v =
-    match v with
-        | Int n ->
-            [PushInt n]
-        | _ ->
-            raise (TVMError "unsupported value type")
+[<Test>]
+let testRollRev4 () =
+    let st = initialState [PushInt 1; PushInt 2; PushInt 3; RollRev 2]
+    try
+        let finalSt = List.last (runVM st false)
+        printfn "%A" finalSt.stack
+        Assert.AreEqual([Int 0; Int 2; Int 1; Int 3], finalSt.stack)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
 
-// Generates code that constructs the needed Builder object
-// on the TVM stack. It does not get converted into Cell intentionally,
-// not to pay for serialization, which is unnecessary in our case.
-let compileBuilder (b:Value) =
-    failIfNot (Value.isBuilder b) "compileBuilder: builder expected"
-    let l = Value.unboxBuilder b
-    // Builder [Int 2; Int 3]
+let rec rearrange k n st =
+    failIf (k > n) "rearrange k n, k should be <= n"
+    failIf (List.length st.stack < 1) "rearrange with empty stack"
+    // very basic mapping = id
+    let map_elem k st =
+        push k st
+    let drop st =
+        pop 0 st
+    let rec rearrange2 k' n' st =
+        if k' = 0 then
+            st
+        else if k' = n' then
+            // duplicate the n-th element
+            rearrange2 (k'-1) n' (rollrev k' (map_elem k' st))
+        else
+            // replace Sk with S0
+            rearrange2 (k'-1) n' (drop (xchg (k'+1) (map_elem k' st)))
+    rearrange2 (k-1) (n-1) (drop st) // remove the a0 element
+
+[<Test>]
+let testRearrange0 () =
+    // a0 : a1 : a2 : ... an : sn
     // -->
-    // PUSHINT 3; PUSHINT 2; NEWC; STU 128; STU 128;
-    let vals =
-        List.map compileValue (List.rev l) |> List.concat
-    vals @ [Newc] @ (List.replicate (List.length l) (StU 128))
+    // a1 : a2 : .. an :  an : sn
+    let st = initialState []
+    st.put_stack ([Int 1; Int 2; Int 3])
+    try
+        let finalSt = rearrange 2 2 st
+        printfn "%A" finalSt.stack
+        Assert.AreEqual([Int 2; Int 3; Int 3], finalSt.stack)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
 
-// let pushglobal (f:Name) (state:GmState) =
-//     match Map.tryFind f (getGlobals state) with
-//         | Some a ->
-//             putStack (a :: getStack state) state
-//         | None ->
-//             let msg = sprintf "Global name %A not found in the globals dictionary" f
-//             raise (GMError msg)
+[<Test>]
+let testRearrange1 () =
+    // a0 : a1 : a2 : ... an : sn
+    // -->
+    // a1 : a2 : .. an :  an : sn
+    let st = initialState []
+    try
+        let finalSt = rearrange 0 0 st
+        Assert.Fail("rearrange should work only with non-empty stack")
+    with
+        | TVMError s ->
+            Assert.Pass() // ok
 
-type C7_Indexes =
-    | C7_Heap = 0
-    | C7_HeapCounter = 1
-    | C7_Globals = 2
+[<Test>]
+let testRearrange2 () =
+    // a0 : a1 : a2 : ... an : sn
+    // -->
+    // a1 : a2 : .. an :  an : sn
+    let st = initialState []
+    st.put_stack ([Int 1; Int 2])
+    try
+        let finalSt = rearrange 1 1 st
+        printfn "%A" finalSt.stack
+        Assert.AreEqual([Int 2; Int 2], finalSt.stack)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
 
-type Name = int
-type Addr = int
-
-// put globals dict onto the stack
-let getGlobals =
-    [PushCtr 7; Index C7_Globals]
-
-
-// bv = value in a form of a builder
-// k = integer key
-// n = integer key length
-let DictUSetB (bv:Code) (k:Code) (D:Code) (n:Code) =
-    bv @ k @ D @ n @ [DictUSetB]
-
-
-// i D n -> x -1 | 0
-let DictUGet (k:Code) (D:Code) (n:Code) =
-    i @ D @ n @ [DictUGet]
-
-let intToBuilder (k:int) : Code =
-    [Newc; Pushint k; Stu 128]
-
-let dictUpdateInt128 (k:int) (v:int) (d:Code) =
-    DictUSetB (intToBuilder k) (intToBuilder v) d (intToBuilder 128)
-
-let putGlobals (k:Name) (v:Addr) =
-    let d = getGlobals
-    dictUpdateInt128 k v d
-
-// find the given id in globals dict d
-let globalLookup (k:Name) (d:Code) =
-    [PushInt k] @ d @ [PushInt 128; DictUGet]
-
-let pushglobal (k:Name) =
-    globalLookup k (globalsGet)
+[<Test>]
+let testRearrange3 () =
+    // a0 : a1 : a2 : ... an : sn
+    // -->
+    // a1 : a2 : .. an :  an : sn
+    let st = initialState []
+    st.put_stack ([Int 1; Int 2; Int 3; Int 4])
+    try
+        let finalSt = rearrange 2 2 st
+        printfn "%A" finalSt.stack
+        Assert.AreEqual([Int 2; Int 3; Int 3; Int 4], finalSt.stack)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
