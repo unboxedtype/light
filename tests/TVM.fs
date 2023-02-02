@@ -530,6 +530,9 @@ let rollrev n (st:TVMState) =
     else
         st
 
+let drop st =
+    pop 0 st
+
 let dispatch (i:Instruction) =
     match i with
         | PushNull ->
@@ -547,7 +550,7 @@ let dispatch (i:Instruction) =
         | Pop n ->
             pop n
         | Drop ->
-            pop 0
+            drop
         | PopCtr n ->
             popctr n
         | Xchg n ->
@@ -1284,30 +1287,26 @@ let testRollRev4 () =
         | TVMError s ->
             Assert.Fail(s)
 
+// a0 : a1 : a2 : ... an : sn
+// -->
+// a1 : a2 : .. an :  an : sn
 let rec rearrange k n st =
-    failIf (k > n) "rearrange k n, k should be <= n"
-    failIf (List.length st.stack < 1) "rearrange with empty stack"
+    failIf (k > n) "rearrange: (k, n): k should be <= n"
+    failIf (st.stack.Length <= n) "rearrange: stack underflow"
     // very basic mapping = id
-    let map_elem k st =
-        push k st
-    let drop st =
-        pop 0 st
-    let rec rearrange2 k' n' st =
-        if k' = 0 then
-            st
-        else if k' = n' then
-            // duplicate the n-th element
-            rearrange2 (k'-1) n' (rollrev k' (map_elem k' st))
-        else
-            // replace Sk with S0
-            rearrange2 (k'-1) n' (drop (xchg (k'+1) (map_elem k' st)))
-    rearrange2 (k-1) (n-1) (drop st) // remove the a0 element
+    let map_elem k st = push k st
+    let rec rearrange2 k n st =
+        if k = 0 then st
+        else rearrange2 (k-1) n (drop (xchg (k+1) (map_elem k st)))
+    let drop_a0 = drop st
+    if n > 0 then
+        let dup_an = rollrev (n-1) (push (n-1) drop_a0)
+        rearrange2 (k-1) (n-1) dup_an // remove the a0 element
+    else
+        drop_a0
 
 [<Test>]
 let testRearrange0 () =
-    // a0 : a1 : a2 : ... an : sn
-    // -->
-    // a1 : a2 : .. an :  an : sn
     let st = initialState []
     st.put_stack ([Int 1; Int 2; Int 3])
     try
@@ -1357,6 +1356,45 @@ let testRearrange3 () =
         let finalSt = rearrange 2 2 st
         printfn "%A" finalSt.stack
         Assert.AreEqual([Int 2; Int 3; Int 3; Int 4], finalSt.stack)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testRearrange4 () =
+    // a0 : a1 : a2 : ... an : sn
+    // -->
+    // a1 : a2 : .. an :  an : sn
+    let st = initialState []
+    st.put_stack ([Int 1])
+    try
+        let finalSt = rearrange 1 1 st
+        printfn "%A" finalSt.stack
+        Assert.Fail("stack underflow shall happen")
+    with
+        | TVMError s ->
+            Assert.Pass(s)
+
+[<Test>]
+let testRearrange5 () =
+    let st = initialState []
+    st.put_stack ([Int 1])
+    try
+        let finalSt = rearrange 0 0 st
+        printfn "%A" finalSt.stack
+        Assert.AreEqual([], finalSt.stack)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testRearrange6 () =
+    let st = initialState []
+    st.put_stack ([Int 1; Int 2; Int 3])
+    try
+        let finalSt = rearrange 0 0 st
+        printfn "%A" finalSt.stack
+        Assert.AreEqual([Int 2; Int 3], finalSt.stack)
     with
         | TVMError s ->
             Assert.Fail(s)
