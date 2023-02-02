@@ -74,12 +74,15 @@ type Value =
     static member isCont = function | Cont _ -> true | _ -> false
     static member isBuilder = function | Builder _ -> true | _ -> false
     static member isSlice = function | Slice _ -> true | _ -> false
+    static member isSliceDict = function | SliceDict _ -> true | _ -> false
     static member isTuple = function | Tup _ -> true | _ -> false
     static member unboxInt = function | Int x -> x | _ -> raise (TVMError "unbox")
     static member unboxCont = function | Cont x -> x | _ -> raise (TVMError "unbox")
     static member unboxTuple = function | Tup x -> x | _ -> raise (TVMError "unbox")
     static member unboxBuilder = function | Builder x -> x | _ -> raise (TVMError "unbox")
     static member boxInt = fun n -> Int n
+    static member boxDict = fun v -> SliceDict v
+    static member unboxDict = function | Null -> Map [] | SliceDict v -> v | _ -> raise (TVMError "unbox")
 
 and ControlData =
     { mutable stack: Stack
@@ -91,9 +94,9 @@ and ControlData =
 and ControlRegs =
     { mutable c0:Continuation option;
       mutable c3:Continuation option;
-      mutable c7:Value list; }
+      mutable c7:Value } // it should be tuple all the time
     static member Default = {
-        c0 = None; c3 = None; c7 = []
+        c0 = None; c3 = None; c7 = Tup []
     }
 and Continuation =
     { mutable code:Code;
@@ -273,7 +276,8 @@ let push n st =
 let pushctr n st =
     let stack =
         if n = 7 then
-            (Tup st.cr.c7) :: st.stack
+            failIfNot (Value.isTuple st.cr.c7) "PUSHCTR: C7 is a tuple"
+            st.cr.c7 :: st.stack
         elif n = 3 then
             if st.cr.c3.IsSome then
                 (Cont st.cr.c3.Value) :: st.stack
@@ -290,7 +294,7 @@ let popctr n st =
         let (c7 :: stack) = st.stack
         failIfNot (Value.isTuple c7) "POPCTR: c7 is a tuple"
         st.stack <- stack
-        st.cr.c7 <- Value.unboxTuple c7
+        st.cr.c7 <- c7
     else
         let (c3 :: stack) = st.stack
         failIfNot (Value.isCont c3) "POPCTR: c3 is a continuation"
@@ -419,34 +423,25 @@ let setindex k st =
 let newdict st =
     pushnull st
 
-let mkDict slice : Map<int,Value> =
-    match slice with
-        | Null ->
-            Map []
-        | SliceDict d ->
-            d
-        | _ ->
-            raise (TVMError "mkDict: dict has to be presented as sliceDict")
-
-// i D n – x -1 or 0
+// i D n -> x -1 or 0
 let dictuget st =
+    printfn "%A" st.stack
     let (n :: sD :: i :: stack') = st.stack
-    let D = mkDict sD
+    failIfNot (Value.isSliceDict sD) "DICTUGET: sliceDict value expected"
+    let D = Value.unboxDict sD
     failIfNot (Value.isInt i) "DICTUGET: Integer expected"
     // UFits n i check has to be done here as well
-    let v' =
-        match D.TryFind (Value.unboxInt i) with
-            | None ->
-                raise (TVMError "Key not found")
-            | Some v ->
-                v // this is a slice
-    st.stack <- v' :: stack'
+    match D.TryFind (Value.unboxInt i) with
+        | None ->
+            st.stack <- (Int 0) :: stack'
+        | Some v ->
+            st.stack <- (Int -1) :: v :: stack'
     st
 
 // b i D n --> D'
 let dictusetb st =
     let (n :: sD :: i :: b :: stack') = st.stack
-    let D = mkDict sD
+    let D = Value.unboxDict sD
     failIfNot (Value.isInt i) "DICTUSET: Integer expected"
     failIfNot (Value.isBuilder b) "DICTUSET: Builder expected"
     let D' = D.Add (Value.unboxInt i, Slice (Value.unboxBuilder b))
@@ -1055,11 +1050,15 @@ let testDict0 () =
 [<Test>]
 let testDict1 () =
     let st = initialState [DictUGet] // k D' i -> v
-    st.stack <- [Int 255;
+    st.stack <- [Int 128;
                  SliceDict (Map [(200, Slice [Int 10])]); Int 200]
     try
         let finalSt = List.last (runVM st false)
-        Assert.AreEqual (Some (Slice [Int 10]), getResult finalSt)
+        let ((Int 0) :: (Int -1) :: s1 :: t) = finalSt.stack
+        printfn "%A" finalSt.stack
+        Assert.AreEqual (
+            (Int 0) :: (Int -1) :: [Slice [Int 10]],
+            List.take 3 finalSt.stack)
     with
         | TVMError s ->
             Assert.Fail(s)
@@ -1289,19 +1288,19 @@ let testRollRev4 () =
 
 // a0 : a1 : a2 : ... an : sn
 // -->
-// a1 : a2 : .. an :  an : sn
-let rec rearrange k n st =
-    failIf (k > n) "rearrange: (k, n): k should be <= n"
+// a1' : a2' : .. an' :  an : sn
+// ai' = map ai
+// k is just a recursive counter
+let rec rearrange n map st =
     failIf (st.stack.Length <= n) "rearrange: stack underflow"
-    // very basic mapping = id
-    let map_elem k st = push k st
     let rec rearrange2 k n st =
-        if k = 0 then st
-        else rearrange2 (k-1) n (drop (xchg (k+1) (map_elem k st)))
-    let drop_a0 = drop st
+        if k > n then st
+        else
+            rearrange2 (k + 1) n (drop (xchg (k + 1) (map k st)))
+    let drop_a0 = drop st // remove the a0 element
     if n > 0 then
-        let dup_an = rollrev (n-1) (push (n-1) drop_a0)
-        rearrange2 (k-1) (n-1) dup_an // remove the a0 element
+        let dup_an = rollrev (n-1) (push (n-1) drop_a0) // dup an element
+        rearrange2 0 (n-1) dup_an
     else
         drop_a0
 
@@ -1310,7 +1309,7 @@ let testRearrange0 () =
     let st = initialState []
     st.put_stack ([Int 1; Int 2; Int 3])
     try
-        let finalSt = rearrange 2 2 st
+        let finalSt = rearrange 2 (fun k -> push k) st
         printfn "%A" finalSt.stack
         Assert.AreEqual([Int 2; Int 3; Int 3], finalSt.stack)
     with
@@ -1324,7 +1323,7 @@ let testRearrange1 () =
     // a1 : a2 : .. an :  an : sn
     let st = initialState []
     try
-        let finalSt = rearrange 0 0 st
+        let finalSt = rearrange 0 (fun k -> push k) st
         Assert.Fail("rearrange should work only with non-empty stack")
     with
         | TVMError s ->
@@ -1338,7 +1337,7 @@ let testRearrange2 () =
     let st = initialState []
     st.put_stack ([Int 1; Int 2])
     try
-        let finalSt = rearrange 1 1 st
+        let finalSt = rearrange 1 (fun k -> push k) st
         printfn "%A" finalSt.stack
         Assert.AreEqual([Int 2; Int 2], finalSt.stack)
     with
@@ -1353,7 +1352,7 @@ let testRearrange3 () =
     let st = initialState []
     st.put_stack ([Int 1; Int 2; Int 3; Int 4])
     try
-        let finalSt = rearrange 2 2 st
+        let finalSt = rearrange 2 (fun k -> push k) st
         printfn "%A" finalSt.stack
         Assert.AreEqual([Int 2; Int 3; Int 3; Int 4], finalSt.stack)
     with
@@ -1368,7 +1367,7 @@ let testRearrange4 () =
     let st = initialState []
     st.put_stack ([Int 1])
     try
-        let finalSt = rearrange 1 1 st
+        let finalSt = rearrange 1 (fun k -> push k) st
         printfn "%A" finalSt.stack
         Assert.Fail("stack underflow shall happen")
     with
@@ -1380,7 +1379,7 @@ let testRearrange5 () =
     let st = initialState []
     st.put_stack ([Int 1])
     try
-        let finalSt = rearrange 0 0 st
+        let finalSt = rearrange 0 (fun k -> push k) st
         printfn "%A" finalSt.stack
         Assert.AreEqual([], finalSt.stack)
     with
@@ -1392,9 +1391,30 @@ let testRearrange6 () =
     let st = initialState []
     st.put_stack ([Int 1; Int 2; Int 3])
     try
-        let finalSt = rearrange 0 0 st
+        let finalSt = rearrange 0 (fun k -> push k) st
         printfn "%A" finalSt.stack
         Assert.AreEqual([Int 2; Int 3], finalSt.stack)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testRearrangeIntegral0 () =
+    let map_elem k st =
+        let D s = index 0 (pushctr 7 s)
+        let K s = push k s
+        index 2 (throwifnot 5 (dictuget (pushint 128 (D (K st)))))
+    let st = initialState []
+    // a0 : ... : an : s h[a0: NGlobal n c, a1: NAp a0 a1', a2: NAp a1 a2', ...]
+    let nglobal n c = Tup ([Int 0; Int n; Cont c])
+    let nap a0 a1' = Tup ([Int 1; Int a0; Int a1'])
+    let heap = Value.boxDict (Map [(0, nglobal 1 emptyContinuation); (1, nap 0 3000)])
+    st.cr.c7 <- Tup [heap]
+    st.put_stack [Int 0; Int 1]
+    try
+        let finalSt = rearrange 1 map_elem st
+        printfn "%A" finalSt.stack
+        Assert.AreEqual([Int 3000; Int 1], finalSt.stack)
     with
         | TVMError s ->
             Assert.Fail(s)
