@@ -1643,3 +1643,20 @@ let testArrayGetPut1 () =
     with
         | TVMError s ->
             Assert.Fail(s)
+
+[<Test>]
+[<Ignore("Array is calculated twice; fix this please")>]
+let testArrayGetPut2 () =
+    // a[1] = 600; a[2] = 700; a[3] = 800;
+    let a1 = arrayPut arrayNew [PushInt 1] [PushInt 600]
+    let a2 = arrayPut a1 [PushInt 2] [PushInt 700]
+    let a3 = arrayPut a2 [PushInt 3] [PushInt 800]
+    let a4 = arrayGet a3 [PushInt 3]
+    let a5 = arrayPut a3 [PushInt 2] a4
+    let st = initialState (arrayGet a5 [PushInt 2])
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual(Some (Int 800), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
