@@ -379,10 +379,13 @@ let dumpstk st =
 let nop st =
     st
 
-let tuple n st =
+let tuple n (is_stack:bool) st =
     let stk = st.stack
     failIf (n < 0) "TUPLE: incorrect argument"
-    failIf (n > 15) "TUPLE: incorrect argument"
+    if (not is_stack) then
+        failIf (n > 15) "TUPLE: incorrect argument"
+    else
+        failIf (n > 254) "TUPLE: range check error"
     failIf (List.length stk < n) "TUPLE: Stack underflow"
     let args = List.rev (List.take n stk)
     let t = Tup args
@@ -397,7 +400,7 @@ let untuple n st =
     st
 
 let nil st =
-    tuple 0 st
+    tuple 0 false st
 
 // TPUSH (t x – t')
 let tpush st =
@@ -542,29 +545,39 @@ let divmod st =
 
 // REPEAT (n c – ), executes continuation c n times, if integer n
 // is non-negative
-let repeat st =
-   let (c :: n :: stack') = st.stack
-   failIfNot (Value.isInt n) "REPEAT: integer expected"
-   failIfNot (Value.unboxInt n < 0) "REPEAT: range check error"
-   // failIfNot (Value.unboxInt n >= (int64(2) <<< 31)) "REPEAT: range check error"
-   st.put_stack (c :: stack')
-   let rec repeat_next i st =
-       if i > 0 then
-           repeat_next (i - 1) (execute st)
-       else
-           st
-   repeat_next (Value.unboxInt n) st
+let rec repeat st =
+   let (c :: (Int n) :: stack') = st.stack
+   failIf (n < 0) "REPEAT: range check error"
+   // failIfNot (n >= (int64(2) <<< 31)) "REPEAT: range check error"
 
+   if n > 0 then
+       st.put_stack stack'
+       let st' = call (Value.unboxCont c) st
+       st'.put_stack (c :: Int (n - 1) :: st'.stack)
+       repeat st'
+   else
+       st.put_stack stack'
+       st
+
+// SETINDEXVAR (t x k – t')
 let setindexvar st =
-    failwith "not implemented"
+    let (Int k :: x :: Tup t :: stack') = st.stack
+    st.put_stack (Tup (List.updateAt k x t) :: stack')
+    st
 
+// INDEXVAR (t k – x)
 let indexvar st =
-    failwith "not implemented"
+    let ((Int k) :: (Tup l) :: stack') = st.stack
+    failIf (k < 0) "range check error"
+    failIf (k > 254) "range check error"
+    failIf (k >= l.Length) "range check error"
+    st.put_stack (l.Item k :: stack')
+    st
 
 let tuplevar st =
     let ((Int n) :: stack') = st.stack
     st.put_stack stack'
-    tuple n st
+    tuple n true st
 
 let dispatch (i:Instruction) =
     match i with
@@ -613,7 +626,7 @@ let dispatch (i:Instruction) =
         | Nop ->
             nop
         | Tuple n ->
-            tuple n
+            tuple n false
         | TupleVar ->
             tuplevar
         | Nil ->
@@ -650,6 +663,8 @@ let dispatch (i:Instruction) =
             ifexec
         | IfJmp ->
             ifjmp
+        | Repeat ->
+            repeat
         | SetNumArgs n ->
             setnumargs n
         | RollRev n ->
@@ -657,7 +672,8 @@ let dispatch (i:Instruction) =
         | DivMod ->
             divmod
         | _ ->
-            raise (TVMError "unsupported instruction")
+            let msg = sprintf "unsupported instruction: %A" i
+            raise (TVMError msg)
 
 let step (st:TVMState) : TVMState =
     match (st.code) with
@@ -1465,35 +1481,39 @@ let testRearrangeIntegral0 () =
         | TVMError s ->
             Assert.Fail(s)
 
-// SETINDEXVAR (t x k – t 0 )
-let setIndexVar t x k =
-    k @ x @ t @ [SetIndexVar]
+let setIndexVar t k v =
+// SETINDEXVAR (t v k – t')
+    t @ v @ k @ [SetIndexVar]
 
-// INDEXVAR (t k – x)
 let indexVar t k =
-    k @ t @ [IndexVar]
+// INDEXVAR (t k – x)
+    t @ k @ [IndexVar]
 
 let div x y =
     x @ y @ [DivMod; Drop]
 let mod' x y =
     x @ y @ [DivMod; Swap; Drop]
 
-// gas usage: 8200
+let bucketSize = 5;
 let arrayNew =
-    [PushInt 255; PushCont [Nil]; Repeat; PushInt 255; TupleVar]
+    [PushInt bucketSize; PushCont [PushInt 0]; Repeat;
+     PushInt bucketSize; TupleVar; PushInt (bucketSize-1);
+     PushCont [Dup]; Repeat; PushInt bucketSize; TupleVar]
 
-// put (k:index) (v:value) (a:array)
-let arrayPut k v a =
-    let i = div k [PushInt 255]
-    let j = mod' k [PushInt 255]
+// put (a:array) (k:index) (v:value) -> array
+let arrayPut a k v =
+    let i = div k [PushInt bucketSize]
+    let j = mod' k [PushInt bucketSize]
     let t1 = indexVar a i
-    let t2 = setIndexVar j v t1
-    setIndexVar i t2 a
+    let t2 = setIndexVar t1 j v
+    setIndexVar a i t2
 
-// get (i:index) (a:array)
-let arrayGet k a =
-    let i = div k [PushInt 255]
-    let j = mod' k [PushInt 255]
+// get (a:array) (k:index) -> element
+let arrayGet a k =
+    // calculuate the corresponding bucket number
+    // get the element from the bucket
+    let i = div k [PushInt bucketSize]
+    let j = mod' k [PushInt bucketSize]
     let t1 = indexVar a i
     indexVar t1 j
 
@@ -1534,6 +1554,92 @@ let testDivmod0 () =
         let finalSt = List.last (runVM st false)
         printfn "%A" finalSt.stack
         Assert.AreEqual([Int 1; Int 3], List.tail finalSt.stack)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testIndexvar0 () =
+    let st = initialState [PushInt 200; PushInt 100; PushInt 2;
+                           TupleVar; PushInt 1; IndexVar]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual(Some (Int 100), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testIndexvar1 () =
+    let st = initialState [PushInt 200; PushInt 100; PushInt 2;
+                           TupleVar; PushInt 3; IndexVar]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.Fail("range error")
+    with
+        | TVMError s ->
+            Assert.Pass()
+
+[<Test>]
+let testSetindexvar0 () =
+    let st = initialState [PushInt 200; PushInt 100; PushInt 2;
+                           TupleVar; PushInt 300; PushInt 1;
+                           SetIndexVar]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual(Some (Tup [Int 200; Int 300]), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testArrayGetPut () =
+    let st = initialState (arrayGet arrayNew [PushInt 1])
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual(Some (Int 0), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testRepeat0 () =
+    let st = initialState [PushInt 0; PushCont [PushInt 200]; Repeat]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual(None, getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testRepeat1 () =
+    let st = initialState [PushInt 1; PushCont [PushInt 100]; Repeat]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual(Some (Int 100), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testRepeat2 () =
+    let st = initialState [PushInt 3; PushCont [Nil]; Repeat]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual(Some (Tup []), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testArrayGetPut1 () =
+    let a1 = arrayPut arrayNew [PushInt 1] [PushInt 600]
+    let a2 = arrayGet a1 [PushInt 1]
+    let st = initialState a2
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual(Some (Int 600), getResult finalSt)
     with
         | TVMError s ->
             Assert.Fail(s)
