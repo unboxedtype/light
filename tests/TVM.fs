@@ -25,17 +25,21 @@ type Instruction =
     | Inc
     | Add
     | Sub
+    | DivMod
     | Execute
     | CallDict of n:int
     | JumpX
     | DumpStk
     | Nop
     | Tuple of n:int
+    | TupleVar
     | Nil
     | PushNull
     | Index of k:int
+    | IndexVar
     | Untuple of n:int
     | SetIndex of k:int
+    | SetIndexVar
     | TPush
     | Newc
     | Endc
@@ -51,6 +55,7 @@ type Instruction =
     | IfJmp
     | SetNumArgs of n:int
     | RollRev of n:int
+    | Repeat
 and Code =
     Instruction list
 
@@ -528,6 +533,39 @@ let rollrev n (st:TVMState) =
 let drop st =
     pop 0 st
 
+let divmod st =
+    let (Int y :: Int x :: stack') = st.stack
+    let q = x / y
+    let r = x % y
+    st.put_stack (Int r :: Int q :: stack')
+    st
+
+// REPEAT (n c – ), executes continuation c n times, if integer n
+// is non-negative
+let repeat st =
+   let (c :: n :: stack') = st.stack
+   failIfNot (Value.isInt n) "REPEAT: integer expected"
+   failIfNot (Value.unboxInt n < 0) "REPEAT: range check error"
+   // failIfNot (Value.unboxInt n >= (int64(2) <<< 31)) "REPEAT: range check error"
+   st.put_stack (c :: stack')
+   let rec repeat_next i st =
+       if i > 0 then
+           repeat_next (i - 1) (execute st)
+       else
+           st
+   repeat_next (Value.unboxInt n) st
+
+let setindexvar st =
+    failwith "not implemented"
+
+let indexvar st =
+    failwith "not implemented"
+
+let tuplevar st =
+    let ((Int n) :: stack') = st.stack
+    st.put_stack stack'
+    tuple n st
+
 let dispatch (i:Instruction) =
     match i with
         | PushNull ->
@@ -576,14 +614,20 @@ let dispatch (i:Instruction) =
             nop
         | Tuple n ->
             tuple n
+        | TupleVar ->
+            tuplevar
         | Nil ->
             nil
         | Index k ->
             index k
+        | IndexVar ->
+            indexvar
         | Untuple n ->
             untuple n
         | SetIndex k ->
             setindex k
+        | SetIndexVar ->
+            setindexvar
         | TPush ->
             tpush
         | Newc ->
@@ -610,6 +654,8 @@ let dispatch (i:Instruction) =
             setnumargs n
         | RollRev n ->
             rollrev n
+        | DivMod ->
+            divmod
         | _ ->
             raise (TVMError "unsupported instruction")
 
@@ -1415,6 +1461,79 @@ let testRearrangeIntegral0 () =
         let finalSt = rearrange 1 map_elem st
         printfn "%A" finalSt.stack
         Assert.AreEqual([Int 3000; Int 1], finalSt.stack)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+// SETINDEXVAR (t x k – t 0 )
+let setIndexVar t x k =
+    k @ x @ t @ [SetIndexVar]
+
+// INDEXVAR (t k – x)
+let indexVar t k =
+    k @ t @ [IndexVar]
+
+let div x y =
+    x @ y @ [DivMod; Drop]
+let mod' x y =
+    x @ y @ [DivMod; Swap; Drop]
+
+// gas usage: 8200
+let arrayNew =
+    [PushInt 255; PushCont [Nil]; Repeat; PushInt 255; TupleVar]
+
+// put (k:index) (v:value) (a:array)
+let arrayPut k v a =
+    let i = div k [PushInt 255]
+    let j = mod' k [PushInt 255]
+    let t1 = indexVar a i
+    let t2 = setIndexVar j v t1
+    setIndexVar i t2 a
+
+// get (i:index) (a:array)
+let arrayGet k a =
+    let i = div k [PushInt 255]
+    let j = mod' k [PushInt 255]
+    let t1 = indexVar a i
+    indexVar t1 j
+
+[<Test>]
+let testTupleVar0 () =
+    let st = initialState [PushInt 0; TupleVar]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual(Some (Tup []), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testTupleVar1 () =
+    let st = initialState [PushInt 100; PushInt 1; TupleVar]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual(Some (Tup [Int 100]), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testTupleVar2 () =
+    let st = initialState [PushInt 200; PushInt 100; PushInt 2; TupleVar]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual(Some (Tup [Int 200; Int 100]), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testDivmod0 () =
+    let st = initialState [PushInt 10; PushInt 3; DivMod]
+    try
+        let finalSt = List.last (runVM st false)
+        printfn "%A" finalSt.stack
+        Assert.AreEqual([Int 1; Int 3], List.tail finalSt.stack)
     with
         | TVMError s ->
             Assert.Fail(s)

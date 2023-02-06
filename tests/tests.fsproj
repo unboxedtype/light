@@ -16,6 +16,7 @@
     <Compile Include="AST2FiftTests.fs" />
     <Compile Include="GMachine.fs" />
     <Compile Include="TVM.fs" />
+    <Compile Include="GMToTVMCompiler.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 
