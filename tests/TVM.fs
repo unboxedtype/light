@@ -56,6 +56,10 @@ type Instruction =
     | SetNumArgs of n:int
     | RollRev of n:int
     | Repeat
+    | Depth
+    | Dec
+    | Pick
+    | XchgX
 and Code =
     Instruction list
 
@@ -579,6 +583,25 @@ let tuplevar st =
     st.put_stack stack'
     tuple n true st
 
+let depth (st:TVMState) =
+    st.put_stack (Int (List.length st.stack) :: st.stack)
+    st
+
+let dec st =
+    let (Int n :: stack') = st.stack
+    st.put_stack (Int (n-1) :: stack')
+    st
+
+let pick st =
+    let (Int n :: stack') = st.stack
+    st.put_stack (stack'.Item n :: stack')
+    st
+
+let xchgx st =
+    let (Int n :: stack') = st.stack
+    st.put_stack stack'
+    xchg n st
+
 let dispatch (i:Instruction) =
     match i with
         | PushNull ->
@@ -671,6 +694,14 @@ let dispatch (i:Instruction) =
             rollrev n
         | DivMod ->
             divmod
+        | Depth ->
+            depth
+        | Dec ->
+            dec
+        | Pick ->
+            pick
+        | XchgX ->
+            xchgx
         | _ ->
             let msg = sprintf "unsupported instruction: %A" i
             raise (TVMError msg)
@@ -1177,6 +1208,7 @@ let rec instrToFift (i:Instruction) : string =
         | Dup -> "DUP"
         | DictUGet -> "DICTUGET"
         | Inc -> "INC"
+        | Dec -> "DEC"
         | Newc -> "NEWC"
         | Drop -> "DROP"
         | DictUSetB -> "DICTUSETB"
@@ -1192,6 +1224,15 @@ let rec instrToFift (i:Instruction) : string =
         | SetIndex n -> string(n) + " SETINDEX"
         | PushCont c ->
             "<{ " + String.concat "\n" (List.map instrToFift c) + " }> PUSHCONT"
+        | Repeat -> "REPEAT"
+        | Pick -> "PICK"
+        | TupleVar -> "TUPLEVAR"
+        | Depth -> "DEPTH"
+        | XchgX -> "XCHGX"
+        | DivMod -> "DIVMOD"
+        | IndexVar -> "INDEXVAR"
+        | SetIndexVar -> "SETINDEXVAR"
+        | DumpStk -> "DUMPSTK"
         | _ ->
             raise (TVMError (sprintf "unsupported instruction: %A" i))
 
@@ -1498,7 +1539,7 @@ let bucketSize = 5;
 let arrayNew =
     [PushInt bucketSize; PushCont [PushInt 0]; Repeat;
      PushInt bucketSize; TupleVar; PushInt (bucketSize-1);
-     PushCont [Dup]; Repeat; PushInt bucketSize; TupleVar]
+     PushCont [Dup]; Repeat; PushInt bucketSize; TupleVar; Dup]
 
 // put (a:array) (k:index) (v:value) -> array
 let arrayPut a k v =
@@ -1645,18 +1686,126 @@ let testArrayGetPut1 () =
             Assert.Fail(s)
 
 [<Test>]
-[<Ignore("Array is calculated twice; fix this please")>]
-let testArrayGetPut2 () =
-    // a[1] = 600; a[2] = 700; a[3] = 800;
-    let a1 = arrayPut arrayNew [PushInt 1] [PushInt 600]
-    let a2 = arrayPut a1 [PushInt 2] [PushInt 700]
-    let a3 = arrayPut a2 [PushInt 3] [PushInt 800]
-    let a4 = arrayGet a3 [PushInt 3]
-    let a5 = arrayPut a3 [PushInt 2] a4
-    let st = initialState (arrayGet a5 [PushInt 2])
+let testDepth0 () =
+    let st = initialState [Depth]
     try
         let finalSt = List.last (runVM st false)
-        Assert.AreEqual(Some (Int 800), getResult finalSt)
+        Assert.AreEqual(Some (Int 0), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testDepth1 () =
+    let st = initialState [PushInt 100; Depth]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual(Some (Int 1), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testDepth2 () =
+    let st = initialState [PushInt 100; PushInt 200; Drop; Drop; Depth]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual(Some (Int 0), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testDec0 () =
+    let st = initialState [PushInt 0; Dec]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual(Some (Int -1), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testDec1 () =
+    let st = initialState [PushCont []; Dec]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.Fail("Dec expects integer")
+    with
+        | _ -> Assert.Pass()
+
+[<Test>]
+let testPick0 () =
+    let st = initialState [PushInt 0; PushInt 1; PushInt 2; PushInt 2; Pick]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual(Some (Int 0), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testPick1 () =
+    let st = initialState [PushInt 0; PushInt 1; PushInt 2; PushInt 3; Pick]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.Fail("Out of bound")
+    with
+        | _ -> Assert.Pass()
+
+[<Test>]
+let testXchgx0 () =
+    let st = initialState [PushInt 0; PushInt 1; PushInt 2;
+                           PushInt 1; XchgX]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual(Some (Int 1), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testArrayGetPut2 () =
+    // x ... t'
+    let saveArray t = t @ [Depth; Dec; XchgX; Drop]
+    // x ... -> x ... x
+    let loadArray = [Depth; Dec; Pick]
+    // a[1] = 600; a[2] = 700; a[3] = 800;
+    let a1 = arrayPut loadArray [PushInt 1] [PushInt 600]
+    let a2 = arrayPut a1 [PushInt 2] [PushInt 700]
+    let a3 = arrayGet loadArray [PushInt 1]
+    let st = initialState ( (saveArray arrayNew) @
+                            (saveArray a2) @
+                            arrayGet loadArray [PushInt 1] @ [DumpStk]
+                            )
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual(Some (Int 600), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testArrayGetPut3 () =
+    // x ... t'
+    let saveArray t = t @ [Depth; Dec; XchgX; Drop]
+    // x ... -> x ... x
+    let loadArray = [Depth; Dec; Pick]
+    // a[1] = 600; a[2] = 700; a[3] = 800;
+    let a1 = arrayPut loadArray [PushInt 1] [PushInt 600]
+    let a2 = arrayPut a1 [PushInt 2] [PushInt 700]
+    let a3 = arrayPut a2 [PushInt 3] [PushInt 800]
+    let a4 = arrayGet loadArray [PushInt 2] // 700
+    let a5 = arrayPut loadArray [PushInt 3] a4 // a[3] = 700
+    let st = initialState ( (saveArray arrayNew) @
+                            (saveArray a3) @
+                            saveArray a5 @
+                            arrayGet loadArray [PushInt 3]
+                            )
+    try
+        dumpFiftScript "testArrayGetPut3.fif" (outputFift st)
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual(Some (Int 700), getResult finalSt)
     with
         | TVMError s ->
             Assert.Fail(s)
