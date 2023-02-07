@@ -14,6 +14,7 @@ type Instruction =
     | Dup               // Push 0 alias
     | Pop of n:int
     | Drop              // Pop 0 alias
+    | BlkDrop of n:int
     | Xchg of i:int     // Xchg s0, s(i)
     | Swap              // Xchg 0 alias
     | Greater
@@ -540,6 +541,10 @@ let rollrev n (st:TVMState) =
 let drop st =
     pop 0 st
 
+// BLKDROP is a DROP executed n times in a row
+let blkdrop n st =
+    List.fold (fun st _ -> drop st) st [1..n]
+
 let divmod st =
     let (Int y :: Int x :: stack') = st.stack
     let q = x / y
@@ -702,6 +707,8 @@ let dispatch (i:Instruction) =
             pick
         | XchgX ->
             xchgx
+        | BlkDrop n ->
+            blkdrop n
         | _ ->
             let msg = sprintf "unsupported instruction: %A" i
             raise (TVMError msg)
@@ -1806,6 +1813,16 @@ let testArrayGetPut3 () =
         dumpFiftScript "testArrayGetPut3.fif" (outputFift st)
         let finalSt = List.last (runVM st false)
         Assert.AreEqual(Some (Int 700), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testBlkDrop0 () =
+    let st = initialState [PushInt 0; PushInt 1; PushInt 2; PushInt 3; BlkDrop 2]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual(Some (Int 1), getResult finalSt)
     with
         | TVMError s ->
             Assert.Fail(s)
