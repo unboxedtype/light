@@ -44,7 +44,7 @@ type Instruction =
     | TPush
     | Newc
     | Endc
-    | StU of cc:int
+    | Stu of cc:int
     | StRef
     | NewDict    // ... -> ... D
     | DictUGet   // i D n -> x (-1),  or 0
@@ -119,6 +119,11 @@ and Stack =
 
 let TVM_True = (Int -1)
 let TVM_False = (Int 0)
+
+type C7i =
+    | C7_Heap = 0
+    | C7_HeapCounter = 1
+    | C7_Globals = 2
 
 let isOverflow n =
     // skip the test for now
@@ -675,7 +680,7 @@ let dispatch (i:Instruction) =
             newc
         | Endc ->
             endc
-        | StU cc ->
+        | Stu cc ->
             stu cc
         | NewDict ->
             newdict
@@ -1106,7 +1111,7 @@ let testEndC () =
 
 [<Test>]
 let testStu0 () =
-    let st = initialState [PushInt 100; Newc; StU 255]
+    let st = initialState [PushInt 100; Newc; Stu 255]
     try
         let finalSt = List.last (runVM st false)
         Assert.AreEqual (Some (Builder [Int 100]), getResult finalSt)
@@ -1117,7 +1122,7 @@ let testStu0 () =
 [<Test>]
 let testStu1 () =
     let st = initialState [PushInt 200; PushInt 100; Newc;
-                           StU 255; StU 255]
+                           Stu 255; Stu 255]
     try
         let finalSt = List.last (runVM st false)
         Assert.AreEqual (
@@ -1132,7 +1137,7 @@ let testStu1 () =
 let testDict0 () =
     let st = initialState [PushInt 10; // 10
                            Newc; // 10 b
-                           StU 128; // b' (value)
+                           Stu 128; // b' (value)
                            PushInt 200; // b' 200(key)
                            NewDict; // b' 200 D
                            PushInt 10; // b' 200 D 10
@@ -1219,7 +1224,7 @@ let rec instrToFift (i:Instruction) : string =
         | Newc -> "NEWC"
         | Drop -> "DROP"
         | DictUSetB -> "DICTUSETB"
-        | StU n -> string(n) + " STU"
+        | Stu n -> string(n) + " STU"
         | PushCtr n -> "c" + string(n) + " PUSHCTR"
         | PopCtr n -> "c" + string(n) + " POPCTR"
         | PushInt n -> string(n) + " INT"
@@ -1287,7 +1292,7 @@ let testCalldict1 () =
 
     // intput = n , output = builder (contains n as uint)
     let (intToBuilder, intToBuilderCode) =
-        (5, [Newc; StU 128])
+        (5, [Newc; Stu 128])
 
     // the structure of C7 is as follows:
     // C7[0] = heap (dict)

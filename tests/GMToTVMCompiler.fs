@@ -7,55 +7,78 @@ open NUnit.Framework
 open System
 open System.Collections.Generic
 
+open type TVM.Instruction
+open type TVM.Value
+open type TVM.C7i
+
+// inject value into the builder;
+// used to store values in dictionaries
+let valueBld v =
+    [Newc; PushInt v; Stu 128]
+
+// create emtpy dict; put it on the stack
+let newDict =
+    [NewDict]
+
+// D[k] := val
+let dictSet k valBld D =
+    valBld @ k @ D @ [PushInt 128; DictUSetB]
+
+// D[k]
+let dictGet k D =
+    k @ D @ [PushInt 128; DictUGet]
+
 // put the n-th element of the stack on top
 // of the stack
 let mapPush (n:int) : TVM.Code =
-    [TVM.Push n]
+    [Push n]
 
 // remove n items from the stack
 let mapPop (n:int) : TVM.Code =
-    [TVM.BlkDrop n]
+    [BlkDrop n]
+
+let mapSlide (n:int) : TVM.Code =
+    [RollRev n; BlkDrop n]
 
 let mapPushglobal (n:int) : TVM.Code =
-    []
+    [PushInt 128;
+     PushCtr 7;
+     Index ( int C7_Globals );  // 128 D
+     PushInt n;
+     DictUGet;        // x -1 | 0
+     ThrowIfNot 10]   // x
 
-let mapPushint (n:int) : TVM.Code =
-    []
-
-let mapMkap : TVM.Code =
+let mapMkap () : TVM.Code =
     []
 
 let mapUpdate (n:int) : TVM.Code =
     []
 
-let mapSlide (n:int) : TVM.Code =
-    []
-
 let mapAlloc (n:int) : TVM.Code =
     []
 
-let mapUnwind : TVM.Code =
+let mapUnwind () : TVM.Code =
     []
 
-let mapEval : TVM.Code =
+let mapEval () : TVM.Code =
     []
 
-let mapAdd : TVM.Code =
+let mapAdd () : TVM.Code =
     []
 
-let mapSub : TVM.Code =
+let mapSub () : TVM.Code =
     []
 
-let mapMul : TVM.Code =
+let mapMul () : TVM.Code =
     []
 
-let mapDiv : TVM.Code =
+let mapDiv () : TVM.Code =
     []
 
-let mapEq : TVM.Code =
+let mapEq () : TVM.Code =
     []
 
-let mapGt : TVM.Code =
+let mapGt () : TVM.Code =
     []
 
 let mapCond t f : TVM.Code =
@@ -72,7 +95,28 @@ let mapSplit (n:int) : TVM.Code =
 
 type GlobalsDict = Map<int,TVM.Value>
 
-let compileInstr (i:GMachine.Instruction): TVM.Code =
+let rec compileTuple t : TVM.Code =
+    match t with
+        | Tup l ->
+            List.rev l
+            |> List.map compileElem
+            |> List.concat
+            |> fun l -> l @ [Tuple l.Length]
+            | _ -> failwith "not a tuple"
+and compileDict (d:Map<int,TVM.Value>) : TVM.Code =
+  (*  let kv = Map.toList d
+    List.fold (fun dict (k,v) ->
+               dictSet [PushInt (TVM.Value.unboxInt k)] (valueBld v) dict) newDict kv *)
+    failwith "not implemented"
+and compileElem e : TVM.Code =
+    match e with
+        | Int n -> [PushInt n]
+        | Tup l -> compileTuple e
+        | Cont c -> [PushCont c.code]
+        | Null -> [PushNull]
+        | SliceDict d -> compileDict d
+        | _ -> failwith "not implemented"
+and compileInstr (i:GMachine.Instruction): TVM.Code =
     // some GMachine.Instruction has to be mapped into code fragments
     // of TVM
     match i with
@@ -85,7 +129,7 @@ let compileInstr (i:GMachine.Instruction): TVM.Code =
         | GMachine.Pushint n ->
             mapPushint n
         | GMachine.Mkap ->
-            mapMkap
+            mapMkap ()
         | GMachine.Update n ->
             mapUpdate n
         | GMachine.Slide n ->
@@ -93,21 +137,21 @@ let compileInstr (i:GMachine.Instruction): TVM.Code =
         | GMachine.Alloc n ->
             mapAlloc n
         | GMachine.Unwind ->
-            mapUnwind
+            mapUnwind ()
         | GMachine.Eval ->
-            mapEval
+            mapEval ()
         | GMachine.Add ->
-            mapAdd
+            mapAdd ()
         | GMachine.Sub ->
-            mapSub
+            mapSub ()
         | GMachine.Mul ->
-            mapMul
+            mapMul ()
         | GMachine.Div ->
-            mapDiv
+            mapDiv ()
         | GMachine.Eq ->
-            mapEq
+            mapEq ()
         | GMachine.Gt ->
-            mapGt
+            mapGt ()
         | GMachine.Cond (t,f) ->
             mapCond t f
         | GMachine.Pack (tag,n) ->
@@ -118,8 +162,46 @@ let compileInstr (i:GMachine.Instruction): TVM.Code =
             mapSplit n
         | _ ->
             failwith "unreachable"
-
-let compileCode (code:GMachine.GmCode) : TVM.Code =
+and encodeNode (n:GMachine.Node) : TVM.Value =
+    match n with
+        | GMachine.NNum v ->
+            Tup [Int 0; Int v]
+        | GMachine.NAp (f, a) ->
+            Tup [Int 1; Int f; Int a]
+        | GMachine.NGlobal (n, c) ->
+            let c' = compileCode c
+            let c'' = { TVM.Continuation.Default with code = c' }
+            Tup [Int 2; Int n; Cont c'']
+        | GMachine.NInd v ->
+            Tup [Int 3; Int v]
+        | GMachine.NConstr (n, vs) ->
+            Tup ([Int 4; Int n] @ (List.map TVM.Value.boxInt vs))
+        | _ -> // shall not be reachable
+            failwith "unreachable"
+and mapPushint (n:int) : TVM.Code =
+    let currAddress  =
+        [PushCtr 7; Index (int C7_HeapCounter)]
+    let nextAddress =
+        currAddress @ [Inc]
+    let getHeap =
+        [PushCtr 7; Index (int C7_Heap)]
+    let putHeap h =
+        getHeap @ h @ [SetIndex (int C7_Heap)]
+    let heapAlloc heap node =
+        dictSet nextAddress (valueBld n) heap
+    let getGlobals =
+        [PushCtr 7; Index (int C7_Globals)]
+    let putGlobals g =
+        getGlobals @ g @ [SetIndex (int C7_Globals)]
+    let ifThenElse cond trueBlock falseBlock =
+        cond @ [PushCont trueBlock; IfJmp] @ falseBlock
+    let node = compileTuple (encodeNode (GMachine.NNum n))
+    ifThenElse (dictGet [PushInt n] getGlobals)
+        [ (* If item is found, do nothing - the address is on the stack already *)]
+        (* otherwise allocate new heap node; update it and put the curr address
+           on the stack *)
+        (putHeap (heapAlloc getHeap node) @ currAddress)
+and compileCode (code:GMachine.GmCode) : TVM.Code =
     code
     |> List.map (fun c -> compileInstr c) // list of lists of Instructions
     |> List.concat
@@ -130,23 +212,6 @@ let compileCode (code:GMachine.GmCode) : TVM.Code =
 // sequence of integers in TVM.
 let prepareStack (stk:GMachine.GmStack): TVM.Stack =
     List.map (fun i -> TVM.Int i) stk
-
-let encodeNode (n:GMachine.Node) : TVM.Value =
-    match n with
-        | GMachine.NNum v ->
-            TVM.Tup [TVM.Int 0; TVM.Int v]
-        | GMachine.NAp (f, a) ->
-            TVM.Tup [TVM.Int 1; TVM.Int f; TVM.Int a]
-        | GMachine.NGlobal (n, c) ->
-            let c' = compileCode c
-            let c'' = TVM.Cont { TVM.Continuation.Default with code = c' }
-            TVM.Tup [TVM.Int 2; TVM.Int n; TVM.Cell [c'']]
-        | GMachine.NInd v ->
-            TVM.Tup [TVM.Int 3; TVM.Int v]
-        | GMachine.NConstr (n, vs) ->
-            TVM.Tup ([TVM.Int 4; TVM.Int n] @ (List.map TVM.Value.boxInt vs))
-        | _ -> // shall not be reachable
-            failwith "unreachable"
 
 let prepareHeap (heap:GMachine.GmHeap): TVM.Value =
     // GMachine heap is a mapping between addresses and Nodes.
@@ -208,3 +273,11 @@ let prepareHeapTest0 () =
                              TVM.Tup [TVM.Int 1; TVM.Int 1; TVM.Int 2];
                              TVM.Tup [TVM.Int 3; TVM.Int 2];
                              TVM.Tup [TVM.Int 4; TVM.Int 3; TVM.Int 1; TVM.Int 2; TVM.Int 3]], r)
+[<Test>]
+let pushIntTest0 () =
+    // (heap, globals, globals counter)
+    let initC7Tuple = Tup [ Tup []; SliceDict (Map []); Int 0]
+    let initC7Compile = compileTuple initC7Tuple @ [PopCtr 7]
+    let r = compileCode [GMachine.Pushint 10]
+    printfn "%A" (initC7Compile @ r)
+    Assert.Fail()
