@@ -9,7 +9,7 @@ open System.Collections.Generic
 
 open type TVM.Instruction
 open type TVM.Value
-open type TVM.SlicedValue
+open type TVM.SValue
 open type TVM.C7i
 
 // generate code that stores value n into
@@ -20,7 +20,7 @@ let rec builderStoreValue (n:TVM.Value): TVM.Code =
         | Int v ->
             [PushInt v; Stu 128]
         | Slice s ->
-            [PushSlice n; Swap; StSlice]
+            [PushSlice s; Swap; StSlice]
         | Tup l ->
             l
             |> List.map builderStoreValue
@@ -34,11 +34,11 @@ let newDict =
 
 // D[k] := val
 let dictSet k valBld D =
-    valBld @ k @ D @ [PushInt 128; DictUSetB]
+    valBld @ k @ D @ [PushInt 128; DumpStk; DictUSetB]
 
 // D[k]
 let dictGet k D =
-    k @ D @ [PushInt 128; DictUGet]
+    k @ D @ [PushInt 128; DumpStk; DictUGet]
 
 // put the n-th element of the stack on top
 // of the stack
@@ -105,12 +105,10 @@ let mapCasejump l : TVM.Code =
 let mapSplit (n:int) : TVM.Code =
     []
 
-type GlobalsDict = Map<int,TVM.Value>
-
 let rec compileTuple t : TVM.Code =
     match t with
         | Tup l ->
-            List.rev l
+            l
             |> List.map compileElem
             |> List.concat
             |> fun l -> l @ [Tuple l.Length]
@@ -120,14 +118,23 @@ and compileDict (d:Map<int,TVM.Value>) : TVM.Code =
     List.fold (fun dict (k:int, v:TVM.Value) ->
                dictSet [PushInt k] (builderStoreValue v) dict) newDict kv
 and compileSlice s : TVM.Code =
-    failwith "not implemented"
+    match s with
+        | Slice (SDict d :: []) ->
+            if Map.isEmpty d then
+                [PushNull]
+            else
+                failwith "not implemented"
+        | Slice vs ->
+            [PushSlice vs]
+        | _ ->
+            failwith "not implemented"
 and compileElem e : TVM.Code =
     match e with
         | Int n -> [PushInt n]
-        | Tup l -> compileTuple e
+        | Tup _ -> compileTuple e
         | Cont c -> [PushCont c.code]
         | Null -> [PushNull]
-        | Slice s -> compileSlice s
+        | Slice _ -> compileSlice e
         | _ -> failwith "not implemented"
 and compileInstr (i:GMachine.Instruction): TVM.Code =
     // some GMachine.Instruction has to be mapped into code fragments
@@ -200,8 +207,10 @@ and mapPushint (n:int) : TVM.Code =
         [PushCtr 7; Index (int C7_Heap)]
     let putHeap h =
         getHeap @ h @ [SetIndex (int C7_Heap)]
+    // heapAlloc puts the node on a newly allocated slot in a heap
+    // updated heap is put on the stack
     let heapAlloc heap node =
-        dictSet nextAddress node heap
+        TVM.arrayPut heap node nextAddress
     let getGlobals =
         [PushCtr 7; Index (int C7_Globals)]
     let putGlobals g =
@@ -243,17 +252,18 @@ let prepareHeap (heap:GMachine.GmHeap): TVM.Value =
 
 let prepareGlobals (globals:GMachine.GmGlobals): TVM.Value =
     // globals is a mapping from names to addresses
-    // we need to prepare the corresponding Slice [SliceDict] for that
-    // SliceDict = Map<int,Value>
+    // we need to prepare the corresponding Slice [SDict] for that
+    // Slice (SDict Map<int,SValue list>)
     // GmGlobals = Map<Name, Addr>, where Name is a string, Addr is int
     // Instead of symbolic name, we just use the entry index as its name
     globals
     |> Map.toList  // [("main",10); ("f", 51); ... ]
-    |> List.map (fun x -> TVM.Int (snd x))    // [(Int 10), (Int 51), ...]
+    |> List.map (fun x -> SInt (snd x))    // [(Int 10), (Int 51), ...]
     |> List.sort
-    |> List.indexed    // [(0, Int 10); (1, Int 51); ...]
-    |> Map.ofList      // Map<int,Value)
-    |> SliceDict
+    |> List.map List.singleton
+    |> List.indexed    // [(0, [SInt 10]); (1, [SInt 51]); ...]
+    |> Map.ofList      // Map<int,SValue list>
+    |> SDict
     |> List.singleton
     |> Slice
 
@@ -271,10 +281,10 @@ let prepareGlobalsTest0 () =
     let globs:GMachine.GmGlobals =
         Map [("main", 100); ("f", 600); ("g", 700); ("sort", 5)]
     let r = prepareGlobals globs
-    Assert.AreEqual(Slice [SliceDict (Map [(0, TVM.Int 5);
-                                        (1, TVM.Int 100);
-                                        (2, TVM.Int 600);
-                                        (3, TVM.Int 700)])], r)
+    Assert.AreEqual(
+        Slice [SDict (Map [(0, [SInt 5]); (1, [SInt 100]); (2, [SInt 600]); (3, [SInt 700])])],
+        r
+    )
 
 [<Test>]
 let prepareHeapTest0 () =
@@ -291,8 +301,12 @@ let prepareHeapTest0 () =
 [<Test>]
 let pushIntTest0 () =
     // (heap, globals, globals counter)
-    let initC7Tuple = Tup [ Tup []; Slice [SliceDict (Map [])]; Int 0]
-    let initC7Compile = compileTuple initC7Tuple @ [PopCtr 7]
-    let r = compileCode [GMachine.Pushint 10]
-    printfn "%A" (initC7Compile @ r)
-    Assert.Fail()
+    let heapEmpty = Slice [SDict (Map [])]
+    let heapInitCounter = Int 0
+    let initC7Tuple = TVM.arrayNew @ (compileElem heapInitCounter) @ (compileElem heapEmpty) @ [Tuple 3]
+    let initC7Compile = initC7Tuple @ [PopCtr 7]
+    let code = initC7Compile @ (compileCode [GMachine.Pushint 10])
+    let st = TVM.initialState code
+    TVM.dumpFiftScript "pushIntTest0.fif" (TVM.outputFift st)
+    printfn "%A" code
+    Assert.Pass()

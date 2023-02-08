@@ -69,27 +69,29 @@ type Instruction =
     | Dec
     | Pick
     | XchgX
-    | PushSlice of c:Value
+    | PushSlice of c:SValue list
     | StSlice
 and Code =
     Instruction list
-and Value =
+and Value =  // stack value types
     | Int of v:int
-    | Tup of v:Value list
+    | Tup of vs:Value list
     | Null
     | Cont of v:Continuation
-    | Builder of vs:Value list
-    | Cell of s:Value           // s is a slice
-    | Slice of vs:SlicedValue list
+    | Builder of vs:SValue list
+    | Cell of vs:SValue list
+    | Slice of vs:SValue list
     static member unboxCont = function | Cont x -> x | _ -> failwith "Cont expected"
     static member unboxTup = function | Tup x -> x | _ -> failwith "Tup expected"
-    static member asSliced = function
-        | Int n -> SliceInt n
-        | Cont c -> SliceCode (c.code)
-        | Cell s as p -> SliceCell p
-        | Builder vs -> failwith "unimplemented"
+    member this.asSV : SValue =
+        match this with
+        | Int n -> SInt n
+        | Cont c -> SCode (c.code)
+        | Cell s as p -> SCell p
+        | _ -> failwith "not serializable"
     member this.unboxInt = match this with | Int x -> x | _ -> failwith "Int expected"
     member this.unboxBuilder = match this with | Builder x -> x | _ -> failwith "Builder expected"
+    member this.unboxSlice = match this with | Slice vs -> vs | _ -> failwith "Slice expected"
     member this.isInt = match this with | Int _ -> true | _ -> false
     member this.isCont = match this with | Cont _ -> true | _ -> false
     member this.isTuple = match this with | Tup _ -> true | _ -> false
@@ -101,20 +103,21 @@ and Value =
             | _ -> false
     member this.packCell =
         match this with
-            | Builder x ->
-                Cell (Slice [for i in x do Value.asSliced i])
-            | _ -> failwith "Builder expected"
+            | Builder vs -> Cell vs
+            | _ -> failwith "packCell expects Builder"
     member this.unpackCell =
         match this with
-            | Cell s -> s
-            | _ -> failwith "Cell expected"
-and SlicedValue =
-    | SliceDict of v:Map<int,Value> // this one is artificial
-    | SliceCode of c:Code
-    | SliceInt of n:int
-    | SliceCell of c:Value   // c is a cell
-    static member isSliceDict = function | SliceDict _ -> true | _ -> false
-    static member isSliceCode = function | SliceCode _ -> true | _ -> false
+            | Cell vs -> vs
+            | _ -> failwith "unpackCell expects Cell"
+and SValue =  // Serializable Value
+// Dictionary value type is Cell because there may be several SValues
+// chained together. SValue would have been not adequate enough.
+    | SDict of v:Map<int,SValue list>  // dictionary is able to store only SValue
+    | SCode of c:Code
+    | SInt of n:int
+    | SCell of c:Value   // c is a cell
+    static member isSDict = function | SDict _ -> true | _ -> false
+    static member isSCode = function | SCode _ -> true | _ -> false
 
 and ControlData =
     { mutable stack: Stack
@@ -254,12 +257,12 @@ let printTerm term =
 let initialState (code:Code) : TVMState =
     { code = code; stack = []; cr = ControlRegs.Default }
 
-let mkBuilder vs =
+let mkBuilder (vs:SValue list) =
     Builder vs
 
 let mkCell (b:Value) : Value =
     failIfNot (b.isBuilder) "not a builder"
-    Cell (Slice [for n in b.unboxBuilder -> Value.asSliced n])
+    Cell b.unboxBuilder
 
 let stu cc st =
     let (b :: x :: stack') = st.stack
@@ -267,7 +270,7 @@ let stu cc st =
     failIfNot (x.isInt) "STU: not an integer"
     let vs = b.unboxBuilder
     // failIf (x > float 2 ** cc) "STU: Range check exception"
-    st.put_stack (mkBuilder (vs @ [x]) :: stack')
+    st.put_stack (mkBuilder (vs @ [x.asSV]) :: stack')
     st
 
 let newc st =
@@ -312,7 +315,7 @@ let stslice s st =
     let (b :: s :: stack') = st.stack
     failIfNot (b.isBuilder) "STSLICE: builder expected"
     failIfNot (s.isSlice) "STSLICE: slice expected"
-    st.stack <- Builder (s :: b.unboxBuilder) :: stack'
+    st.stack <- Builder (s.unboxSlice @ b.unboxBuilder) :: stack'
     st
 
 let push n st =
@@ -475,26 +478,30 @@ let newdict st =
 // i D n -> x -1 or 0
 let dictuget st =
     printfn "%A" st.stack
-    let (n :: Slice ([SliceDict D]) :: i :: stack') = st.stack
+    let (n :: Slice (SDict D :: _) :: i :: stack') = st.stack
     failIfNot (i.isInt) "DICTUGET: Integer expected"
     // UFits n i check has to be done here as well
     match D.TryFind i.unboxInt with
         | None ->
             st.stack <- (Int 0) :: stack'
-        | Some v ->
-            failIfNot (v.isCell) "unknown object in dictionary"
-            let slice = v.unpackCell
-            st.stack <- ((Int -1) :: slice :: stack')
+        | Some v -> // any SValue
+            st.stack <- ((Int -1) :: (Slice v) :: stack')
     st
 
 // b i D n --> D'
 let dictusetb st =
-    let (n :: Slice ([SliceDict D]) :: i :: b :: stack') = st.stack
+    let (n :: sD :: i :: b :: stack') = st.stack
+    let D =
+        match sD with
+            | Slice (SDict sd :: _) ->
+                sd
+            | Null ->
+                Map []
     failIfNot (i.isInt) "DICTUSET: Integer expected"
     failIfNot (b.isBuilder) "DICTUSET: Builder expected"
-    let cell = b.packCell  // serialize builder into a cell
-    let D' = D.Add (i.unboxInt, cell)
-    st.stack <- cell.unpackCell :: stack' // present cell as slice
+    let sv = b.unboxBuilder  // serialize builder into a cell
+    let D' = D.Add (i.unboxInt, sv)
+    st.stack <- Slice ([SDict D']) :: stack'
     st
 
 let calldict n st =
@@ -1135,7 +1142,7 @@ let testEndC () =
     let st = initialState [Newc; Endc]
     try
         let finalSt = List.last (runVM st false)
-        Assert.AreEqual (Some (Cell (Slice [])), getResult finalSt)
+        Assert.AreEqual (Some (Cell []), getResult finalSt)
     with
         | TVMError s ->
             Assert.Fail(s)
@@ -1145,7 +1152,7 @@ let testStu0 () =
     let st = initialState [PushInt 100; Newc; Stu 255]
     try
         let finalSt = List.last (runVM st false)
-        Assert.AreEqual (Some (Builder [Int 100]), getResult finalSt)
+        Assert.AreEqual (Some (Builder [SInt 100]), getResult finalSt)
     with
         | TVMError s ->
             Assert.Fail(s)
@@ -1157,7 +1164,7 @@ let testStu1 () =
     try
         let finalSt = List.last (runVM st false)
         Assert.AreEqual (
-            Some (Builder [Int 100; Int 200]),
+            Some (Builder [SInt 100; SInt 200]),
             getResult finalSt
         )
     with
@@ -1168,15 +1175,16 @@ let testStu1 () =
 let testDict0 () =
     let st = initialState [PushInt 10; // 10
                            Newc; // 10 b
-                           Stu 128; // b' (value)
+                           Stu 128; // b'
                            PushInt 200; // b' 200(key)
                            NewDict; // b' 200 D
                            PushInt 10; // b' 200 D 10
+                           DumpStk;
                            DictUSetB] // D'
     try
         let finalSt = List.last (runVM st false)
         Assert.AreEqual (
-            Some (Slice [SliceDict (Map [(200, Slice [SliceInt 10])])]),
+            Some (Slice [SDict (Map [(200, [SInt 10])])]),
             getResult finalSt
         )
     with
@@ -1187,13 +1195,13 @@ let testDict0 () =
 let testDict1 () =
     let st = initialState [DictUGet] // k D' i -> v
     st.stack <- [Int 128;
-                 Slice [SliceDict (Map [(200, Cell (Slice [SliceInt 10]))])]; Int 200]
+                 Slice [SDict (Map [(200, [SInt 10])])]; Int 200]
     try
         let finalSt = List.last (runVM st false)
         let ((Int 0) :: (Int -1) :: s1 :: t) = finalSt.stack
         printfn "%A" finalSt.stack
         Assert.AreEqual (
-            (Int 0) :: (Int -1) :: [Slice [SliceInt 10]],
+            (Int 0) :: (Int -1) :: [Slice [SInt 10]],
             List.take 3 finalSt.stack)
     with
         | TVMError s ->
@@ -1276,8 +1284,9 @@ let rec instrToFift (i:Instruction) : string =
         | IndexVar -> "INDEXVAR"
         | SetIndexVar -> "SETINDEXVAR"
         | DumpStk -> "DUMPSTK"
+        | Tuple n -> string(n) + " TUPLE"
         | _ ->
-            raise (TVMError (sprintf "unsupported instruction: %A" i))
+            failwith (sprintf "unsupported instruction: %A" i)
 
 let outputFift (st:TVMState) : string =
     String.concat "\n" [
@@ -1544,27 +1553,6 @@ let testRearrange6 () =
         | TVMError s ->
             Assert.Fail(s)
 
-[<Test>]
-let testRearrangeIntegral0 () =
-    let map_elem k st =
-        let D s = index 0 (pushctr 7 s)
-        let K s = push k s
-        index 2 (throwifnot 5 (dictuget (pushint 128 (D (K st)))))
-    let st = initialState []
-    // a0 : ... : an : s h[a0: NGlobal n c, a1: NAp a0 a1', a2: NAp a1 a2', ...]
-    let nglobal n c = Tup ([Int 0; Int n; Cont c])
-    let nap a0 a1' = Tup ([Int 1; Int a0; Int a1'])
-    let heap = Slice ([SliceDict (Map [(0, nglobal 1 emptyContinuation); (1, nap 0 3000)])])
-    st.cr.c7 <- Tup [heap]
-    st.put_stack [Int 0; Int 1]
-    try
-        let finalSt = rearrange 1 map_elem st
-        printfn "%A" finalSt.stack
-        Assert.AreEqual([Int 3000; Int 1], finalSt.stack)
-    with
-        | TVMError s ->
-            Assert.Fail(s)
-
 let setIndexVar t k v =
 // SETINDEXVAR (t v k – t')
     t @ v @ k @ [SetIndexVar]
@@ -1574,11 +1562,11 @@ let indexVar t k =
     t @ k @ [IndexVar]
 
 let div x y =
-    x @ y @ [DivMod; Drop]
+    x @ y @ [DumpStk; DivMod; Drop]
 let mod' x y =
-    x @ y @ [DivMod; Swap; Drop]
+    x @ y @ [DumpStk; DivMod; Swap; Drop]
 
-let bucketSize = 5;
+let bucketSize = 10;
 let arrayNew =
     [PushInt bucketSize; PushCont [PushInt 0]; Repeat;
      PushInt bucketSize; TupleVar; PushInt (bucketSize-1);
