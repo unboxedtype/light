@@ -9,12 +9,24 @@ open System.Collections.Generic
 
 open type TVM.Instruction
 open type TVM.Value
+open type TVM.SlicedValue
 open type TVM.C7i
 
-// inject value into the builder;
-// used to store values in dictionaries
-let valueBld v =
-    [Newc; PushInt v; Stu 128]
+// generate code that stores value n into
+// the builder. The builder is assumed to be on
+// the stack already.
+let rec builderStoreValue (n:TVM.Value): TVM.Code =
+    match n with
+        | Int v ->
+            [PushInt v; Stu 128]
+        | Slice s ->
+            [PushSlice n; Swap; StSlice]
+        | Tup l ->
+            l
+            |> List.map builderStoreValue
+            |> List.concat
+        | _ ->
+            failwith "unimplemented"
 
 // create emtpy dict; put it on the stack
 let newDict =
@@ -104,9 +116,10 @@ let rec compileTuple t : TVM.Code =
             |> fun l -> l @ [Tuple l.Length]
             | _ -> failwith "not a tuple"
 and compileDict (d:Map<int,TVM.Value>) : TVM.Code =
-  (*  let kv = Map.toList d
-    List.fold (fun dict (k,v) ->
-               dictSet [PushInt (TVM.Value.unboxInt k)] (valueBld v) dict) newDict kv *)
+    let kv = Map.toList d
+    List.fold (fun dict (k:int, v:TVM.Value) ->
+               dictSet [PushInt k] (builderStoreValue v) dict) newDict kv
+and compileSlice s : TVM.Code =
     failwith "not implemented"
 and compileElem e : TVM.Code =
     match e with
@@ -114,7 +127,7 @@ and compileElem e : TVM.Code =
         | Tup l -> compileTuple e
         | Cont c -> [PushCont c.code]
         | Null -> [PushNull]
-        | SliceDict d -> compileDict d
+        | Slice s -> compileSlice s
         | _ -> failwith "not implemented"
 and compileInstr (i:GMachine.Instruction): TVM.Code =
     // some GMachine.Instruction has to be mapped into code fragments
@@ -174,8 +187,8 @@ and encodeNode (n:GMachine.Node) : TVM.Value =
             Tup [Int 2; Int n; Cont c'']
         | GMachine.NInd v ->
             Tup [Int 3; Int v]
-        | GMachine.NConstr (n, vs) ->
-            Tup ([Int 4; Int n] @ (List.map TVM.Value.boxInt vs))
+        | GMachine.NConstr (n, (vs:int list)) ->
+            Tup ([Int 4; Int n] @ List.map (fun (x:int) -> Int x) vs)
         | _ -> // shall not be reachable
             failwith "unreachable"
 and mapPushint (n:int) : TVM.Code =
@@ -188,7 +201,7 @@ and mapPushint (n:int) : TVM.Code =
     let putHeap h =
         getHeap @ h @ [SetIndex (int C7_Heap)]
     let heapAlloc heap node =
-        dictSet nextAddress (valueBld n) heap
+        dictSet nextAddress node heap
     let getGlobals =
         [PushCtr 7; Index (int C7_Globals)]
     let putGlobals g =
@@ -198,8 +211,8 @@ and mapPushint (n:int) : TVM.Code =
     let node = compileTuple (encodeNode (GMachine.NNum n))
     ifThenElse (dictGet [PushInt n] getGlobals)
         [ (* If item is found, do nothing - the address is on the stack already *)]
-        (* otherwise allocate new heap node; update it and put the curr address
-           on the stack *)
+          (* otherwise allocate new heap node; update it and put the curr address
+             on the stack *)
         (putHeap (heapAlloc getHeap node) @ currAddress)
 and compileCode (code:GMachine.GmCode) : TVM.Code =
     code
@@ -230,7 +243,7 @@ let prepareHeap (heap:GMachine.GmHeap): TVM.Value =
 
 let prepareGlobals (globals:GMachine.GmGlobals): TVM.Value =
     // globals is a mapping from names to addresses
-    // we need to prepare the corresponding SliceDict for that
+    // we need to prepare the corresponding Slice [SliceDict] for that
     // SliceDict = Map<int,Value>
     // GmGlobals = Map<Name, Addr>, where Name is a string, Addr is int
     // Instead of symbolic name, we just use the entry index as its name
@@ -240,7 +253,9 @@ let prepareGlobals (globals:GMachine.GmGlobals): TVM.Value =
     |> List.sort
     |> List.indexed    // [(0, Int 10); (1, Int 51); ...]
     |> Map.ofList      // Map<int,Value)
-    |> TVM.SliceDict
+    |> SliceDict
+    |> List.singleton
+    |> Slice
 
 let compile (gms: GMachine.GmState) : TVM.TVMState =
     let code = compileCode (GMachine.getCode gms)
@@ -256,10 +271,10 @@ let prepareGlobalsTest0 () =
     let globs:GMachine.GmGlobals =
         Map [("main", 100); ("f", 600); ("g", 700); ("sort", 5)]
     let r = prepareGlobals globs
-    Assert.AreEqual(TVM.SliceDict (Map [(0, TVM.Int 5);
+    Assert.AreEqual(Slice [SliceDict (Map [(0, TVM.Int 5);
                                         (1, TVM.Int 100);
                                         (2, TVM.Int 600);
-                                        (3, TVM.Int 700)]), r)
+                                        (3, TVM.Int 700)])], r)
 
 [<Test>]
 let prepareHeapTest0 () =
@@ -276,7 +291,7 @@ let prepareHeapTest0 () =
 [<Test>]
 let pushIntTest0 () =
     // (heap, globals, globals counter)
-    let initC7Tuple = Tup [ Tup []; SliceDict (Map []); Int 0]
+    let initC7Tuple = Tup [ Tup []; Slice [SliceDict (Map [])]; Int 0]
     let initC7Compile = compileTuple initC7Tuple @ [PopCtr 7]
     let r = compileCode [GMachine.Pushint 10]
     printfn "%A" (initC7Compile @ r)
