@@ -34,11 +34,50 @@ let newDict =
 
 // D[k] := val
 let dictSet k valBld D =
-    valBld @ k @ D @ [PushInt 128; DumpStk; DictUSetB]
+    valBld @ k @ D @ [PushInt 128; DictUSetB]
 
 // D[k]
 let dictGet k D =
-    k @ D @ [PushInt 128; DumpStk; DictUGet]
+    k @ D @ [PushInt 128; DictUGet]
+
+let getState =
+    [PushCtr 7]
+
+let putState st =
+    st @ [PopCtr 7]
+
+let getHeapCounter =
+    getState @ [Index (int C7_HeapCounter)]
+
+let getGlobals =
+    getState @ [Index (int C7_Globals)]
+
+let getHeap =
+    getState @ [Index (int C7_Heap)]
+
+let putHeapCounter addr =
+    putState (getState @ addr @ [SetIndex (int C7_HeapCounter)])
+
+let putHeap newHeap =
+    putState (getState @ newHeap @ [SetIndex (int C7_Heap)])
+
+let putGlobals g =
+    putState (getState @ g @ [SetIndex (int C7_Globals)])
+
+// 1. allocate address for the node
+// 2. store the node in the heap at that address
+// 3. return the new heap on the stack
+let heapAlloc node =
+    putHeapCounter (getHeapCounter @ [Inc]) @
+    putHeap (TVM.arrayPut getHeap getHeapCounter node)
+
+let ifThenElse cond trueBlock falseBlock =
+    cond @ [PushCont trueBlock; IfJmp] @ falseBlock
+
+// k -> heap[k]
+let heapLookup k =
+    (TVM.arrayGetWithCode getHeap k) @ // extract heap[k] and result code
+    [ThrowIfNot 15] // throw if result code = 0
 
 // put the n-th element of the stack on top
 // of the stack
@@ -60,6 +99,13 @@ let mapPushglobal (n:int) : TVM.Code =
      DictUGet;        // x -1 | 0
      ThrowIfNot 10]   // x
 
+// n1 n2 -> n3, where heap[n3] = heap[n1] + heap[n2]
+let mapAdd () : TVM.Code =
+    []
+    // let n1 = heapLookup [Push 1]
+    // let n2 = heapLookup [Push 1]
+    // [PushInt 1] @ n1 @ n2 @ [TVM.Add] @ [Tuple 2] @ heapAlloc c7 getHeap [Push 0]
+
 let mapMkap () : TVM.Code =
     []
 
@@ -73,9 +119,6 @@ let mapUnwind () : TVM.Code =
     []
 
 let mapEval () : TVM.Code =
-    []
-
-let mapAdd () : TVM.Code =
     []
 
 let mapSub () : TVM.Code =
@@ -199,30 +242,10 @@ and encodeNode (n:GMachine.Node) : TVM.Value =
         | _ -> // shall not be reachable
             failwith "unreachable"
 and mapPushint (n:int) : TVM.Code =
-    let currAddress  =
-        [PushCtr 7; Index (int C7_HeapCounter)]
-    let nextAddress =
-        currAddress @ [Inc]
-    let getHeap =
-        [PushCtr 7; Index (int C7_Heap)]
-    let putHeap h =
-        getHeap @ h @ [SetIndex (int C7_Heap)]
-    // heapAlloc puts the node on a newly allocated slot in a heap
-    // updated heap is put on the stack
-    let heapAlloc heap node =
-        TVM.arrayPut heap node nextAddress
-    let getGlobals =
-        [PushCtr 7; Index (int C7_Globals)]
-    let putGlobals g =
-        getGlobals @ g @ [SetIndex (int C7_Globals)]
-    let ifThenElse cond trueBlock falseBlock =
-        cond @ [PushCont trueBlock; IfJmp] @ falseBlock
     let node = compileTuple (encodeNode (GMachine.NNum n))
     ifThenElse (dictGet [PushInt n] getGlobals)
-        [ (* If item is found, do nothing - the address is on the stack already *)]
-          (* otherwise allocate new heap node; update it and put the curr address
-             on the stack *)
-        (putHeap (heapAlloc getHeap node) @ currAddress)
+        []
+        ( (heapAlloc node) @ getHeapCounter )
 and compileCode (code:GMachine.GmCode) : TVM.Code =
     code
     |> List.map (fun c -> compileInstr c) // list of lists of Instructions
@@ -300,13 +323,18 @@ let prepareHeapTest0 () =
                              TVM.Tup [TVM.Int 4; TVM.Int 3; TVM.Int 1; TVM.Int 2; TVM.Int 3]], r)
 [<Test>]
 let pushIntTest0 () =
-    // (heap, globals, globals counter)
-    let heapEmpty = Slice [SDict (Map [])]
-    let heapInitCounter = Int 0
-    let initC7Tuple = TVM.arrayNew @ (compileElem heapInitCounter) @ (compileElem heapEmpty) @ [Tuple 3]
+    let globalsEmpty = Slice [SDict (Map [])]
+    let heapEmpty = TVM.arrayNew
+    let heapInitCounter = Int -1
+    let initC7Tuple = heapEmpty @
+                      (compileElem heapInitCounter) @
+                      (compileElem globalsEmpty) @
+                      [Tuple 3]
     let initC7Compile = initC7Tuple @ [PopCtr 7]
-    let code = initC7Compile @ (compileCode [GMachine.Pushint 10])
+    let code = initC7Compile @
+              ( compileCode [GMachine.Pushint 100;
+                             GMachine.Pushint 200;
+                             GMachine.Pushint 1000] )
     let st = TVM.initialState code
     TVM.dumpFiftScript "pushIntTest0.fif" (TVM.outputFift st)
-    printfn "%A" code
     Assert.Pass()
