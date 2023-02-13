@@ -43,7 +43,9 @@ type Instruction =
     | DumpStk
     | Nop
     | Tuple of n:int
+    | TLen
     | TupleVar
+    | UntupleVar
     | Nil
     | PushNull
     | Second
@@ -61,6 +63,7 @@ type Instruction =
     | DictUGet   // i D n -> x (-1),  or 0
     | DictUSetB  // b i D n -> D'
     | ThrowIfNot of nn:int
+    | ThrowIf of nn:int
     | Throw of nn:int
     | Equal
     | IfExec     // If
@@ -564,6 +567,16 @@ let throwifnot n st =
     st.stack <- stack'
     st
 
+let throwif n st =
+    let (i :: stack') = st.stack
+    failIfNot (i.isInt) "THROWIF: Integer expected"
+    if i.unboxInt <> 0 then
+        raise (TVMError ("TVM exception was thrown: " + string n))
+    else
+        ()
+    st.stack <- stack'
+    st
+
 // this implementation is incorrect,
 // it should transfer control to C3 cont, but
 // for now we skip it
@@ -670,6 +683,17 @@ let tuplevar st =
     st.put_stack stack'
     tuple n true st
 
+let untuplevar st =
+    let ( (Tup l) :: (Int n) :: stack' ) = st.stack
+    failIf (List.length l <> n) "UNTUPLEVAR: Range check error"
+    st.put_stack (l @ stack')
+    st
+
+let tlen st =
+    let (Tup l :: stack') = st.stack
+    st.put_stack ( (Int (List.length l)) :: stack' )
+    st
+
 let second st =
     let (Tup (a0 :: a1 :: _) :: stack') = st.stack
     st.put_stack (a1 :: stack')
@@ -757,6 +781,10 @@ let dispatch (i:Instruction) =
             tuple n false
         | TupleVar ->
             tuplevar
+        | UntupleVar ->
+            untuplevar
+        | TLen ->
+            tlen
         | Second ->
             second
         | Nil ->
@@ -787,6 +815,8 @@ let dispatch (i:Instruction) =
             dictusetb
         | ThrowIfNot n ->
             throwifnot n
+        | ThrowIf n ->
+            throwif n
         | Throw nn ->
             throw nn
         | IfExec ->
@@ -1343,6 +1373,7 @@ let rec instrToFift (i:Instruction) : string =
         | Repeat -> "REPEAT"
         | Pick -> "PICK"
         | TupleVar -> "TUPLEVAR"
+        | TLen -> "TLEN"
         | Second -> "SECOND"
         | Depth -> "DEPTH"
         | Xchg n -> "s0 s" + string(n) + " XCHG" // XCHG s0,sn

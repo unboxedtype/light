@@ -130,25 +130,57 @@ let mapAdd () : TVM.Code =
 
 // a1 a2 -> a3 , where heap[a3] = NAp (a1,a2)
 let mapMkap () : TVM.Code =
-    [ PushInt 1;  // a1 a2 1
-      RollRev 2;  // 1 a1 a2
-      Tuple 3; // (1, a1, a2)
-    ] @ heapAlloc // a3
+    [PushInt 1;  // a1 a2 1
+     RollRev 2;  // 1 a1 a2
+     Tuple 3] @ // (1, a1, a2)
+    heapAlloc // a3
 
 // .. an .. a1 a -> .. an .. a1 , heap[an] := NInd a
 let mapUpdate (n:int) : TVM.Code =
-    [PushInt 3;
+    [PushInt 3;   // 3 = NInd tag
      Swap;
-     Tuple 2;  // ... an .. a1 (2,a)
-     Push n] @ // .. an .. a1 (2,a) an
-    getHeap @  // .. an .. a1 (2,a) an heap
-    [Xchg 2] @ // .. an .. a1 heap an (2,a)
-    TVM.putArray @ // .. an .. a1 heap'
-    putHeap    // .. an .. a1
+     Tuple 2;     // ... an .. a1 (3,a)
+     Push n] @    // .. an .. a1 (3,a) an
+    getHeap @     // .. an .. a1 (3,a) an heap
+    [Xchg 2] @    // .. an .. a1 heap an (3,a)
+    TVM.arrayPut @ // .. an .. a1 heap'
+    putHeap       // .. an .. a1
 
 // _ -> a1 a2 .. an
 let mapAlloc (n:int) : TVM.Code =
-    [PushInt n; pushCont heapAlloc; Repeat]
+    [PushInt n; PushCont heapAlloc; Repeat]
+
+// a1 .. an -> a  , where heap[a] = NConstr(tag, [a1, ... an])
+let mapPack (tag:int) (n:int) : TVM.Code =
+    [PushInt n; TupleVar] @ // (a1,...,an)
+    [PushInt 4; Swap; Tuple 2] @ // (4, (a1,...,an))
+    heapAlloc
+
+// _ -> a1 .. am  , where heap[n] = NConstr (tag, [a1..am])
+let mapSplit (n:int) : TVM.Code =
+    [PushInt n] @
+    heapLookup @    // heap[n]
+    [Dup; Index 0] @  // (4, tag, (a1am)) 4
+    [PushInt 4; Sub] @ // (4, tag, (a1am)) 4-4
+    [ThrowIf 14] @  // if tag is incorrect, throw;
+    // (4, tag, (a1am))
+    [Index 2; Dup] @  // (a1am) (a1am)
+    [TLen] @        // (a1am) m
+    [UntupleVar]    // a1 .. am
+
+// n -> n
+// cs is a case selector compiled in a form of a continuation
+// that checks the given stack number against possible choices
+// and transfer control to the found case; if no case suits,
+// throws exception.
+let mapCasejump (cs:TVM.Code) : TVM.Code =
+    [Dup] @             // n n
+    heapLookup @        // n heap[n]
+    [Dup] @             // n heap[n] heap[n]
+    [Index 0] @         // n heap[n] tag
+    [PushInt 3; Sub; ThrowIf 13] @ // n heap[n]
+    [Index 1] @         // n tag : this is the tag we should find in cs
+    [PushCont cs; Execute] // n
 
 let mapUnwind () : TVM.Code =
     []
@@ -157,13 +189,13 @@ let mapEval () : TVM.Code =
     []
 
 let mapSub () : TVM.Code =
-    failWith "not implemented"
+    failwith "not implemented"
 
 let mapMul () : TVM.Code =
-    failWith "not implemented"
+    failwith "not implemented"
 
 let mapDiv () : TVM.Code =
-    failWith "not implemented"
+    failwith "not implemented"
 
 let mapEq () : TVM.Code =
     []
@@ -172,15 +204,6 @@ let mapGt () : TVM.Code =
     []
 
 let mapCond t f : TVM.Code =
-    []
-
-let mapPack (tag:int) (n:int) : TVM.Code =
-    []
-
-let mapCasejump l : TVM.Code =
-    []
-
-let mapSplit (n:int) : TVM.Code =
     []
 
 let rec compileTuple t : TVM.Code =
@@ -255,7 +278,8 @@ and compileInstr (i:GMachine.Instruction): TVM.Code =
         | GMachine.Pack (tag,n) ->
             mapPack tag n
         | GMachine.Casejump l ->
-            mapCasejump l
+            let l' = compileCasejumpSelector l
+            mapCasejump l'
         | GMachine.Split n ->
             mapSplit n
         | _ ->
@@ -276,11 +300,21 @@ and encodeNode (n:GMachine.Node) : TVM.Value =
             Tup ([Int 4; Int n] @ List.map (fun (x:int) -> Int x) vs)
         | _ -> // shall not be reachable
             failwith "unreachable"
-
 and compileCode (code:GMachine.GmCode) : TVM.Code =
     code
     |> List.map (fun c -> compileInstr c) // list of lists of Instructions
     |> List.concat
+and compileCasejumpSelector (l: (int * GMachine.GmCode) list) : TVM.Code =
+    match l with
+        | [] ->
+            [Throw 13]  // case not found
+        | (tag, code) :: t ->
+            [Dup; // n n
+             PushInt tag; // n n tag
+             Equal;
+             PushCont (compileCode code); // n (-1|0) c
+             IfJmp] @ // if we found the right tag, jmp to c
+                compileCasejumpSelector t
 
 // GMachine stack consists of addresses only; there are
 // no data values there.
