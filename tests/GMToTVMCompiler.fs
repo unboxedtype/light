@@ -32,7 +32,7 @@ let rec builderStoreValue (n:TVM.Value): TVM.Code =
 let dictSet =
     [PushInt 128; DictUSetB]
 
-// k D -> D[k]
+// k D -> D[k] -1 | 0
 let dictGet =
     [PushInt 128; DictUGet]
 
@@ -92,7 +92,7 @@ let heapLookup =
     getHeap @ // k h
     [Swap] @ // h k
     TVM.arrayGetWithCode @
-    [ThrowIfNot 15; DumpStk]
+    [ThrowIfNot 15]
 
 // put the n-th element of the stack on top
 // of the stack
@@ -115,34 +115,40 @@ let mapPushglobal (n:int) : TVM.Code =
      ThrowIfNot 10]   // x
 
 let mapPushint (n:int) : TVM.Code =
-    [PushInt n] @ // n
-    getGlobals @ // n D
-    dictGet @ // D[n]
-    [PushCont [] // D[n] cont[]
-     IfJmp; // D[n]
-     PushInt 0;
-     PushInt n;
-     Tuple 2] @ // D[n] t
-    heapAlloc // D[n] a
+    [PushInt 0; PushInt n; Tuple 2] @
+    heapAlloc
 
 // n1 n2 -> n3, where heap[n3] = heap[n1] + heap[n2]
 let mapAdd () : TVM.Code =
     heapLookup @ // n1 (0, NNum2)
     [Second] @   // n1 NNum2
-    [Swap] @    // NNum2 n1
-    heapLookup @  // NNum2 heap[n1]
-    [Second] @  // NNum2 NNum1
+    [Swap] @     // NNum2 n1
+    heapLookup @ // NNum2 heap[n1]
+    [Second] @   // NNum2 NNum1
     [Add; PushInt 0; Swap; Tuple 2] @  // (1, heap[n1]+heap[n2])
-    heapAlloc  // n3
+    heapAlloc    // n3
 
+// a1 a2 -> a3 , where heap[a3] = NAp (a1,a2)
 let mapMkap () : TVM.Code =
-    []
+    [ PushInt 1;  // a1 a2 1
+      RollRev 2;  // 1 a1 a2
+      Tuple 3; // (1, a1, a2)
+    ] @ heapAlloc // a3
 
+// .. an .. a1 a -> .. an .. a1 , heap[an] := NInd a
 let mapUpdate (n:int) : TVM.Code =
-    []
+    [PushInt 3;
+     Swap;
+     Tuple 2;  // ... an .. a1 (2,a)
+     Push n] @ // .. an .. a1 (2,a) an
+    getHeap @  // .. an .. a1 (2,a) an heap
+    [Xchg 2] @ // .. an .. a1 heap an (2,a)
+    TVM.putArray @ // .. an .. a1 heap'
+    putHeap    // .. an .. a1
 
+// _ -> a1 a2 .. an
 let mapAlloc (n:int) : TVM.Code =
-    []
+    [PushInt n; pushCont heapAlloc; Repeat]
 
 let mapUnwind () : TVM.Code =
     []
@@ -151,13 +157,13 @@ let mapEval () : TVM.Code =
     []
 
 let mapSub () : TVM.Code =
-    []
+    failWith "not implemented"
 
 let mapMul () : TVM.Code =
-    []
+    failWith "not implemented"
 
 let mapDiv () : TVM.Code =
-    []
+    failWith "not implemented"
 
 let mapEq () : TVM.Code =
     []
@@ -376,7 +382,16 @@ let addTest0 () =
     let code = initC7Compile @
                (compileCode [GMachine.Pushint 100;
                              GMachine.Pushint 200;
-                             GMachine.Add]) @ [PushCtr 7]
+                             GMachine.Add;
+                             GMachine.Pushint 300;
+                             GMachine.Add;
+                             GMachine.Pushint 400;
+                             GMachine.Add])
     let st = TVM.initialState code
     TVM.dumpFiftScript "addTest0.fif" (TVM.outputFift st)
-    Assert.Pass()
+    let finalSt = List.last (TVM.runVM st false)
+    let stk = List.tail finalSt.stack
+    printfn "%A" stk
+    Assert.AreEqual([Int 6], stk) // 2 is a result address, not value
+    let (Tup (Tup (Tup heap :: _) :: _)) = finalSt.cr.c7
+    Assert.AreEqual (Tup [Int 0; Int 1000], List.item 6 heap)  // (0,300) is heap object of an integer 300

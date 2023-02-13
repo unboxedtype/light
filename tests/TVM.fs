@@ -511,9 +511,15 @@ let newdict st =
 // i D n -> x -1 or 0
 let dictuget st =
     printfn "%A" st.stack
-    let (n :: Slice (SDict D :: _) :: i :: stack') = st.stack
+    let (n :: sD :: i :: stack') = st.stack
     failIfNot (i.isInt) "DICTUGET: Integer expected"
     // UFits n i check has to be done here as well
+    let D =
+        match sD with
+            | Null ->
+                Map []
+            | Slice (SDict sd :: _) ->
+                sd
     match D.TryFind i.unboxInt with
         | None ->
             st.stack <- (Int 0) :: stack'
@@ -1637,7 +1643,6 @@ let arrayPut =
      Dup2;  // v j a i a i
      Rot2;  // a i a i v j
      Swap2; // a i v j a i
-     DumpStk;
      IndexVar; // a i v j a[i]
      Xchg 2; // a i a[i] j v
      Swap;   // a i a[i] v j
