@@ -23,8 +23,10 @@ type Instruction =
     | Pop of n:int
     | Drop              // Pop 0 alias
     | BlkDrop of n:int
-    | Xchg of i:int     // Xchg s0, s(i)
-    | Swap              // Xchg 0 alias
+    | Xchg of i:int      // Xchg s0, s(i)
+    | Xchg2 of int * int // Xchg s(i),s(j)
+    | Swap               // Xchg 0 alias
+    | Swap2              // a b c d -> c d a b
     | Greater
     | PushInt of n:int
     | PushCont of c:Code
@@ -44,6 +46,7 @@ type Instruction =
     | TupleVar
     | Nil
     | PushNull
+    | Second
     | Index of k:int
     | IndexVar
     | Untuple of n:int
@@ -72,6 +75,9 @@ type Instruction =
     | PushSlice of c:SValue list
     | StSlice
     | IsNull
+    | IsZero
+    | Dup2
+    | Rot2
 and Code =
     Instruction list
 and Value =  // stack value types
@@ -328,6 +334,14 @@ let isnull st =
         st.stack <- (Int 0) :: stack'
     st
 
+let iszero st =
+    let (x :: stack') = st.stack
+    if x = (Int 0) then
+        st.stack <- (Int -1) :: stack'
+    else
+        st.stack <- (Int 0) :: stack'
+    st
+
 let push n st =
     let stack' = st.stack
     failIf (n < 0) "PUSH: type check error"
@@ -370,16 +384,25 @@ let pop n st =
     st.stack <- List.tail (List.updateAt n a st.stack)
     st
 
-let xchg n st =
-    failIf (List.length st.stack <= n) "XCHG: Stack underflow"
+let xchg2 i j st =
+    failIf (List.length st.stack <= j) "XCHG: Stack underflow"
     let stk = List.toArray st.stack
-    let s0 = stk.[0]
-    let sn = stk.[n]
+    let si = stk.[i]
+    let sj = stk.[j]
+    let tmp = stk.[j]
     let stack' =
-        Array.updateAt n s0 stk |>
-        Array.updateAt 0 sn |>
+        Array.updateAt j si stk |>  // s[j] := s[i]
+        Array.updateAt i tmp |> // s[i] := old s[j]
         Array.toList
     st.stack <- stack'
+    st
+
+let xchg n st =
+    xchg2 0 n st
+
+let swap2 st =
+    let (d :: c :: b :: a :: stack) = st.stack
+    st.put_stack (b :: a :: d :: c :: stack)
     st
 
 let True = -1
@@ -641,6 +664,11 @@ let tuplevar st =
     st.put_stack stack'
     tuple n true st
 
+let second st =
+    let (Tup (a0 :: a1 :: _) :: stack') = st.stack
+    st.put_stack (a1 :: stack')
+    st
+
 let depth (st:TVMState) =
     st.put_stack (Int (List.length st.stack) :: st.stack)
     st
@@ -660,6 +688,11 @@ let xchgx st =
     st.put_stack stack'
     xchg n st
 
+let rot2 st =
+    let (f :: e :: d :: c :: b :: a :: stack') = st.stack
+    st.put_stack (b :: a :: f :: e :: d :: c :: stack')
+    st
+
 let dispatch (i:Instruction) =
     match i with
         | PushNull ->
@@ -670,6 +703,10 @@ let dispatch (i:Instruction) =
             push n
         | Dup ->
             push 0
+        | Dup2 ->
+            fun st -> push 1 (push 1 st)
+        | Rot2 ->
+            rot2
         | PushCtr n ->
             pushctr n
         | PushCont c ->
@@ -682,8 +719,12 @@ let dispatch (i:Instruction) =
             popctr n
         | Xchg n ->
             xchg n
+        | Xchg2 (i,j) ->
+            xchg2 i j
         | Swap ->
             xchg 1
+        | Swap2 ->
+            swap2
         | Equal ->
             binop eq
         | Greater ->
@@ -710,6 +751,8 @@ let dispatch (i:Instruction) =
             tuple n false
         | TupleVar ->
             tuplevar
+        | Second ->
+            second
         | Nil ->
             nil
         | Index k ->
@@ -764,6 +807,8 @@ let dispatch (i:Instruction) =
             blkdrop n
         | IsNull ->
             isnull
+        | IsZero ->
+            iszero
         | _ ->
             let msg = sprintf "unsupported instruction: %A" i
             raise (TVMError msg)
@@ -955,7 +1000,6 @@ let testIfElse0 () =
     let st = initialState [PushInt 0;
                            PushCont [PushInt 10];
                            PushCont [PushInt 20];
-                           DumpStk;
                            IfElse]
     try
         let finalSt = List.last (runVM st false)
@@ -1046,7 +1090,7 @@ let testGreater3 () =
                                                Xchg 1; // f (n-1)
                                                Push 0; // f f (n-1)
                                                Execute]; //
-                                     PushCont [Push 1; DumpStk] // c2 c1 (n>0?) f n
+                                     PushCont [Push 1] // c2 c1 (n>0?) f n
                                      IfElse]; // f n
                            Push 0; // f f n
                            Execute // -> f n
@@ -1191,7 +1235,6 @@ let testDict0 () =
                            PushInt 200; // b' 200(key)
                            NewDict; // b' 200 D
                            PushInt 10; // b' 200 D 10
-                           DumpStk;
                            DictUSetB] // D'
     try
         let finalSt = List.last (runVM st false)
@@ -1262,8 +1305,9 @@ let testCalldict0 () =
 
 let rec instrToFift (i:Instruction) : string =
     match i with
-        | Push n -> string(n) + " PUSH"
+        | Push n -> "s" + string(n) + " PUSH"
         | IsNull -> "ISNULL"
+        | IsZero -> "ISZERO"
         | Add -> "ADD"
         | Nil -> "NIL"
         | PushNull -> "PUSHNULL"
@@ -1293,13 +1337,21 @@ let rec instrToFift (i:Instruction) : string =
         | Repeat -> "REPEAT"
         | Pick -> "PICK"
         | TupleVar -> "TUPLEVAR"
+        | Second -> "SECOND"
         | Depth -> "DEPTH"
+        | Xchg n -> "s0 s" + string(n) + " XCHG" // XCHG s0,sn
         | XchgX -> "XCHGX"
         | DivMod -> "DIVMOD"
         | IndexVar -> "INDEXVAR"
         | SetIndexVar -> "SETINDEXVAR"
         | DumpStk -> "DUMPSTK"
         | Tuple n -> string(n) + " TUPLE"
+        | BlkDrop n -> string(n) + " BLKDROP"
+        | Xchg2 (i,j) -> "s" + string(i) + " " + "s" + string(j) + " XCHG"
+        | Swap2 -> "SWAP2"
+        | RollRev n -> string(n) + " ROLLREV"
+        | Dup2 -> "DUP2"
+        | Rot2 -> "ROT2"
         | _ ->
             failwith (sprintf "unsupported instruction: %A" i)
 
@@ -1568,19 +1620,6 @@ let testRearrange6 () =
         | TVMError s ->
             Assert.Fail(s)
 
-let setIndexVar t k v =
-// SETINDEXVAR (t v k – t')
-    t @ v @ k @ [SetIndexVar]
-
-let indexVar t k =
-// INDEXVAR (t k – x)
-    t @ k @ [IndexVar]
-
-let div x y =
-    x @ y @ [DivMod; Drop]
-let mod' x y =
-    x @ y @ [DivMod; Swap; Drop]
-
 let bucketSize = 10;
 let arrayDefaultVal = Null
 let arrayNew =
@@ -1588,26 +1627,36 @@ let arrayNew =
      PushInt bucketSize; TupleVar; PushInt (bucketSize-1);
      PushCont [Dup]; Repeat; PushInt bucketSize; TupleVar]
 
-// put (a:array) (k:index) (v:value) -> array
-let arrayPut a k v =
-    let i = div k [PushInt bucketSize]
-    let j = mod' k [PushInt bucketSize]
-    let t1 = indexVar a i   // t1 = a[i]
-    let t2 = setIndexVar t1 j v  // t2 = t1[j -> v] = a[i][j -> v]
-    setIndexVar a i t2 // a' = a[i][j -> v]
+// a k v -> a'
+let arrayPut =
+    [Swap;  // a v k
+     PushInt bucketSize; // a v k bs
+     DivMod;  // a v i j
+     Xchg2 (1,2) // a i v j
+     Swap2; // v j a i
+     Dup2;  // v j a i a i
+     Rot2;  // a i a i v j
+     Swap2; // a i v j a i
+     DumpStk;
+     IndexVar; // a i v j a[i]
+     Xchg 2; // a i a[i] j v
+     Swap;   // a i a[i] v j
+     SetIndexVar; // a i a[i][j -> v]
+     Swap;
+     SetIndexVar] // a[i -> a[i][j -> v]]
 
-// get (a:array) (k:index) -> element
-let arrayGet a k =
-    // calculuate the corresponding bucket number
-    // get the element from the bucket
-    let i = div k [PushInt bucketSize]
-    let j = mod' k [PushInt bucketSize]
-    let t1 = indexVar a i
-    indexVar t1 j
+// a k -> a[k]
+let arrayGet =
+    [PushInt bucketSize; // a k bs
+     DivMod; // a i j
+     RollRev 2; // j a i
+     IndexVar; // j a[i]
+     Swap; // a[i] j
+     IndexVar] // a[i][j]
 
-// get (a:array) (k:index) -> element
-let arrayGetWithCode a k =
-    arrayGet a k @ [IsNull]
+// a k -> a[k] -1 | null 0
+let arrayGetWithCode =
+    arrayGet @ [Dup; IsNull; IsZero]
 
 [<Test>]
 let testTupleVar0 () =
@@ -1686,7 +1735,7 @@ let testSetindexvar0 () =
 
 [<Test>]
 let testArrayGetPut () =
-    let st = initialState (arrayGet arrayNew [PushInt 1])
+    let st = initialState (arrayNew @ [PushInt 1] @ arrayGet)
     try
         let finalSt = List.last (runVM st false)
         Assert.AreEqual(Some (arrayDefaultVal), getResult finalSt)
@@ -1726,9 +1775,9 @@ let testRepeat2 () =
 
 [<Test>]
 let testArrayGetPut1 () =
-    let a1 = arrayPut arrayNew [PushInt 1] [PushInt 600]
-    let a2 = arrayGet a1 [PushInt 1]
-    let st = initialState a2
+    let code = arrayNew @ [PushInt 1; PushInt 600] @ arrayPut @ [DumpStk; PushInt 1] @ arrayGet
+    let st = initialState code
+    dumpFiftScript "testArrayGetPut1.fif" (outputFift st)
     try
         let finalSt = List.last (runVM st false)
         Assert.AreEqual(Some (Int 600), getResult finalSt)
@@ -1816,54 +1865,6 @@ let testXchgx0 () =
             Assert.Fail(s)
 
 [<Test>]
-[<Ignore("extra DUP removed")>]
-let testArrayGetPut2 () =
-    // x ... t'
-    let saveArray t = t @ [Depth; Dec; XchgX; Drop]
-    // x ... -> x ... x
-    let loadArray = [Depth; Dec; Pick]
-    // a[1] = 600; a[2] = 700; a[3] = 800;
-    let a1 = arrayPut loadArray [PushInt 1] [PushInt 600]
-    let a2 = arrayPut a1 [PushInt 2] [PushInt 700]
-    let a3 = arrayGet loadArray [PushInt 1]
-    let st = initialState ( (saveArray arrayNew) @
-                            (saveArray a2) @
-                            arrayGet loadArray [PushInt 1] @ [DumpStk]
-                            )
-    try
-        let finalSt = List.last (runVM st false)
-        Assert.AreEqual(Some (Int 600), getResult finalSt)
-    with
-        | TVMError s ->
-            Assert.Fail(s)
-
-[<Test>]
-[<Ignore("extra DUP removed")>]
-let testArrayGetPut3 () =
-    // x ... t'
-    let saveArray t = t @ [Depth; Dec; XchgX; Drop]
-    // x ... -> x ... x
-    let loadArray = [Depth; Dec; Pick]
-    // a[1] = 600; a[2] = 700; a[3] = 800;
-    let a1 = arrayPut loadArray [PushInt 1] [PushInt 600]
-    let a2 = arrayPut a1 [PushInt 2] [PushInt 700]
-    let a3 = arrayPut a2 [PushInt 3] [PushInt 800]
-    let a4 = arrayGet loadArray [PushInt 2] // 700
-    let a5 = arrayPut loadArray [PushInt 3] a4 // a[3] = 700
-    let st = initialState ( (saveArray arrayNew) @
-                            (saveArray a3) @
-                            saveArray a5 @
-                            arrayGet loadArray [PushInt 3]
-                            )
-    try
-        dumpFiftScript "testArrayGetPut3.fif" (outputFift st)
-        let finalSt = List.last (runVM st false)
-        Assert.AreEqual(Some (Int 700), getResult finalSt)
-    with
-        | TVMError s ->
-            Assert.Fail(s)
-
-[<Test>]
 let testBlkDrop0 () =
     let st = initialState [PushInt 0; PushInt 1; PushInt 2; PushInt 3; BlkDrop 2]
     try
@@ -1889,6 +1890,41 @@ let testIsNull1 () =
     try
         let finalSt = List.last (runVM st false)
         Assert.AreEqual(Some (Int 0), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testSwap () =
+    let st = initialState [PushInt 0; PushInt 1; Swap]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual(Some (Int 0), getResult finalSt)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testSwap2 () =
+    let st = initialState [PushInt 1; PushInt 2; PushInt 3; PushInt 4; Swap2]
+    try
+        let finalSt = List.last (runVM st false)
+        let stk = List.tail finalSt.stack
+        printfn "%A" stk
+        Assert.AreEqual([Int 2; Int 1; Int 4; Int 3], stk )
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testRot2 () =
+    let st = initialState [PushInt 1; PushInt 2; PushInt 3;
+                           PushInt 4; PushInt 5; PushInt 6; Rot2]
+    try
+        let finalSt = List.last (runVM st false)
+        let stk = List.tail finalSt.stack
+        printfn "%A" stk
+        Assert.AreEqual([Int 2; Int 1; Int 6; Int 5; Int 4; Int 3], stk )
     with
         | TVMError s ->
             Assert.Fail(s)

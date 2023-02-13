@@ -28,56 +28,71 @@ let rec builderStoreValue (n:TVM.Value): TVM.Code =
         | _ ->
             failwith "unimplemented"
 
-// create emtpy dict; put it on the stack
-let newDict =
-    [NewDict]
+// v k D -> D'
+let dictSet =
+    [PushInt 128; DictUSetB]
 
-// D[k] := val
-let dictSet k valBld D =
-    valBld @ k @ D @ [PushInt 128; DictUSetB]
+// k D -> D[k]
+let dictGet =
+    [PushInt 128; DictUGet]
 
-// D[k]
-let dictGet k D =
-    k @ D @ [PushInt 128; DictUGet]
-
+// _ -> c7
 let getState =
     [PushCtr 7]
 
-let putState st =
-    st @ [PopCtr 7]
+// c7 -> _
+let putState =
+    [PopCtr 7]
 
+// _ -> hc
 let getHeapCounter =
     getState @ [Index (int C7_HeapCounter)]
 
+// _ -> g
 let getGlobals =
     getState @ [Index (int C7_Globals)]
 
+// _ -> h
 let getHeap =
     getState @ [Index (int C7_Heap)]
 
-let putHeapCounter addr =
-    putState (getState @ addr @ [SetIndex (int C7_HeapCounter)])
+// n -> _
+let putHeapCounter =
+    getState @ [Swap] @ [SetIndex (int C7_HeapCounter)] @ putState
 
-let putHeap newHeap =
-    putState (getState @ newHeap @ [SetIndex (int C7_Heap)])
+// n -> _
+let putHeap =
+    getState @ [Swap] @ [SetIndex (int C7_Heap)] @ putState
 
-let putGlobals g =
-    putState (getState @ g @ [SetIndex (int C7_Globals)])
+// g -> _
+let putGlobals =
+    getState @ [Swap] @ [SetIndex (int C7_Globals)] @ putState
 
 // 1. allocate address for the node
 // 2. store the node in the heap at that address
 // 3. return the new heap on the stack
-let heapAlloc node =
-    putHeapCounter (getHeapCounter @ [Inc]) @
-    putHeap (TVM.arrayPut getHeap getHeapCounter node)
+
+// node -> a , where heap[a] := n
+let heapAlloc =
+    getHeapCounter @ // node k
+    [Inc; Dup] @ // node k' k'
+    putHeapCounter @ // node k'
+    getHeap @ // node k' a
+    [Xchg 2] @ // a k' node
+    [Push 1] @ // a k' node k'
+    [RollRev 3] @ // k' a k' node
+    TVM.arrayPut @ // k' a'
+    putHeap // k'
 
 let ifThenElse cond trueBlock falseBlock =
     cond @ [PushCont trueBlock; IfJmp] @ falseBlock
 
-// k -> heap[k]
-let heapLookup k =
-    (TVM.arrayGetWithCode getHeap k) @ // extract heap[k] and result code
-    [ThrowIfNot 15] // throw if result code = 0
+// k -> heap[k] or exception
+let heapLookup =
+    getHeap @ // k h
+    [Swap] @ // h k
+    TVM.arrayGetWithCode @
+    [ThrowIfNot 15; DumpStk]
 
 // put the n-th element of the stack on top
 // of the stack
@@ -95,16 +110,30 @@ let mapPushglobal (n:int) : TVM.Code =
     [PushInt 128;
      PushCtr 7;
      Index ( int C7_Globals );  // 128 D
-     PushInt n;
-     DictUGet;        // x -1 | 0
+     PushInt n;       // 128 D n
+     DictUGet;        // D[n] -1 | 0
      ThrowIfNot 10]   // x
+
+let mapPushint (n:int) : TVM.Code =
+    [PushInt n] @ // n
+    getGlobals @ // n D
+    dictGet @ // D[n]
+    [PushCont [] // D[n] cont[]
+     IfJmp; // D[n]
+     PushInt 0;
+     PushInt n;
+     Tuple 2] @ // D[n] t
+    heapAlloc // D[n] a
 
 // n1 n2 -> n3, where heap[n3] = heap[n1] + heap[n2]
 let mapAdd () : TVM.Code =
-    []
-    // let n1 = heapLookup [Push 1]
-    // let n2 = heapLookup [Push 1]
-    // [PushInt 1] @ n1 @ n2 @ [TVM.Add] @ [Tuple 2] @ heapAlloc c7 getHeap [Push 0]
+    heapLookup @ // n1 (0, NNum2)
+    [Second] @   // n1 NNum2
+    [Swap] @    // NNum2 n1
+    heapLookup @  // NNum2 heap[n1]
+    [Second] @  // NNum2 NNum1
+    [Add; PushInt 0; Swap; Tuple 2] @  // (1, heap[n1]+heap[n2])
+    heapAlloc  // n3
 
 let mapMkap () : TVM.Code =
     []
@@ -159,7 +188,7 @@ let rec compileTuple t : TVM.Code =
 and compileDict (d:Map<int,TVM.Value>) : TVM.Code =
     let kv = Map.toList d
     List.fold (fun dict (k:int, v:TVM.Value) ->
-               dictSet [PushInt k] (builderStoreValue v) dict) newDict kv
+               [PushInt k] @ (builderStoreValue v) @ dict @ dictSet) [NewDict] kv
 and compileSlice s : TVM.Code =
     match s with
         | Slice (SDict d :: []) ->
@@ -241,11 +270,7 @@ and encodeNode (n:GMachine.Node) : TVM.Value =
             Tup ([Int 4; Int n] @ List.map (fun (x:int) -> Int x) vs)
         | _ -> // shall not be reachable
             failwith "unreachable"
-and mapPushint (n:int) : TVM.Code =
-    let node = compileTuple (encodeNode (GMachine.NNum n))
-    ifThenElse (dictGet [PushInt n] getGlobals)
-        []
-        ( (heapAlloc node) @ getHeapCounter )
+
 and compileCode (code:GMachine.GmCode) : TVM.Code =
     code
     |> List.map (fun c -> compileInstr c) // list of lists of Instructions
@@ -332,9 +357,26 @@ let pushIntTest0 () =
                       [Tuple 3]
     let initC7Compile = initC7Tuple @ [PopCtr 7]
     let code = initC7Compile @
-              ( compileCode [GMachine.Pushint 100;
-                             GMachine.Pushint 200;
-                             GMachine.Pushint 1000] )
+               (compileCode [GMachine.Pushint 100;
+                             GMachine.Pushint 200])
     let st = TVM.initialState code
     TVM.dumpFiftScript "pushIntTest0.fif" (TVM.outputFift st)
+    Assert.Pass()
+
+[<Test>]
+let addTest0 () =
+    let globalsEmpty = Slice [SDict (Map [])]
+    let heapEmpty = TVM.arrayNew
+    let heapInitCounter = Int -1
+    let initC7Tuple = heapEmpty @
+                      (compileElem heapInitCounter) @
+                      (compileElem globalsEmpty) @
+                      [Tuple 3]
+    let initC7Compile = initC7Tuple @ [PopCtr 7]
+    let code = initC7Compile @
+               (compileCode [GMachine.Pushint 100;
+                             GMachine.Pushint 200;
+                             GMachine.Add]) @ [PushCtr 7]
+    let st = TVM.initialState code
+    TVM.dumpFiftScript "addTest0.fif" (TVM.outputFift st)
     Assert.Pass()
