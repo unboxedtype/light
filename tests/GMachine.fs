@@ -113,6 +113,16 @@ type Node =
     | NInd of v: Addr  // indirection node
     // data type constructor with n params
     | NConstr of int * Addr list
+
+// To be used in Node serialization purposes
+// Denotes a constructor tag
+type NodeTags =
+    | NNum = 0
+    | NAp = 1
+    | NGlobal = 2
+    | NInd = 3
+    | NConstr = 4
+
 type GmHeap = Map<Addr, Node>
 type GmGlobals = Map<Name, Addr>
 type GmStats = int

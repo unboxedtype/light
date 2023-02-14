@@ -23,6 +23,7 @@ type Instruction =
     | Pop of n:int
     | Drop              // Pop 0 alias
     | BlkDrop of n:int
+    | DropX
     | Xchg of i:int      // Xchg s0, s(i)
     | Xchg2 of int * int // Xchg s(i),s(j)
     | Swap               // Xchg 0 alias
@@ -33,9 +34,12 @@ type Instruction =
     | PushCtr of n:int
     | PopCtr of n:int
     | IfElse
+    | IfRet
     | Inc
     | Add
     | Sub
+    | Mul
+    | Div
     | DivMod
     | Execute
     | CallDict of n:int
@@ -68,8 +72,10 @@ type Instruction =
     | Equal
     | IfExec     // If
     | IfJmp
+    | Ret
     | SetNumArgs of n:int
     | RollRev of n:int
+    | RollRevX
     | Repeat
     | Depth
     | Dec
@@ -442,10 +448,16 @@ let sub v1 v2 =
 let add v1 v2 =
     v1 + v2
 
+let mul v1 v2 =
+    v1 * v2
+
+let div v1 v2 =
+    v1 / v2
+
 let gt v1 v2 =
     if v1 > v2 then -1 else 0
 
-let eq v1 v2 =
+let equal v1 v2 =
     if v1 = v2 then -1 else 0
 
 let inc st =
@@ -723,8 +735,30 @@ let rot2 st =
     st.put_stack (b :: a :: f :: e :: d :: c :: stack')
     st
 
+let ifret st =
+    let ((Int n) :: stack') = st.stack
+    st.stack <- stack'
+    if n <> 0 then
+        ret st
+    else
+        st
+
+let rollrevx st =
+    let ( (Int n) :: stack' ) = st.stack
+    st.stack <- stack'
+    rollrev n st
+
+let dropx st =
+    let ((Int n) :: stack') = st.stack
+    st.stack <- stack'
+    blkdrop n st
+
 let dispatch (i:Instruction) =
     match i with
+        | IfRet ->
+            ifret
+        | Ret ->
+            ret
         | PushNull ->
             pushnull
         | PushInt n ->
@@ -756,7 +790,7 @@ let dispatch (i:Instruction) =
         | Swap2 ->
             swap2
         | Equal ->
-            binop eq
+            binop equal
         | Greater ->
             binop gt
         | Inc ->
@@ -765,6 +799,10 @@ let dispatch (i:Instruction) =
             binop add
         | Sub ->
             binop sub
+        | Mul ->
+            binop mul
+        | Div ->
+            binop div
         | Execute ->
             execute
         | CallDict n ->
@@ -829,6 +867,10 @@ let dispatch (i:Instruction) =
             setnumargs n
         | RollRev n ->
             rollrev n
+        | RollRevX ->
+            rollrevx
+        | DropX ->
+            dropx
         | DivMod ->
             divmod
         | Depth ->

@@ -94,18 +94,24 @@ let heapLookup =
     TVM.arrayGetWithCode @
     [ThrowIfNot 15]
 
-// put the n-th element of the stack on top
-// of the stack
+// Put the n-th element of the stack on top of the stack;
+// 0 denotes the current top value of the stack.
 let mapPush (n:int) : TVM.Code =
     [Push n]
 
-// remove n items from the stack
+// Remove n consecutive elements from the stack
 let mapPop (n:int) : TVM.Code =
     [BlkDrop n]
 
+// Remove n elements from the stack, starting from the second
+// element of the stack, i.e. leaving the top stack element inplace.
+// sn .. s2 s1 s -> s
 let mapSlide (n:int) : TVM.Code =
     [RollRev n; BlkDrop n]
 
+// Extract the address of a function from the globals
+// and put it on the stack; if the function with the given
+// name is not found, raise exception.
 let mapPushglobal (n:int) : TVM.Code =
     [PushInt 128;
      PushCtr 7;
@@ -114,30 +120,60 @@ let mapPushglobal (n:int) : TVM.Code =
      DictUGet;        // D[n] -1 | 0
      ThrowIfNot 10]   // x
 
+// Allocate a node for the given integer on the heap and put the
+// address of that node on the stack;
 let mapPushint (n:int) : TVM.Code =
-    [PushInt 0; PushInt n; Tuple 2] @
+    [PushInt (int GMachine.NodeTags.NNum); PushInt n; Tuple 2] @
     heapAlloc
 
+// Lookup arguments on the heap and do the corresponding arithmetic
+// operation, placing the boxed result on the stack
 // n1 n2 -> n3, where heap[n3] = heap[n1] + heap[n2]
-let mapAdd () : TVM.Code =
+let binaryOperation (op:TVM.Code) : TVM.Code =
     heapLookup @ // n1 (0, NNum2)
     [Second] @   // n1 NNum2
     [Swap] @     // NNum2 n1
     heapLookup @ // NNum2 heap[n1]
     [Second] @   // NNum2 NNum1
-    [Add; PushInt 0; Swap; Tuple 2] @  // (1, heap[n1]+heap[n2])
+    [Swap] @     // NNum1 NNum2
+    op @
+    [PushInt (int GMachine.NodeTags.NNum); Swap; Tuple 2] @  // (0, op(heap[n1], heap[n2])), 0 = NNum tag
     heapAlloc    // n3
 
+let mapAdd () : TVM.Code =
+    binaryOperation [Add]
+
+// n1 n2 -> n3, where heap[n3] = heap[n1] - heap[n2]
+let mapSub () : TVM.Code =
+    binaryOperation [Sub]
+
+let mapMul () : TVM.Code =
+    binaryOperation [Mul]
+
+let mapDiv () : TVM.Code =
+    binaryOperation [Div]
+
+let mapEq () : TVM.Code =
+    binaryOperation [Equal]
+
+let mapGt () : TVM.Code =
+    binaryOperation [Greater]
+
+// Allocate a node for function application on the heap and
+// put the address of that node on the stack
 // a1 a2 -> a3 , where heap[a3] = NAp (a1,a2)
 let mapMkap () : TVM.Code =
-    [PushInt 1;  // a1 a2 1
+    [PushInt (int GMachine.NodeTags.NAp);  // a1 a2 1
      RollRev 2;  // 1 a1 a2
      Tuple 3] @ // (1, a1, a2)
     heapAlloc // a3
 
+// Change the node pointed by the n-th + 1 element of the stack
+// to the Indirection node pointing to the node with the address
+// located on top of the stack.
 // .. an .. a1 a -> .. an .. a1 , heap[an] := NInd a
 let mapUpdate (n:int) : TVM.Code =
-    [PushInt 3;   // 3 = NInd tag
+    [PushInt (int GMachine.NodeTags.NInd);   // 3 = NInd tag
      Swap;
      Tuple 2;     // ... an .. a1 (3,a)
      Push n] @    // .. an .. a1 (3,a) an
@@ -146,65 +182,134 @@ let mapUpdate (n:int) : TVM.Code =
     TVM.arrayPut @ // .. an .. a1 heap'
     putHeap       // .. an .. a1
 
-// _ -> a1 a2 .. an
+// -> a1 a2 .. an
+// Allocate n dummy nodes on the heap and return put
+// their addresses on the stack
 let mapAlloc (n:int) : TVM.Code =
     [PushInt n; PushCont heapAlloc; Repeat]
 
+// Put the boxed constructor object onto the stack
 // a1 .. an -> a  , where heap[a] = NConstr(tag, [a1, ... an])
 let mapPack (tag:int) (n:int) : TVM.Code =
     [PushInt n; TupleVar] @ // (a1,...,an)
-    [PushInt 4; Swap; Tuple 2] @ // (4, (a1,...,an))
+    [PushInt (int GMachine.NodeTags.NConstr); Swap; Tuple 2] @ // (4, (a1,...,an))
     heapAlloc
 
-// _ -> a1 .. am  , where heap[n] = NConstr (tag, [a1..am])
+// Deconstruct the constructor object located on the stack,
+// having n arguments. All arguments are placed onto the stack.
+// -> a1 .. am  , where heap[n] = NConstr (tag, [a1..am])
 let mapSplit (n:int) : TVM.Code =
     [PushInt n] @
     heapLookup @    // heap[n]
     [Dup; Index 0] @  // (4, tag, (a1am)) 4
-    [PushInt 4; Sub] @ // (4, tag, (a1am)) 4-4
+    [PushInt (int GMachine.NodeTags.NConstr); Sub] @ // (4, tag, (a1am)) 4-4
     [ThrowIf 14] @  // if tag is incorrect, throw;
     // (4, tag, (a1am))
     [Index 2; Dup] @  // (a1am) (a1am)
     [TLen] @        // (a1am) m
     [UntupleVar]    // a1 .. am
 
-// n -> n
-// cs is a case selector compiled in a form of a continuation
+// Extract the constructor object's tag and transfer
+// control the code given in the corresponding case branch.
+// Here, cs is a case selector compiled in a form of a continuation
 // that checks the given stack number against possible choices
 // and transfer control to the found case; if no case suits,
 // throws exception.
+// n -> n
 let mapCasejump (cs:TVM.Code) : TVM.Code =
     [Dup] @             // n n
     heapLookup @        // n heap[n]
     [Dup] @             // n heap[n] heap[n]
     [Index 0] @         // n heap[n] tag
-    [PushInt 3; Sub; ThrowIf 13] @ // n heap[n]
+    [PushInt (int GMachine.NodeTags.NConstr); Sub; ThrowIf 13] @ // n heap[n]
     [Index 1] @         // n tag : this is the tag we should find in cs
     [PushCont cs; Execute] // n
 
+// If the current top stack element is:
+//  - a value, i.e. a number or a saturated constructor,
+//    then switch to the frame (instructions,stack pair) located on top of the dump.
+//  - an Indirection node, then put the indirection
+//    address on the stack and Unwind further
+//  - a global function, then put the parameters
+//    of the function onto the stack and execute the function instructions.
+//    If there are not enough arguments on the stack (partial application), then
+//    switch to dump code/stack pair
+//  - an application node, then put the function address (i.e. first element
+//    of the application) on the stack and Unwind further
+// n
 let mapUnwind () : TVM.Code =
-    []
+    let jmpToUnwind =
+        [Depth; Dec; Pick; Execute]
+    // n heap[n]  (note: heap[n] = (NNum n))
+    let unwindNNum =
+        [Drop; Ret]
+    // n heap[n]  (note: heap[n] = (NAp a1,a2))
+    let unwindNAp =
+        [Index 1] @ jmpToUnwind
+    // n heap[n]  (note: heap[n] = NInd a0)
+    let unwindNInd =
+        [Index 1; Swap; Drop] @ jmpToUnwind
+    let unwindNGlobal =
+        [Ret]
+    let unwindNConstr =
+        [Drop; Ret]     // n heap[n]
+    heapLookup @ // heap[n]
+    [Dup] @      // heap[n] heap[n]
+    [Index 0; Dup] @ // heap[n] tag tag
+    [PushInt (int GMachine.NodeTags.NNum)] @ // heap[n] tag tag 0
+    [Equal] @ // heap[n] tag (tag=0?)
+    [PushCont unwindNNum] @ // heap[n] tag (tag=0?) c
+    [SetNumArgs 0] @ // heap[n] tag (tag=0?) c' (note: c' omits stack completely)
+    [IfJmp] @ // heap[n] tag
+    [Dup] @ // heap[n] tag tag
+    [PushInt (int GMachine.NodeTags.NAp)] @ // heap[n] tag tag 1 (note: 1 = Nap tag)
+    [Equal] @ // heap[n] tag heap (tag=1?)
+    [PushCont unwindNAp] @ // heap tag heap (tag=0?) c
+    [SetNumArgs 1] @ // heap[n] tag heap[n] (tag=0?) c' (note: c takes 1 arg = heap)
+    [IfJmp] @ // heap tag heap
+    [Drop] @ // heap tag
+    [Dup] @ // heap tag tag
+    [PushInt (int GMachine.NodeTags.NGlobal)] @ // heap tag tag 2
+    [Equal] @ // heap tag (2==tag?) (node: 2 = NGlobal tag)
+    [PushCont unwindNGlobal] @ // heap tag (2==tag?) c
+    [IfJmp] @ // heap tag
+    [Dup] @ // heap tag tag
+    [PushInt (int GMachine.NodeTags.NInd)] @ // heap tag tag 3
+    [Equal] @ // heap tag (tag=3?)  (note: 3 = NInd tag)
+    // we need to give it the unwind continuation param
+    [PushCont unwindNInd] @ // heap tag (tag=3?) c
+    [IfJmp] @ // heap tag
+    [PushInt (int GMachine.NodeTags.NConstr)] @ // heap tag 4
+    [Equal] @ // heap (tag==4?) (note: 4 = NConstr tag)
+    [IfRet] @
+    [Drop; Throw 8] // unknown tag
 
+// Save the current code and stack (without the top element)
+// to the dump, and Unwind with current top stack element.
+// In TVM terms, we switch to continuation with Unwind code
+// but before that we drop stack elements we do not need.
+// The remainder of the current continuation goes into C0, so
+// it is like saving to the Dump; also, we need to drop the
+// topmost element after switching back to it, hence Drop
+// instruction at the end.
 let mapEval () : TVM.Code =
-    []
+    [PushCont ([Depth; RollRevX; Depth; DropX] @ (mapUnwind ()))] @
+    [Execute] @
+    [Drop] // remove top element
 
-let mapSub () : TVM.Code =
-    failwith "not implemented"
-
-let mapMul () : TVM.Code =
-    failwith "not implemented"
-
-let mapDiv () : TVM.Code =
-    failwith "not implemented"
-
-let mapEq () : TVM.Code =
-    []
-
-let mapGt () : TVM.Code =
-    []
-
-let mapCond t f : TVM.Code =
-    []
+// If the top stack element evaluates to True, transfer control
+// to the t branch; else to the f branch
+// n -> _
+let mapCond (t:TVM.Code) (f:TVM.Code) : TVM.Code =
+    heapLookup @    // heap[n]
+    [Dup] @         // heap[n] heap[n]
+    [Index 0] @     // heap[n] tag
+    [PushInt 0; Equal] @ // heap[n] (tag==0?)
+    [ThrowIf 9] @   // typecheck error
+    [Index 1] @     // NNum
+    [PushCont t] @  // NNum c
+    [IfJmp] @       // goto c if NNum is non-zero (true)
+    f // otherwise proceed to false branch
 
 let rec compileTuple t : TVM.Code =
     match t with
@@ -274,7 +379,7 @@ and compileInstr (i:GMachine.Instruction): TVM.Code =
         | GMachine.Gt ->
             mapGt ()
         | GMachine.Cond (t,f) ->
-            mapCond t f
+            mapCond (compileCode t) (compileCode f)
         | GMachine.Pack (tag,n) ->
             mapPack tag n
         | GMachine.Casejump l ->
@@ -365,7 +470,7 @@ let compile (gms: GMachine.GmState) : TVM.TVMState =
     { code = code; stack = stack; cr = { TVM.ControlRegs.Default with c0 = Some c0; c7 = c7 } }
 
 [<Test>]
-let prepareGlobalsTest0 () =
+let testPrepareGlobals0 () =
     let globs:GMachine.GmGlobals =
         Map [("main", 100); ("f", 600); ("g", 700); ("sort", 5)]
     let r = prepareGlobals globs
@@ -375,7 +480,7 @@ let prepareGlobalsTest0 () =
     )
 
 [<Test>]
-let prepareHeapTest0 () =
+let testPrepareHeap0 () =
     let heap:GMachine.GmHeap =
         Map [(0, GMachine.NNum 1);
              (1, GMachine.NAp (1, 2));
@@ -387,7 +492,7 @@ let prepareHeapTest0 () =
                              TVM.Tup [TVM.Int 3; TVM.Int 2];
                              TVM.Tup [TVM.Int 4; TVM.Int 3; TVM.Int 1; TVM.Int 2; TVM.Int 3]], r)
 [<Test>]
-let pushIntTest0 () =
+let testPushInt0 () =
     let globalsEmpty = Slice [SDict (Map [])]
     let heapEmpty = TVM.arrayNew
     let heapInitCounter = Int -1
@@ -400,11 +505,11 @@ let pushIntTest0 () =
                (compileCode [GMachine.Pushint 100;
                              GMachine.Pushint 200])
     let st = TVM.initialState code
-    TVM.dumpFiftScript "pushIntTest0.fif" (TVM.outputFift st)
+    TVM.dumpFiftScript "testPushInt0.fif" (TVM.outputFift st)
     Assert.Pass()
 
 [<Test>]
-let addTest0 () =
+let testAdd0 () =
     let globalsEmpty = Slice [SDict (Map [])]
     let heapEmpty = TVM.arrayNew
     let heapInitCounter = Int -1
@@ -422,10 +527,9 @@ let addTest0 () =
                              GMachine.Pushint 400;
                              GMachine.Add])
     let st = TVM.initialState code
-    TVM.dumpFiftScript "addTest0.fif" (TVM.outputFift st)
+    TVM.dumpFiftScript "testAdd0.fif" (TVM.outputFift st)
     let finalSt = List.last (TVM.runVM st false)
     let stk = List.tail finalSt.stack
-    printfn "%A" stk
     Assert.AreEqual([Int 6], stk) // 2 is a result address, not value
     let (Tup (Tup (Tup heap :: _) :: _)) = finalSt.cr.c7
     Assert.AreEqual (Tup [Int 0; Int 1000], List.item 6 heap)  // (0,300) is heap object of an integer 300
