@@ -202,18 +202,17 @@ let mapAlloc (n:int) : TVM.Code =
 // a1 .. an -> a  , where heap[a] = NConstr(tag, [a1, ... an])
 let mapPack (tag:int) (n:int) : TVM.Code =
     [PushInt n; TupleVar] @ // (a1,...,an)
-    [PushInt (int GMachine.NodeTags.NConstr); Swap; Tuple 2] @ // (4, (a1,...,an))
+    [PushInt (int GMachine.NodeTags.NConstr); Swap; PushInt tag; Swap; Tuple 3] @ // (4, tag, (a1,...,an))
     heapAlloc
 
 // Deconstruct the constructor object located on the stack,
-// having n arguments. All arguments are placed onto the stack.
-// -> a1 .. am  , where heap[n] = NConstr (tag, [a1..am])
+// having n arguments. All arguments (their addresses) are placed onto the stack.
+// n -> a1 .. am  , where heap[n] = NConstr (tag, [a1..am])
 let mapSplit (n:int) : TVM.Code =
-    [PushInt n] @
     heapLookup @    // heap[n]
-    [Dup; Index 0] @  // (4, tag, (a1am)) 4
-    [PushInt (int GMachine.NodeTags.NConstr); Equal] @ // (4, tag, (a1am)) 4-4
-    [ThrowIf 14] @  // if tag is incorrect, throw;
+    [Dup; Index 0] @  // heap[n] 4
+    [PushInt (int GMachine.NodeTags.NConstr); Equal] @ // (4, tag, (a1am)) 4=4?
+    [ThrowIfNot 14] @  // if tag is incorrect, throw;
     // (4, tag, (a1am))
     [Index 2; Dup] @  // (a1am) (a1am)
     [TLen] @        // (a1am) m
@@ -530,6 +529,9 @@ let getResultHeap (st:TVM.TVMState) : TVM.Value =
     let ((Int n) :: _) = getResultStack st
     getHeapAt n st
 
+let nnum (n:int) : TVM.Value =
+    Tup [Int (int GMachine.NodeTags.NNum); Int n]
+
 [<Test>]
 let testAdd0 () =
     let initC7 = [PushNull] @ TVM.arrayNew @ [PushInt -1; PushNull; Tuple 4; PopCtr 7]
@@ -545,7 +547,7 @@ let testAdd0 () =
     // TVM.dumpFiftScript "testAdd0.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
     Assert.AreEqual([Int 6], getResultStack final) // 2 is a result address, not value
-    Assert.AreEqual(Tup [Int 0; Int 1000], getResultHeap final)
+    Assert.AreEqual(nnum 1000, getResultHeap final)
 
 [<Test>]
 let testPushglobal0 () =
@@ -598,7 +600,7 @@ let testMixedArith0 () =
     let st = TVM.initialState code
     TVM.dumpFiftScript "testMixedArith0.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
-    Assert.AreEqual(Tup [Int 0; Int 180], getResultHeap final)
+    Assert.AreEqual(nnum 180, getResultHeap final)
 
 [<Test>]
 let testEqual0 () =
@@ -610,7 +612,7 @@ let testEqual0 () =
     let st = TVM.initialState code
     TVM.dumpFiftScript "testEqual0.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
-    Assert.AreEqual(Tup [Int 0; Int 0], getResultHeap final)
+    Assert.AreEqual(nnum 0, getResultHeap final)
 
 [<Test>]
 let testEqual1 () =
@@ -622,7 +624,7 @@ let testEqual1 () =
     let st = TVM.initialState code
     TVM.dumpFiftScript "testEqual1.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
-    Assert.AreEqual(Tup [Int 0; Int -1], getResultHeap final)
+    Assert.AreEqual(nnum -1, getResultHeap final)
 
 [<Test>]
 let testGreater0 () =
@@ -634,7 +636,7 @@ let testGreater0 () =
     let st = TVM.initialState code
     TVM.dumpFiftScript "testGreater0.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
-    Assert.AreEqual(Tup [Int 0; Int -1], getResultHeap final)
+    Assert.AreEqual(nnum -1, getResultHeap final)
 
 [<Test>]
 let testGreater1 () =
@@ -646,7 +648,7 @@ let testGreater1 () =
     let st = TVM.initialState code
     TVM.dumpFiftScript "testGreater1.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
-    Assert.AreEqual(Tup [Int 0; Int 0], getResultHeap final)
+    Assert.AreEqual(nnum 0, getResultHeap final)
 
 [<Test>]
 let testmkAp () =
@@ -659,8 +661,8 @@ let testmkAp () =
     TVM.dumpFiftScript "testGreater1.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
     Assert.AreEqual(Tup [Int (int GMachine.NodeTags.NAp); Int 0; Int 1], getResultHeap final)
-    Assert.AreEqual(Tup [Int (int GMachine.NodeTags.NNum); Int 100], getHeapAt 0 final)
-    Assert.AreEqual(Tup [Int (int GMachine.NodeTags.NNum); Int 200], getHeapAt 1 final)
+    Assert.AreEqual(nnum 100, getHeapAt 0 final)
+    Assert.AreEqual(nnum 200, getHeapAt 1 final)
 
 [<Test>]
 let testUpdate0 () =
@@ -675,7 +677,7 @@ let testUpdate0 () =
     let final = List.last (TVM.runVM st false)
     Assert.AreEqual ([Int 1; Int 0], getResultStack final)
     Assert.AreEqual (Tup [Int (int GMachine.NodeTags.NInd); Int 2], getHeapAt 0 final)
-    Assert.AreEqual (Tup [Int (int GMachine.NodeTags.NNum); Int 300], getHeapAt 2 final)
+    Assert.AreEqual (nnum 300, getHeapAt 2 final)
 
 [<Test>]
 let testAlloc0 () =
@@ -689,3 +691,32 @@ let testAlloc0 () =
     Assert.AreEqual (Null, getHeapAt 0 final)
     Assert.AreEqual (Null, getHeapAt 1 final)
     Assert.AreEqual (Null, getHeapAt 2 final)
+
+[<Test>]
+let testPack0 () =
+    let initC7 = [PushNull] @ TVM.arrayNew @ [PushInt -1; PushNull; Tuple 4; PopCtr 7]
+    let code = initC7 @
+               (compileCode [GMachine.Pushint 100;
+                             GMachine.Pushint 200;
+                             GMachine.Pack (30, 2)])
+    let st = TVM.initialState code
+    TVM.dumpFiftScript "testPack0.fif" (TVM.outputFift st)
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual (Tup [Int (int GMachine.NodeTags.NConstr); Int 30; Tup [Int 0; Int 1]], getResultHeap final)
+    Assert.AreEqual (nnum 100, getHeapAt 0 final)
+    Assert.AreEqual (nnum 200, getHeapAt 1 final)
+
+[<Test>]
+let testSplit0 () =
+    let initC7 = [PushNull] @ TVM.arrayNew @ [PushInt -1; PushNull; Tuple 4; PopCtr 7]
+    let code = initC7 @
+               (compileCode [GMachine.Pushint 100;
+                             GMachine.Pushint 200;
+                             GMachine.Pack (30, 2);
+                             GMachine.Split 2])
+    let st = TVM.initialState code
+    TVM.dumpFiftScript "testSplit0.fif" (TVM.outputFift st)
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual ([Int 1; Int 0], getResultStack final)
+    Assert.AreEqual (nnum 100, getHeapAt 0 final)
+    Assert.AreEqual (nnum 200, getHeapAt 1 final)

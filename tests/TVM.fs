@@ -719,9 +719,9 @@ let tuplevar st =
     tuple n true st
 
 let untuplevar st =
-    let ( (Tup l) :: (Int n) :: stack' ) = st.stack
+    let ( (Int n) :: (Tup l) :: stack' ) = st.stack
     failIf (List.length l <> n) "UNTUPLEVAR: Range check error"
-    st.put_stack (l @ stack')
+    st.put_stack ( (List.rev l) @ stack')
     st
 
 let tlen st =
@@ -1437,6 +1437,8 @@ let rec instrToFift (i:Instruction) : string =
         | PushInt n -> string(n) + " INT"
         | Index n -> string(n) + " INDEX"
         | ThrowIfNot n -> string(n) + " THROWIFNOT"
+        | ThrowIf n -> string(n) + " THROWIF"
+        | UntupleVar -> "UNTUPLEVAR"
         | SetNumArgs n -> string(n) + " SETNUMARGS"
         | Throw n -> string(n) + " THROW"
         | CallDict n -> string(n) + " CALLDICT"
@@ -1472,7 +1474,7 @@ let outputFift (st:TVMState) : string =
         String.concat "\n" (List.map instrToFift st.code);
         "}>s";
         "runvmcode";
-        "drop";
+        "drop"; // omit VM exit code
         ".s"
     ]
 
