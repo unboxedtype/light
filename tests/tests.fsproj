@@ -13,7 +13,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="AST2FiftTests.fs" />
     <Compile Include="GMachine.fs" />
     <Compile Include="TVM.fs" />
     <Compile Include="GMToTVMCompiler.fs" />
@@ -21,7 +20,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../src/AST2Fift/AST2Fift.fsproj" />
     <ProjectReference Include="../src/FiftExecutor/FiftExecutor.fsproj" />
   </ItemGroup>
 

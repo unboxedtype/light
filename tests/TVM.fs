@@ -43,7 +43,7 @@ type Instruction =
     | DivMod
     | Execute
     | CallDict of n:int
-    | JumpX
+    | JmpX
     | DumpStk
     | Nop
     | Tuple of n:int
@@ -162,6 +162,9 @@ and Stack =
 let TVM_True = (Int -1)
 let TVM_False = (Int 0)
 
+let contQuit : Continuation =
+    { code = []; data = ControlData.Default }
+
 type C7i =
     | C7_Heap = 0
     | C7_HeapCounter = 1
@@ -236,7 +239,7 @@ let jump cont (st:TVMState) =
     if (cont.data.stack <> []) || (cont.data.nargs >= 0) then
         jump_stk cont -1 st         // the stack needs to be adjusted before the CC switch
     else
-        switch_to_cont cont st         // do the CC switch immediately
+        switch_to_cont cont st      // do the CC switch immediately
 
 let call cont (st:TVMState) =
     if cont.data.save.c0.IsSome then
@@ -248,7 +251,9 @@ let call cont (st:TVMState) =
         st.cr.c0 <- Some ret
         jump_to cont st
     else
-        let ret = { code = st.code; data = { ControlData.Default with save = { c0 = st.cr.c0; c3 = st.cr.c3; c7 = st.cr.c7 } } }
+        let ret = { code = st.code; data = ControlData.Default }
+        ret.data.save.c0 <- st.cr.c0
+        printfn "ret = %A" ret
         st.cr.c0 <- Some ret
         jump_to cont st
 
@@ -272,7 +277,9 @@ let printTerm term =
     NUnit.Framework.TestContext.Progress.WriteLine("{0}", str)
 
 let initialState (code:Code) : TVMState =
-    { code = code; stack = []; cr = ControlRegs.Default }
+    let st = { code = code; stack = []; cr = ControlRegs.Default }
+    st.cr.c0 <- Some contQuit
+    st
 
 let mkBuilder (vs:SValue list) =
     Builder vs
@@ -369,8 +376,13 @@ let pushctr n st =
                 (Cont st.cr.c3.Value) :: st.stack
             else
                 raise (TVMError "PUSHCTR: Register c3 is not initialized")
+        elif n = 0 then
+            if st.cr.c0.IsSome then
+                (Cont st.cr.c0.Value) :: st.stack
+            else
+                failwith "C0 is not initialized (but should be?)"
         else
-            raise (TVMError "PUSHCTR: only c3 and c7 are supported")
+            raise (TVMError "PUSHCTR: only c0,c3,c7 are supported")
     st.stack <- stack
     st
 
@@ -563,12 +575,6 @@ let calldict n st =
     st.cr.c3.Value.data.stack <- [Int n]
     call (st.cr.c3.Value) st
 
-let jumpx st =
-    let (cont :: stack') = st.stack
-    failIfNot (cont.isCont) "JUMPX: continuation is expected"
-    st.put_stack stack'
-    jump (Value.unboxCont cont) st
-
 let throwifnot n st =
     let (i :: stack') = st.stack
     failIfNot (i.isInt) "THROWIFNOT: Integer expected"
@@ -605,6 +611,12 @@ let ifexec st =
     else
         st.stack <- stack'
         st
+
+let jmpx st =
+    let (c :: stack') = st.stack
+    failIfNot (c.isCont) "JMPX: continuation expected"
+    st.put_stack stack'
+    jump (Value.unboxCont c) st
 
 let ifjmp st =
     let (c :: f :: stack') = st.stack
@@ -807,8 +819,8 @@ let dispatch (i:Instruction) =
             execute
         | CallDict n ->
             calldict n
-        | JumpX ->
-            jumpx
+        | JmpX ->
+            jmpx
         | IfElse ->
             ifelse
         | DumpStk ->
@@ -2003,6 +2015,21 @@ let testRot2 () =
         let stk = List.tail finalSt.stack
         printfn "%A" stk
         Assert.AreEqual([Int 2; Int 1; Int 6; Int 5; Int 4; Int 3], stk )
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testExecuteDouble0 () =
+    // this is unintuitive; The continuation in C0 already has save.c0 set,
+    // so the obvious return point to PushInt 2 will be changed back to
+    // that save.c0, which is contQuit. So, this code will execute only one
+    // PushInt 1.
+    let st = initialState [PushCont [PushCtr 0; Execute; PushInt 2]; Execute; PushInt 1]
+    try
+        let finalSt = List.last (runVM st false)
+        let stk = List.tail finalSt.stack
+        Assert.AreEqual([Int 1], stk )
     with
         | TVMError s ->
             Assert.Fail(s)

@@ -202,7 +202,7 @@ let mapSplit (n:int) : TVM.Code =
     [PushInt n] @
     heapLookup @    // heap[n]
     [Dup; Index 0] @  // (4, tag, (a1am)) 4
-    [PushInt (int GMachine.NodeTags.NConstr); Sub] @ // (4, tag, (a1am)) 4-4
+    [PushInt (int GMachine.NodeTags.NConstr); Equal] @ // (4, tag, (a1am)) 4-4
     [ThrowIf 14] @  // if tag is incorrect, throw;
     // (4, tag, (a1am))
     [Index 2; Dup] @  // (a1am) (a1am)
@@ -221,7 +221,7 @@ let mapCasejump (cs:TVM.Code) : TVM.Code =
     heapLookup @        // n heap[n]
     [Dup] @             // n heap[n] heap[n]
     [Index 0] @         // n heap[n] tag
-    [PushInt (int GMachine.NodeTags.NConstr); Sub; ThrowIf 13] @ // n heap[n]
+    [PushInt (int GMachine.NodeTags.NConstr); Equal; ThrowIf 13] @ // n heap[n]
     [Index 1] @         // n tag : this is the tag we should find in cs
     [PushCont cs; Execute] // n
 
@@ -237,9 +237,13 @@ let mapCasejump (cs:TVM.Code) : TVM.Code =
 //  - an application node, then put the function address (i.e. first element
 //    of the application) on the stack and Unwind further
 // n
+
+// here, we expected that unwind continuation is stored
+// at the back of the stack, initially
+let jmpToUnwind =
+    [Depth; Dec; Pick; Execute]
+
 let mapUnwind () : TVM.Code =
-    let jmpToUnwind =
-        [Depth; Dec; Pick; Execute]
     // n heap[n]  (note: heap[n] = (NNum n))
     let unwindNNum =
         [Drop; Ret]
@@ -293,9 +297,7 @@ let mapUnwind () : TVM.Code =
 // topmost element after switching back to it, hence Drop
 // instruction at the end.
 let mapEval () : TVM.Code =
-    [PushCont ([Depth; RollRevX; Depth; DropX] @ (mapUnwind ()))] @
-    [Execute] @
-    [Drop] // remove top element
+    [Depth; Dec; Pick; SetNumArgs 1; JmpX]
 
 // If the top stack element evaluates to True, transfer control
 // to the t branch; else to the f branch
