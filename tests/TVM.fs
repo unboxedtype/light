@@ -62,6 +62,8 @@ type Instruction =
     | Newc
     | Endc
     | Stu of cc:int
+    | Ldu of cc:int
+    | Ends
     | StRef
     | NewDict    // ... -> ... D
     | DictUGet   // i D n -> x (-1),  or 0
@@ -165,11 +167,6 @@ let TVM_False = (Int 0)
 let contQuit : Continuation =
     { code = []; data = ControlData.Default }
 
-type C7i =
-    | C7_Heap = 0
-    | C7_HeapCounter = 1
-    | C7_Globals = 2
-
 let isOverflow n =
     // skip the test for now
     false
@@ -253,7 +250,6 @@ let call cont (st:TVMState) =
     else
         let ret = { code = st.code; data = ControlData.Default }
         ret.data.save.c0 <- st.cr.c0
-        printfn "ret = %A" ret
         st.cr.c0 <- Some ret
         jump_to cont st
 
@@ -297,6 +293,22 @@ let stu cc st =
     st.put_stack (mkBuilder (vs @ [x.asSV]) :: stack')
     st
 
+let ldu cc st =
+    let (s :: stack') = st.stack
+    failIfNot (s.isSlice) "LDU: slice expected"
+    let (Slice (SInt n :: t)) = s
+    let logBase b v = (log v) / (log b)
+    failIf (logBase 2.0 (float n) > cc) "not enough bits for the integer"
+    // check n-th size against cc
+    st.put_stack (Slice t :: Int n :: stack')
+    st
+
+let ends st =
+    let (Slice t :: stack') = st.stack
+    failIfNot (t = []) "ENDS: slice not empty"
+    st.put_stack stack'
+    st
+
 let newc st =
     let stack = st.stack
     st.put_stack (mkBuilder [] :: stack)
@@ -330,9 +342,8 @@ let pushnull st =
     st.stack <- Null :: stack'
     st
 
-let pushslice (c:Value) st =
-    failIfNot (c.isSlice) "PUSHSLICE: slice expected"
-    st.stack <- c :: st.stack
+let pushslice (c:SValue list) st =
+    st.stack <- (Slice c) :: st.stack
     st
 
 let stslice s st =
@@ -579,7 +590,7 @@ let throwifnot n st =
     let (i :: stack') = st.stack
     failIfNot (i.isInt) "THROWIFNOT: Integer expected"
     if i.unboxInt = 0 then
-        raise (TVMError ("TVM exception was thrown: " + string n))
+        raise (TVMError (string n))
     else
         ()
     st.stack <- stack'
@@ -589,7 +600,7 @@ let throwif n st =
     let (i :: stack') = st.stack
     failIfNot (i.isInt) "THROWIF: Integer expected"
     if i.unboxInt <> 0 then
-        raise (TVMError ("TVM exception was thrown: " + string n))
+        raise (TVMError (string n))
     else
         ()
     st.stack <- stack'
@@ -599,7 +610,7 @@ let throwif n st =
 // it should transfer control to C3 cont, but
 // for now we skip it
 let throw nn st =
-    raise (TVMError ("TVM exception was thrown: " + (string nn)))
+    raise (TVMError (string nn))
 
 let ifexec st =
     let (c :: f :: stack') = st.stack
@@ -857,6 +868,10 @@ let dispatch (i:Instruction) =
             endc
         | Stu cc ->
             stu cc
+        | Ldu cc ->
+            ldu cc
+        | Ends ->
+            ends
         | NewDict ->
             newdict
         | DictUGet ->
@@ -899,9 +914,10 @@ let dispatch (i:Instruction) =
             isnull
         | IsZero ->
             iszero
+        | PushSlice s ->
+            pushslice s
         | _ ->
-            let msg = sprintf "unsupported instruction: %A" i
-            raise (TVMError msg)
+            failwith (sprintf "unsupported instruction: %A" i)
 
 let step (st:TVMState) : TVMState =
     match (st.code) with

@@ -10,7 +10,16 @@ open System.Collections.Generic
 open type TVM.Instruction
 open type TVM.Value
 open type TVM.SValue
-open type TVM.C7i
+
+type RuntimeErrors =
+    | GlobalNotFound = 10
+    | HeapNodeNotFound = 11
+
+type RuntimeGlobalVars =
+    | Heap = 1
+    | HeapCounter = 2
+    | Globals = 3
+    | UnwindCont = 4
 
 // generate code that stores value n into
 // the builder. The builder is assumed to be on
@@ -46,27 +55,27 @@ let putState =
 
 // _ -> hc
 let getHeapCounter =
-    getState @ [Index (int C7_HeapCounter)]
+    getState @ [Index (int RuntimeGlobalVars.HeapCounter)]
 
 // _ -> g
 let getGlobals =
-    getState @ [Index (int C7_Globals)]
+    getState @ [Index (int RuntimeGlobalVars.Globals)]
 
 // _ -> h
 let getHeap =
-    getState @ [Index (int C7_Heap)]
+    getState @ [Index (int RuntimeGlobalVars.Heap)]
 
 // n -> _
 let putHeapCounter =
-    getState @ [Swap] @ [SetIndex (int C7_HeapCounter)] @ putState
+    getState @ [Swap] @ [SetIndex (int RuntimeGlobalVars.HeapCounter)] @ putState
 
 // n -> _
 let putHeap =
-    getState @ [Swap] @ [SetIndex (int C7_Heap)] @ putState
+    getState @ [Swap] @ [SetIndex (int RuntimeGlobalVars.Heap)] @ putState
 
 // g -> _
 let putGlobals =
-    getState @ [Swap] @ [SetIndex (int C7_Globals)] @ putState
+    getState @ [Swap] @ [SetIndex (int RuntimeGlobalVars.Globals)] @ putState
 
 // 1. allocate address for the node
 // 2. store the node in the heap at that address
@@ -92,7 +101,7 @@ let heapLookup =
     getHeap @ // k h
     [Swap] @ // h k
     TVM.arrayGetWithCode @
-    [ThrowIfNot 15]
+    [ThrowIfNot (int RuntimeErrors.HeapNodeNotFound)]
 
 // Put the n-th element of the stack on top of the stack;
 // 0 denotes the current top value of the stack.
@@ -105,20 +114,21 @@ let mapPop (n:int) : TVM.Code =
 
 // Remove n elements from the stack, starting from the second
 // element of the stack, i.e. leaving the top stack element inplace.
-// sn .. s2 s1 s -> s
+// ... sn .. s2 s1 s -> ...  s
 let mapSlide (n:int) : TVM.Code =
     [RollRev n; BlkDrop n]
 
-// Extract the address of a function from the globals
+// Extract the address of a function with id = n from the globals
 // and put it on the stack; if the function with the given
-// name is not found, raise exception.
+// name n is not found, raise exception.
 let mapPushglobal (n:int) : TVM.Code =
-    [PushInt 128;
-     PushCtr 7;
-     Index ( int C7_Globals );  // 128 D
-     PushInt n;       // 128 D n
+    [PushInt n] @
+    getGlobals @
+    [PushInt 128;       // n D 128
      DictUGet;        // D[n] -1 | 0
-     ThrowIfNot 10]   // x
+     ThrowIfNot (int RuntimeErrors.GlobalNotFound);
+     Ldu 128; // n s'
+     Ends] // n
 
 // Allocate a node for the given integer on the heap and put the
 // address of that node on the stack;
@@ -500,12 +510,25 @@ let testPushInt0 () =
                (compileCode [GMachine.Pushint 100;
                              GMachine.Pushint 200])
     let st = TVM.initialState code
-    TVM.dumpFiftScript "testPushInt0.fif" (TVM.outputFift st)
+    // TVM.dumpFiftScript "testPushInt0.fif" (TVM.outputFift st)
     Assert.Pass()
+
+// st - final state; we omit the exit code from the VM
+let getResultStack (st:TVM.TVMState) : TVM.Stack =
+    List.tail st.stack
+
+// extract heap node with the address given on the stack top
+let getResultHeap (st:TVM.TVMState) : TVM.Value =
+    let ((Int n) :: _) = getResultStack st
+    let (Tup (Null :: Tup heap :: _))  = st.cr.c7
+    let i = n / TVM.bucketSize
+    let j = n % TVM.bucketSize
+    let (Tup h1) = List.item i heap
+    List.item j h1
 
 [<Test>]
 let testAdd0 () =
-    let initC7 = TVM.arrayNew @ [PushInt -1; PushNull; Tuple 3; PopCtr 7]
+    let initC7 = [PushNull] @ TVM.arrayNew @ [PushInt -1; PushNull; Tuple 4; PopCtr 7]
     let code = initC7 @
                (compileCode [GMachine.Pushint 100;
                              GMachine.Pushint 200;
@@ -515,9 +538,44 @@ let testAdd0 () =
                              GMachine.Pushint 400;
                              GMachine.Add])
     let st = TVM.initialState code
-    TVM.dumpFiftScript "testAdd0.fif" (TVM.outputFift st)
-    let finalSt = List.last (TVM.runVM st false)
-    let stk = List.tail finalSt.stack
-    Assert.AreEqual([Int 6], stk) // 2 is a result address, not value
-    let (Tup (Tup (Tup heap :: _) :: _)) = finalSt.cr.c7
-    Assert.AreEqual (Tup [Int 0; Int 1000], List.item 6 heap)  // (0,300) is heap object of an integer 300
+    // TVM.dumpFiftScript "testAdd0.fif" (TVM.outputFift st)
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual([Int 6], getResultStack final) // 2 is a result address, not value
+    Assert.AreEqual(Tup [Int 0; Int 1000], getResultHeap final)
+
+[<Test>]
+let testPushglobal0 () =
+    let initC7 = [PushNull] @
+                 TVM.arrayNew @
+                 [PushInt -1;
+                  PushSlice [SDict (Map [(hash "fact", [SInt 200]);
+                                         (hash "main", [SInt 1])])];
+                  Tuple 4;
+                  PopCtr 7]
+    let code = initC7 @ (mapPushglobal (hash "fact"))
+    let st = TVM.initialState code
+    // TVM.dumpFiftScript "testAdd0.fif" (TVM.outputFift st)
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual([Int 200], getResultStack final) // 2 is a result address, not value
+
+[<Test>]
+let testPushglobal1 () =
+    let initC7 = [PushNull] @
+                 TVM.arrayNew @
+                 [PushInt -1;
+                  PushSlice [SDict (Map [(hash "fact", [SInt 200]);
+                                         (hash "main", [SInt 1])])];
+                  Tuple 4;
+                  PopCtr 7]
+    let code = initC7 @ (mapPushglobal (hash "fibonacci"))
+    let st = TVM.initialState code
+    // TVM.dumpFiftScript "testAdd0.fif" (TVM.outputFift st)
+    try
+        let final = List.last (TVM.runVM st false)
+        Assert.Fail ("global does not exist")
+    with
+        | TVM.TVMError(x) ->
+            if x = string (int RuntimeErrors.GlobalNotFound) then
+                Assert.Pass()
+            else
+                Assert.Fail("wrong exception")
