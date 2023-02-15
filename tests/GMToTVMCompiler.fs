@@ -163,10 +163,10 @@ let mapMul () : TVM.Code =
 let mapDiv () : TVM.Code =
     binaryOperation [Div]
 
-let mapEq () : TVM.Code =
+let mapEqual () : TVM.Code =
     binaryOperation [Equal]
 
-let mapGt () : TVM.Code =
+let mapGreater () : TVM.Code =
     binaryOperation [Greater]
 
 // Allocate a node for function application on the heap and
@@ -196,7 +196,7 @@ let mapUpdate (n:int) : TVM.Code =
 // Allocate n dummy nodes on the heap and return put
 // their addresses on the stack
 let mapAlloc (n:int) : TVM.Code =
-    [PushInt n; PushCont heapAlloc; Repeat]
+    [PushInt n; PushCont ([PushNull] @ heapAlloc); Repeat]
 
 // Put the boxed constructor object onto the stack
 // a1 .. an -> a  , where heap[a] = NConstr(tag, [a1, ... an])
@@ -386,10 +386,10 @@ and compileInstr (i:GMachine.Instruction): TVM.Code =
             mapMul ()
         | GMachine.Div ->
             mapDiv ()
-        | GMachine.Eq ->
-            mapEq ()
-        | GMachine.Gt ->
-            mapGt ()
+        | GMachine.Equal ->
+            mapEqual ()
+        | GMachine.Greater ->
+            mapGreater ()
         | GMachine.Cond (t,f) ->
             mapCond (compileCode t) (compileCode f)
         | GMachine.Pack (tag,n) ->
@@ -517,14 +517,18 @@ let testPushInt0 () =
 let getResultStack (st:TVM.TVMState) : TVM.Stack =
     List.tail st.stack
 
-// extract heap node with the address given on the stack top
-let getResultHeap (st:TVM.TVMState) : TVM.Value =
-    let ((Int n) :: _) = getResultStack st
+// get node with address n from the heap
+let getHeapAt (n:int) (st:TVM.TVMState) : TVM.Value =
     let (Tup (Null :: Tup heap :: _))  = st.cr.c7
     let i = n / TVM.bucketSize
     let j = n % TVM.bucketSize
     let (Tup h1) = List.item i heap
     List.item j h1
+
+// extract heap node with the address given on the stack top
+let getResultHeap (st:TVM.TVMState) : TVM.Value =
+    let ((Int n) :: _) = getResultStack st
+    getHeapAt n st
 
 [<Test>]
 let testAdd0 () =
@@ -579,3 +583,109 @@ let testPushglobal1 () =
                 Assert.Pass()
             else
                 Assert.Fail("wrong exception")
+
+[<Test>]
+let testMixedArith0 () =
+    let initC7 = [PushNull] @ TVM.arrayNew @ [PushInt -1; PushNull; Tuple 4; PopCtr 7]
+    let code = initC7 @
+               (compileCode [GMachine.Pushint 100;
+                             GMachine.Pushint 200;
+                             GMachine.Add;
+                             GMachine.Pushint 300;
+                             GMachine.Mul;
+                             GMachine.Pushint 500;
+                             GMachine.Div])
+    let st = TVM.initialState code
+    TVM.dumpFiftScript "testMixedArith0.fif" (TVM.outputFift st)
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual(Tup [Int 0; Int 180], getResultHeap final)
+
+[<Test>]
+let testEqual0 () =
+    let initC7 = [PushNull] @ TVM.arrayNew @ [PushInt -1; PushNull; Tuple 4; PopCtr 7]
+    let code = initC7 @
+               (compileCode [GMachine.Pushint 100;
+                             GMachine.Pushint 200;
+                             GMachine.Equal])
+    let st = TVM.initialState code
+    TVM.dumpFiftScript "testEqual0.fif" (TVM.outputFift st)
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual(Tup [Int 0; Int 0], getResultHeap final)
+
+[<Test>]
+let testEqual1 () =
+    let initC7 = [PushNull] @ TVM.arrayNew @ [PushInt -1; PushNull; Tuple 4; PopCtr 7]
+    let code = initC7 @
+               (compileCode [GMachine.Pushint 100;
+                             GMachine.Pushint 100;
+                             GMachine.Equal])
+    let st = TVM.initialState code
+    TVM.dumpFiftScript "testEqual1.fif" (TVM.outputFift st)
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual(Tup [Int 0; Int -1], getResultHeap final)
+
+[<Test>]
+let testGreater0 () =
+    let initC7 = [PushNull] @ TVM.arrayNew @ [PushInt -1; PushNull; Tuple 4; PopCtr 7]
+    let code = initC7 @
+               (compileCode [GMachine.Pushint 200;
+                             GMachine.Pushint 100;
+                             GMachine.Greater])
+    let st = TVM.initialState code
+    TVM.dumpFiftScript "testGreater0.fif" (TVM.outputFift st)
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual(Tup [Int 0; Int -1], getResultHeap final)
+
+[<Test>]
+let testGreater1 () =
+    let initC7 = [PushNull] @ TVM.arrayNew @ [PushInt -1; PushNull; Tuple 4; PopCtr 7]
+    let code = initC7 @
+               (compileCode [GMachine.Pushint 100;
+                             GMachine.Pushint 100;
+                             GMachine.Greater])
+    let st = TVM.initialState code
+    TVM.dumpFiftScript "testGreater1.fif" (TVM.outputFift st)
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual(Tup [Int 0; Int 0], getResultHeap final)
+
+[<Test>]
+let testmkAp () =
+    let initC7 = [PushNull] @ TVM.arrayNew @ [PushInt -1; PushNull; Tuple 4; PopCtr 7]
+    let code = initC7 @
+               (compileCode [GMachine.Pushint 100;
+                             GMachine.Pushint 200;
+                             GMachine.Mkap])
+    let st = TVM.initialState code
+    TVM.dumpFiftScript "testGreater1.fif" (TVM.outputFift st)
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual(Tup [Int (int GMachine.NodeTags.NAp); Int 0; Int 1], getResultHeap final)
+    Assert.AreEqual(Tup [Int (int GMachine.NodeTags.NNum); Int 100], getHeapAt 0 final)
+    Assert.AreEqual(Tup [Int (int GMachine.NodeTags.NNum); Int 200], getHeapAt 1 final)
+
+[<Test>]
+let testUpdate0 () =
+    let initC7 = [PushNull] @ TVM.arrayNew @ [PushInt -1; PushNull; Tuple 4; PopCtr 7]
+    let code = initC7 @
+               (compileCode [GMachine.Pushint 100; // 0 (pos:2)
+                             GMachine.Pushint 200; // 1 (pos:1)
+                             GMachine.Pushint 300; // 2 (pos:0)
+                             GMachine.Update 2])  // heap[0] = NInd 2, heap[2] = NNum 300
+    let st = TVM.initialState code
+    TVM.dumpFiftScript "testUpdate0.fif" (TVM.outputFift st)
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual ([Int 1; Int 0], getResultStack final)
+    Assert.AreEqual (Tup [Int (int GMachine.NodeTags.NInd); Int 2], getHeapAt 0 final)
+    Assert.AreEqual (Tup [Int (int GMachine.NodeTags.NNum); Int 300], getHeapAt 2 final)
+
+[<Test>]
+let testAlloc0 () =
+    let initC7 = [PushNull] @ TVM.arrayNew @ [PushInt -1; PushNull; Tuple 4; PopCtr 7]
+    let code = initC7 @
+               (compileCode [GMachine.Alloc 3])
+    let st = TVM.initialState code
+    TVM.dumpFiftScript "testAlloc0.fif" (TVM.outputFift st)
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual ([Int 2; Int 1; Int 0], getResultStack final)
+    Assert.AreEqual (Null, getHeapAt 0 final)
+    Assert.AreEqual (Null, getHeapAt 1 final)
+    Assert.AreEqual (Null, getHeapAt 2 final)

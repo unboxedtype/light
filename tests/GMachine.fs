@@ -80,7 +80,7 @@ type Instruction =
     | Add | Sub | Mul | Div
 
     // same for logical operations
-    | Eq | Gt
+    | Equal | Greater
 
     // Cond (t, f)
     // If the top stack element evaluates to True, transfer control
@@ -464,9 +464,9 @@ let dispatch i =
             mul
         | Div ->
             div
-        | Eq ->
+        | Equal ->
             eq
-        | Gt ->
+        | Greater ->
             gt
         | Pack (tag, n) ->
             pack tag n
@@ -561,9 +561,9 @@ let rec compileE (ast : Expr) (env: GmEnvironment) : GmCode =
         | EMul (e1, e2) ->
             (compileE e2 env) @ (compileE e1 (argOffset 1 env)) @ [Mul]
         | EEq (e1, e2) ->
-            (compileE e2 env) @ (compileE e1 (argOffset 1 env)) @ [Eq]
+            (compileE e2 env) @ (compileE e1 (argOffset 1 env)) @ [Equal]
         | EGt (e1, e2) ->
-            (compileE e2 env) @ (compileE e1 (argOffset 1 env)) @ [Gt]
+            (compileE e2 env) @ (compileE e1 (argOffset 1 env)) @ [Greater]
         | EDiv (e1, e2) ->
             (compileE e2 env) @ (compileE e1 (argOffset 1 env)) @ [Div]
         | EIf (e0, e1, e2) ->
