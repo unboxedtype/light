@@ -237,6 +237,20 @@ let mapCasejump (cs:TVM.Code) : TVM.Code =
     [Index 1] @         // n tag : this is the tag we should find in cs
     [PushCont cs; Execute] // n
 
+// If the top stack element evaluates to True, transfer control
+// to the t branch; else to the f branch
+// n -> _
+let mapCond (t:TVM.Code) (f:TVM.Code) : TVM.Code =
+    heapLookup @    // heap[n]
+    [Dup] @         // heap[n] heap[n]
+    [Index 0] @     // heap[n] tag
+    [PushInt (int GMachine.NodeTags.NNum); Equal] @ // heap[n] (tag==0?)
+    [ThrowIfNot (int RuntimeErrors.HeapNodeWrongTag)] @   // typecheck error
+    [Index 1] @     // NNum
+    [PushCont t] @  // NNum c
+    [IfJmp] @       // goto c if NNum is non-zero (true)
+    f // otherwise proceed to false branch
+
 // If the current top stack element is:
 //  - a value, i.e. a number or a saturated constructor,
 //    then switch to the frame (instructions,stack pair) located on top of the dump.
@@ -310,20 +324,6 @@ let mapUnwind () : TVM.Code =
 // instruction at the end.
 let mapEval () : TVM.Code =
     [Depth; Dec; Pick; SetNumArgs 1; JmpX]
-
-// If the top stack element evaluates to True, transfer control
-// to the t branch; else to the f branch
-// n -> _
-let mapCond (t:TVM.Code) (f:TVM.Code) : TVM.Code =
-    heapLookup @    // heap[n]
-    [Dup] @         // heap[n] heap[n]
-    [Index 0] @     // heap[n] tag
-    [PushInt 0; Equal] @ // heap[n] (tag==0?)
-    [ThrowIf 9] @   // typecheck error
-    [Index 1] @     // NNum
-    [PushCont t] @  // NNum c
-    [IfJmp] @       // goto c if NNum is non-zero (true)
-    f // otherwise proceed to false branch
 
 let rec compileTuple t : TVM.Code =
     match t with
@@ -758,3 +758,29 @@ let testCasejump1 () =
                 Assert.Pass()
             else
                 Assert.Fail("wrong exception")
+
+[<Test>]
+let testCond0 () =
+    let initC7 = [PushNull] @ TVM.arrayNew @ [PushInt -1; PushNull; Tuple 4; PopCtr 7]
+    let code = initC7 @
+               (compileCode [GMachine.Pushint 100;
+                             GMachine.Pushint 100;
+                             GMachine.Equal;
+                             GMachine.Cond ([GMachine.Pushint 300], [GMachine.Pushint 600])])
+    let st = TVM.initialState code
+    TVM.dumpFiftScript "testCond0.fif" (TVM.outputFift st)
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual (nnum 300, getResultHeap final)
+
+[<Test>]
+let testCond1 () =
+    let initC7 = [PushNull] @ TVM.arrayNew @ [PushInt -1; PushNull; Tuple 4; PopCtr 7]
+    let code = initC7 @
+               (compileCode [GMachine.Pushint 100;
+                             GMachine.Pushint 200;
+                             GMachine.Equal;
+                             GMachine.Cond ([GMachine.Pushint 300], [GMachine.Pushint 600])])
+    let st = TVM.initialState code
+    TVM.dumpFiftScript "testCond1.fif" (TVM.outputFift st)
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual (nnum 600, getResultHeap final)
