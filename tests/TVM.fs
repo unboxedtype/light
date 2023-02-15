@@ -1464,6 +1464,7 @@ let rec instrToFift (i:Instruction) : string =
         | RollRev n -> string(n) + " ROLLREV"
         | Dup2 -> "DUP2"
         | Rot2 -> "ROT2"
+        | Execute -> "EXECUTE"
         | _ ->
             failwith (sprintf "unsupported instruction: %A" i)
 

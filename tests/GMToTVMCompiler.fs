@@ -14,6 +14,8 @@ open type TVM.SValue
 type RuntimeErrors =
     | GlobalNotFound = 10
     | HeapNodeNotFound = 11
+    | HeapNodeWrongTag = 12
+    | CaseNotFound = 13
 
 type RuntimeGlobalVars =
     | Heap = 1
@@ -212,7 +214,7 @@ let mapSplit (n:int) : TVM.Code =
     heapLookup @    // heap[n]
     [Dup; Index 0] @  // heap[n] 4
     [PushInt (int GMachine.NodeTags.NConstr); Equal] @ // (4, tag, (a1am)) 4=4?
-    [ThrowIfNot 14] @  // if tag is incorrect, throw;
+    [ThrowIfNot (int RuntimeErrors.HeapNodeWrongTag)] @  // if tag is incorrect, throw;
     // (4, tag, (a1am))
     [Index 2; Dup] @  // (a1am) (a1am)
     [TLen] @        // (a1am) m
@@ -230,7 +232,8 @@ let mapCasejump (cs:TVM.Code) : TVM.Code =
     heapLookup @        // n heap[n]
     [Dup] @             // n heap[n] heap[n]
     [Index 0] @         // n heap[n] tag
-    [PushInt (int GMachine.NodeTags.NConstr); Equal; ThrowIf 13] @ // n heap[n]
+    [PushInt (int GMachine.NodeTags.NConstr); Equal;
+     ThrowIfNot (int RuntimeErrors.HeapNodeWrongTag)] @ // n heap[n]
     [Index 1] @         // n tag : this is the tag we should find in cs
     [PushCont cs; Execute] // n
 
@@ -423,12 +426,12 @@ and compileCode (code:GMachine.GmCode) : TVM.Code =
 and compileCasejumpSelector (l: (int * GMachine.GmCode) list) : TVM.Code =
     match l with
         | [] ->
-            [Throw 13]  // case not found
+            [Throw (int RuntimeErrors.CaseNotFound)]  // case not found
         | (tag, code) :: t ->
             [Dup; // n n
              PushInt tag; // n n tag
-             Equal;
-             PushCont (compileCode code); // n (-1|0) c
+             Equal; // n (tag=n?)
+             PushCont ([Drop] @ compileCode code); // n (-1|0) c
              IfJmp] @ // if we found the right tag, jmp to c
                 compileCasejumpSelector t
 
@@ -720,3 +723,38 @@ let testSplit0 () =
     Assert.AreEqual ([Int 1; Int 0], getResultStack final)
     Assert.AreEqual (nnum 100, getHeapAt 0 final)
     Assert.AreEqual (nnum 200, getHeapAt 1 final)
+
+[<Test>]
+let testCasejump0 () =
+    let initC7 = [PushNull] @ TVM.arrayNew @ [PushInt -1; PushNull; Tuple 4; PopCtr 7]
+    let code = initC7 @
+               (compileCode [GMachine.Pushint 100;
+                             GMachine.Pushint 200;
+                             GMachine.Pack (30, 2);
+                             GMachine.Casejump [(0, [GMachine.Pushint 300]);
+                                                (30, [GMachine.Pushint 600])]])
+    let st = TVM.initialState code
+    TVM.dumpFiftScript "testCasejump0.fif" (TVM.outputFift st)
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual (nnum 600, getResultHeap final)
+
+[<Test>]
+let testCasejump1 () =
+    let initC7 = [PushNull] @ TVM.arrayNew @ [PushInt -1; PushNull; Tuple 4; PopCtr 7]
+    let code = initC7 @
+               (compileCode [GMachine.Pushint 100;
+                             GMachine.Pushint 200;
+                             GMachine.Pack (30, 2);
+                             GMachine.Casejump [(0, [GMachine.Pushint 300]);
+                                                (20, [GMachine.Pushint 600])]])
+    let st = TVM.initialState code
+    TVM.dumpFiftScript "testCasejump1.fif" (TVM.outputFift st)
+    try
+        let final = List.last (TVM.runVM st false)
+        Assert.Fail ("case not found exception is expected")
+    with
+        | TVM.TVMError(x) ->
+            if x = string (int RuntimeErrors.CaseNotFound) then
+                Assert.Pass()
+            else
+                Assert.Fail("wrong exception")
