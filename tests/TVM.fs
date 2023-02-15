@@ -2020,7 +2020,7 @@ let testRot2 () =
             Assert.Fail(s)
 
 [<Test>]
-let testExecuteDouble0 () =
+let testExecutePushCtr0 () =
     // this is unintuitive; The continuation in C0 already has save.c0 set,
     // so the obvious return point to PushInt 2 will be changed back to
     // that save.c0, which is contQuit. So, this code will execute only one
@@ -2030,6 +2030,21 @@ let testExecuteDouble0 () =
         let finalSt = List.last (runVM st false)
         let stk = List.tail finalSt.stack
         Assert.AreEqual([Int 1], stk )
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testExecuteTriple () =
+    // this is unintuitive; The continuation in C0 already has save.c0 set,
+    // so the obvious return point to PushInt 2 will be changed back to
+    // that save.c0, which is contQuit. So, this code will execute only one
+    // PushInt 1.
+    let st = initialState [PushCont [PushCont [PushInt 2]; Execute; PushInt 1]; Execute; PushInt 0]
+    try
+        let finalSt = List.last (runVM st false)
+        let stk = List.tail finalSt.stack
+        Assert.AreEqual([Int 0; Int 1; Int 2], stk )
     with
         | TVMError s ->
             Assert.Fail(s)

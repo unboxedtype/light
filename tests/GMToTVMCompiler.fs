@@ -495,15 +495,8 @@ let testPrepareHeap0 () =
                              TVM.Tup [TVM.Int 4; TVM.Int 3; TVM.Int 1; TVM.Int 2; TVM.Int 3]], r)
 [<Test>]
 let testPushInt0 () =
-    let globalsEmpty = Slice [SDict (Map [])]
-    let heapEmpty = TVM.arrayNew
-    let heapInitCounter = Int -1
-    let initC7Tuple = heapEmpty @
-                      (compileElem heapInitCounter) @
-                      (compileElem globalsEmpty) @
-                      [Tuple 3]
-    let initC7Compile = initC7Tuple @ [PopCtr 7]
-    let code = initC7Compile @
+    let initC7 = TVM.arrayNew @ [PushInt -1; PushNull; Tuple 3; PopCtr 7]
+    let code = initC7 @
                (compileCode [GMachine.Pushint 100;
                              GMachine.Pushint 200])
     let st = TVM.initialState code
@@ -512,15 +505,8 @@ let testPushInt0 () =
 
 [<Test>]
 let testAdd0 () =
-    let globalsEmpty = Slice [SDict (Map [])]
-    let heapEmpty = TVM.arrayNew
-    let heapInitCounter = Int -1
-    let initC7Tuple = heapEmpty @
-                      (compileElem heapInitCounter) @
-                      (compileElem globalsEmpty) @
-                      [Tuple 3]
-    let initC7Compile = initC7Tuple @ [PopCtr 7]
-    let code = initC7Compile @
+    let initC7 = TVM.arrayNew @ [PushInt -1; PushNull; Tuple 3; PopCtr 7]
+    let code = initC7 @
                (compileCode [GMachine.Pushint 100;
                              GMachine.Pushint 200;
                              GMachine.Add;
