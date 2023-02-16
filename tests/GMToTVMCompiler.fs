@@ -22,6 +22,7 @@ type RuntimeGlobalVars =
     | HeapCounter = 2
     | Globals = 3
     | UnwindCont = 4
+    | UnwindSelector = 5
 
 // generate code that stores value n into
 // the builder. The builder is assumed to be on
@@ -251,6 +252,38 @@ let mapCond (t:TVM.Code) (f:TVM.Code) : TVM.Code =
     [IfJmp] @       // goto c if NNum is non-zero (true)
     f // otherwise proceed to false branch
 
+let doUnwind =
+    [GetGlob (int RuntimeGlobalVars.UnwindCont); Execute]
+
+let mapUnwindNNum () : TVM.Code =
+    [Drop; Ret]
+
+let mapUnwindNAp () : TVM.Code =
+    [Index 1] @ doUnwind
+
+let mapUnwindNInd () : TVM.Code =
+    [Index 1] @ doUnwind
+
+let mapUnwindNConstr () : TVM.Code =
+    [Drop; Ret]
+
+let unwindRearrange () : TVM.Code =
+    []  // not done
+
+let mapUnwindNGlobal () : TVM.Code =
+    [Dup;        // heap[n] heap[n]
+     Index 1;    // heap[n] NGlobal.n
+     Depth; Dec; // heap[n] NGlobal.n k
+     Swap;
+     Less;        // heap[n] k<NGlobal.n?
+     PushCont []; // heap[n] k<N c
+     IfJmp;       // heap[n]
+     Dup;
+     Index 1; SetGlob 9; // NGlobal.n
+     Index 2; SetGlob 10] @ // NGlobal.c
+     (unwindRearrange ()) @
+     [GetGlob 10; Execute]
+
 // If the current top stack element is:
 //  - a value, i.e. a number or a saturated constructor,
 //    then switch to the frame (instructions,stack pair) located on top of the dump.
@@ -263,63 +296,15 @@ let mapCond (t:TVM.Code) (f:TVM.Code) : TVM.Code =
 //  - an application node, then put the function address (i.e. first element
 //    of the application) on the stack and Unwind further
 // n
-
-let jmpToUnwind =
-    [GetGlob (int RuntimeGlobalVars.UnwindCont); Execute]
-
 let mapUnwind () : TVM.Code =
-    // n heap[n]  (note: heap[n] = (NNum n))
-    let unwindNNum =
-        [Drop; Ret]
-    // n heap[n]  (note: heap[n] = (NAp a1,a2))
-    let unwindNAp =
-        [Index 1] @ jmpToUnwind
-    // n heap[n]  (note: heap[n] = NInd a0)
-    let unwindNInd =
-        [Index 1; Swap; Drop] @ jmpToUnwind
-    let unwindNGlobal =
-        [Ret]
-    let unwindNConstr =
-        [Drop; Ret]     // n heap[n]
-    heapLookup @ // heap[n]
-    [Dup] @      // heap[n] heap[n]
-    [Index 0; Dup] @ // heap[n] tag tag
-    [PushInt (int GMachine.NodeTags.NNum)] @ // heap[n] tag tag 0
-    [Equal] @ // heap[n] tag (tag=0?)
-    [PushCont unwindNNum] @ // heap[n] tag (tag=0?) c
-    [SetNumArgs 0] @ // heap[n] tag (tag=0?) c' (note: c' omits stack completely)
-    [IfJmp] @ // heap[n] tag
-    [Dup] @ // heap[n] tag tag
-    [PushInt (int GMachine.NodeTags.NAp)] @ // heap[n] tag tag 1 (note: 1 = Nap tag)
-    [Equal] @ // heap[n] tag heap (tag=1?)
-    [PushCont unwindNAp] @ // heap tag heap (tag=0?) c
-    [SetNumArgs 1] @ // heap[n] tag heap[n] (tag=0?) c' (note: c takes 1 arg = heap)
-    [IfJmp] @ // heap tag heap
-    [Drop] @ // heap tag
-    [Dup] @ // heap tag tag
-    [PushInt (int GMachine.NodeTags.NGlobal)] @ // heap tag tag 2
-    [Equal] @ // heap tag (2==tag?) (node: 2 = NGlobal tag)
-    [PushCont unwindNGlobal] @ // heap tag (2==tag?) c
-    [IfJmp] @ // heap tag
-    [Dup] @ // heap tag tag
-    [PushInt (int GMachine.NodeTags.NInd)] @ // heap tag tag 3
-    [Equal] @ // heap tag (tag=3?)  (note: 3 = NInd tag)
-    // we need to give it the unwind continuation param
-    [PushCont unwindNInd] @ // heap tag (tag=3?) c
-    [IfJmp] @ // heap tag
-    [PushInt (int GMachine.NodeTags.NConstr)] @ // heap tag 4
-    [Equal] @ // heap (tag==4?) (note: 4 = NConstr tag)
-    [IfRet] @
-    [Drop; Throw 8] // unknown tag
+    [Dup] @ // n n
+    heapLookup @ // n heap[n]
+    [Dup; Index 0] @ // n heap[n] tag
+    [GetGlob (int RuntimeGlobalVars.UnwindSelector)] @ // n heap[n] tag D
+    [PushInt 4] @ // n heap[n] tag D 4
+    [DictUGetJmp] @ // n heap[n]
+    [Throw (int RuntimeErrors.HeapNodeWrongTag)] // unknown tag
 
-// Save the current code and stack (without the top element)
-// to the dump, and Unwind with current top stack element.
-// In TVM terms, we switch to continuation with Unwind code
-// but before that we drop stack elements we do not need.
-// The remainder of the current continuation goes into C0, so
-// it is like saving to the Dump; also, we need to drop the
-// topmost element after switching back to it, hence Drop
-// instruction at the end.
 let mapEval () : TVM.Code =
     [GetGlob (int RuntimeGlobalVars.UnwindCont); SetNumArgs 1; JmpX]
 
@@ -529,6 +514,17 @@ let getResultHeap (st:TVM.TVMState) : TVM.Value =
 let nnum (n:int) : TVM.Value =
     Tup [Int (int GMachine.NodeTags.NNum); Int n]
 
+let initC7 =
+    TVM.arrayNew @
+    [SetGlob 1; PushInt -1; SetGlob 2; PushNull; SetGlob 3] @
+    [PushCont (mapUnwind ()); SetGlob 4] @
+    [PushSlice [SDict (Map [(0, [SCode (mapUnwindNNum ())] );
+                            (1, [SCode (mapUnwindNAp ())] );
+                            (2, [SCode (mapUnwindNGlobal ())] );
+                            (3, [SCode (mapUnwindNInd ())] );
+                            (4, [SCode (mapUnwindNConstr ())] )])] ] @
+    [SetGlob (int RuntimeGlobalVars.UnwindSelector)]
+
 [<Test>]
 let testAdd0 () =
     let initC7 = [PushNull] @ TVM.arrayNew @ [PushInt -1; PushNull; Tuple 4; PopCtr 7]
@@ -720,7 +716,6 @@ let testSplit0 () =
 
 [<Test>]
 let testCasejump0 () =
-    let initC7 = [PushNull] @ TVM.arrayNew @ [PushInt -1; PushNull; Tuple 4; PopCtr 7]
     let code = initC7 @
                (compileCode [GMachine.Pushint 100;
                              GMachine.Pushint 200;
@@ -734,7 +729,6 @@ let testCasejump0 () =
 
 [<Test>]
 let testCasejump1 () =
-    let initC7 = [PushNull] @ TVM.arrayNew @ [PushInt -1; PushNull; Tuple 4; PopCtr 7]
     let code = initC7 @
                (compileCode [GMachine.Pushint 100;
                              GMachine.Pushint 200;
@@ -755,7 +749,6 @@ let testCasejump1 () =
 
 [<Test>]
 let testCond0 () =
-    let initC7 = [PushNull] @ TVM.arrayNew @ [PushInt -1; PushNull; Tuple 4; PopCtr 7]
     let code = initC7 @
                (compileCode [GMachine.Pushint 100;
                              GMachine.Pushint 100;
@@ -768,7 +761,6 @@ let testCond0 () =
 
 [<Test>]
 let testCond1 () =
-    let initC7 = [PushNull] @ TVM.arrayNew @ [PushInt -1; PushNull; Tuple 4; PopCtr 7]
     let code = initC7 @
                (compileCode [GMachine.Pushint 100;
                              GMachine.Pushint 200;
@@ -778,3 +770,12 @@ let testCond1 () =
     TVM.dumpFiftScript "testCond1.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
     Assert.AreEqual (nnum 600, getResultHeap final)
+
+[<Test>]
+let testUnwind0 () =
+    let code = initC7 @
+               (compileCode [GMachine.Pushint 100;
+                             GMachine.Unwind])
+    let st = TVM.initialState code
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual ([Int 0], getResultStack final)

@@ -29,6 +29,7 @@ type Instruction =
     | Swap               // Xchg 0 alias
     | Swap2              // a b c d -> c d a b
     | Greater
+    | Less
     | GetGlob of k:int   // 1 <= k <= 31
     | SetGlob of k:int   // 1 <= k <= 31
     | PushInt of n:int
@@ -46,6 +47,7 @@ type Instruction =
     | Execute
     | CallDict of n:int
     | JmpX
+    | DictUGetJmp
     | DumpStk
     | Nop
     | Tuple of n:int
@@ -229,10 +231,15 @@ let jump_ext cont pass_args st =
     if cont.data.stack <> [] then
         if copy < 0 then
             copy <- st.stack.Length
+        else
+            ()
         let mutable new_stk = (List.take copy st.stack) @ cont.data.stack
         st.put_stack new_stk
     else
-        st.put_stack (List.skip (st.stack.Length - copy) st.stack)
+        if (copy >= 0) && (copy < st.stack.Length) then
+            st.put_stack (List.take copy st.stack)
+        else
+            ()
     jump_to cont st
 
 // simple jump to continuation cont
@@ -247,9 +254,9 @@ let call_ext cont (pass_args:int) (ret_args:int) (st:TVMState) =
         jump_ext cont pass_args st
     else
         let depth = st.stack.Length
-        if pass_args > depth || cont.data.nargs > depth then
+        if (pass_args > depth) || (cont.data.nargs > depth) then
             raise (TVMError "stack underflow while calling a continuation: not enough args on stack")
-        elif (cont.data.nargs > pass_args && (pass_args >= 0)) then
+        elif (cont.data.nargs > pass_args) && (pass_args >= 0) then
             raise (TVMError "stack underflow while calling a closure continuation: not enough arguments passed")
         let old_c0 = st.cr.c0
         st.preclear_cr cont.data.save
@@ -270,9 +277,11 @@ let call_ext cont (pass_args:int) (ret_args:int) (st:TVMState) =
                 ()
             new_stk <- (List.take copy st.stack) @ cont.data.stack
             if skip > 0 then
-                new_stk <- List.skip skip new_stk
+                st.put_stack (List.skip skip st.stack)
         elif copy >= 0 then
             new_stk <- List.take copy st.stack
+            st.put_stack (List.skip copy st.stack)
+            st.put_stack (List.skip skip st.stack)
         else
             new_stk <- st.stack
             st.put_stack []
@@ -519,6 +528,9 @@ let div v1 v2 =
 let gt v1 v2 =
     if v1 > v2 then -1 else 0
 
+let lt v1 v2 =
+    if v1 < v2 then -1 else 0
+
 let equal v1 v2 =
     if v1 = v2 then -1 else 0
 
@@ -568,7 +580,9 @@ let tpush st =
 
 // INDEX k (t - t[k]), 0 <= k <= 15
 let index k st =
-    let (Tup v :: stack') = st.stack
+    let (t :: stack') = st.stack
+    failIfNot (t.isTuple) "INDEX: Tuple expected"
+    let (Tup v) = t
     failIf (List.length v <= k) "INDEX: Range check exception"
     let elem = List.item k v
     st.stack <- elem :: stack'
@@ -823,13 +837,32 @@ let getglob k st =
 let setglob k st =
     let (Tup l) = st.cr.c7
     let (x :: stack') = st.stack
-    let l' = List.updateAt k x l
+    let l' =
+        if l.Length < (k + 1) then
+            List.append l (List.init (k + 1 - l.Length) (fun _ -> Null))
+        else
+            l
+    let l'' = List.updateAt k x l'
     st.put_stack stack'
-    st.cr.c7 <- Tup l'
+    st.cr.c7 <- Tup l''
     st
+
+let dictugetjmp st =
+    let (n :: D :: k :: stack') = st.stack
+    failIfNot (n.isInt) "DICTUGETJMP: integer expected"
+    failIfNot (k.isInt) "DICTUGETJMP: integer expected"
+    let (Slice [SDict kv]) = D
+    st.put_stack stack'
+    match Map.tryFind k.unboxInt kv with
+        | Some (SCode code :: _) ->
+            jump { Continuation.Default with code = code } st
+        | None ->
+            st
 
 let dispatch (i:Instruction) =
     match i with
+        | DictUGetJmp ->
+            dictugetjmp
         | GetGlob k ->
             getglob k
         | SetGlob k ->
@@ -870,6 +903,8 @@ let dispatch (i:Instruction) =
             swap2
         | Equal ->
             binop equal
+        | Less ->
+            binop lt
         | Greater ->
             binop gt
         | Inc ->
@@ -1521,6 +1556,9 @@ let rec instrToFift (i:Instruction) : string =
         | Dup2 -> "DUP2"
         | Rot2 -> "ROT2"
         | Execute -> "EXECUTE"
+        | SetGlob n -> (string n) + " SETGLOB"
+        | GetGlob n -> (string n) + " GETGLOB"
+        | DictUGetJmp -> "DICTUGETJMP"
         | _ ->
             failwith (sprintf "unsupported instruction: %A" i)
 
@@ -2128,7 +2166,7 @@ let testExecuteTriple () =
             Assert.Fail(s)
 
 [<Test>]
-let testExecuteSetNumArgs () =
+let testExecuteSetNumArgs0 () =
     let st = initialState [PushInt 1; PushInt 2;
                            PushCont [Depth]; // in that continuation, stack has to be empty
                            SetNumArgs 0; Execute] // but after that, it gets restored
@@ -2137,6 +2175,34 @@ let testExecuteSetNumArgs () =
         let stk = List.tail finalSt.stack
         printfn "%A" stk
         Assert.AreEqual([Int 0; Int 2; Int 1], stk )
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testExecuteSetNumArgs1 () =
+    let st = initialState [PushInt 1; PushInt 2;
+                           PushCont [Dup]; // in that continuation, stack has to be empty
+                           SetNumArgs 1; Execute] // but after that, it gets restored
+    try
+        let finalSt = List.last (runVM st false)
+        let stk = List.tail finalSt.stack
+        printfn "%A" stk
+        Assert.AreEqual([Int 2; Int 2; Int 1], stk )
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testExecuteSetNumArgs2 () =
+    let st = initialState [PushInt 1; PushInt 2;
+                           PushCont [Dup; PushCont [Inc]; SetNumArgs 2; Execute];
+                           SetNumArgs 1; Execute]
+    try
+        let finalSt = List.last (runVM st false)
+        let stk = List.tail finalSt.stack
+        printfn "%A" stk // 1 2 3
+        Assert.AreEqual([Int 3; Int 2; Int 1], stk )
     with
         | TVMError s ->
             Assert.Fail(s)
