@@ -264,10 +264,8 @@ let mapCond (t:TVM.Code) (f:TVM.Code) : TVM.Code =
 //    of the application) on the stack and Unwind further
 // n
 
-// here, we expected that unwind continuation is stored
-// at the back of the stack, initially
 let jmpToUnwind =
-    [Depth; Dec; Pick; Execute]
+    [GetGlob (int RuntimeGlobalVars.UnwindCont); Execute]
 
 let mapUnwind () : TVM.Code =
     // n heap[n]  (note: heap[n] = (NNum n))
@@ -323,7 +321,7 @@ let mapUnwind () : TVM.Code =
 // topmost element after switching back to it, hence Drop
 // instruction at the end.
 let mapEval () : TVM.Code =
-    [Depth; Dec; Pick; SetNumArgs 1; JmpX]
+    [GetGlob (int RuntimeGlobalVars.UnwindCont); SetNumArgs 1; JmpX]
 
 let rec compileTuple t : TVM.Code =
     match t with
@@ -401,8 +399,6 @@ and compileInstr (i:GMachine.Instruction): TVM.Code =
             mapCasejump l'
         | GMachine.Split n ->
             mapSplit n
-        | _ ->
-            failwith "unreachable"
 and encodeNode (n:GMachine.Node) : TVM.Value =
     match n with
         | GMachine.NNum v ->
@@ -417,8 +413,6 @@ and encodeNode (n:GMachine.Node) : TVM.Value =
             Tup [Int 3; Int v]
         | GMachine.NConstr (n, (vs:int list)) ->
             Tup ([Int 4; Int n] @ List.map (fun (x:int) -> Int x) vs)
-        | _ -> // shall not be reachable
-            failwith "unreachable"
 and compileCode (code:GMachine.GmCode) : TVM.Code =
     code
     |> List.map (fun c -> compileInstr c) // list of lists of Instructions

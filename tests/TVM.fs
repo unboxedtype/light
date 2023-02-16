@@ -29,6 +29,8 @@ type Instruction =
     | Swap               // Xchg 0 alias
     | Swap2              // a b c d -> c d a b
     | Greater
+    | GetGlob of k:int   // 1 <= k <= 31
+    | SetGlob of k:int   // 1 <= k <= 31
     | PushInt of n:int
     | PushCont of c:Code
     | PushCtr of n:int
@@ -158,14 +160,14 @@ and Continuation =
     static member Default = {
         code = []; data = ControlData.Default;
     }
+    static member ContQuit = {
+        code = []; data = ControlData.Default;
+    }
 and Stack =
     Value list
 
 let TVM_True = (Int -1)
 let TVM_False = (Int 0)
-
-let contQuit : Continuation =
-    { code = []; data = ControlData.Default }
 
 let isOverflow n =
     // skip the test for now
@@ -208,45 +210,83 @@ let switch_to_cont cont (st:TVMState) =
     st.put_code cont.code
     st
 
-// cont = continuation to jump to
-// pass_args = number of arguments to pass to the continuation
-        // -1 = the whole current stack needs to be passed
-        // before doing the jump
-let jump_stk cont pass_args st =
-    let depth = List.length st.stack
-    if (pass_args > depth || cont.data.nargs > depth) then
-        raise (TVMError "jump_stk: stack underflow: not enough args on the stack")
-    elif (cont.data.nargs > pass_args && pass_args >= 0) then
-        raise (TVMError "jump_stk: stack underflow: not enough arguments passed")
-    st.preclear_cr cont.data.save
-    let copy =
-        if (cont.data.nargs < 0) && (pass_args >= 0) then
-            pass_args
-        else
-            cont.data.nargs
-    let copy' = if copy < 0 then depth else copy
-    let new_stk = cont.data.stack @ (List.take copy' st.stack)
-    st.put_stack new_stk
-    switch_to_cont cont st
-
 let jump_to cont (st:TVMState) =
     switch_to_cont cont st
 
+// general jump to continuation cont
+let jump_ext cont pass_args st =
+    let depth = st.stack.Length
+    if (pass_args > depth) || (cont.data.nargs > depth) then
+        raise (TVMError "stack underflow while jumping to a continuation: not enough args on stack")
+    elif (cont.data.nargs > pass_args && pass_args >= 0) then
+        raise (TVMError "stack underflow while jumping to closure cont: not enough args passed")
+    st.preclear_cr cont.data.save
+    let mutable copy = cont.data.nargs
+    if pass_args >= 0 && copy < 0 then
+        copy <- pass_args
+    else
+        ()
+    if cont.data.stack <> [] then
+        if copy < 0 then
+            copy <- st.stack.Length
+        let mutable new_stk = (List.take copy st.stack) @ cont.data.stack
+        st.put_stack new_stk
+    else
+        st.put_stack (List.skip (st.stack.Length - copy) st.stack)
+    jump_to cont st
+
+// simple jump to continuation cont
 let jump cont (st:TVMState) =
     if (cont.data.stack <> []) || (cont.data.nargs >= 0) then
-        jump_stk cont -1 st         // the stack needs to be adjusted before the CC switch
+        jump_ext cont -1 st         // the stack needs to be adjusted before the CC switch
     else
         switch_to_cont cont st      // do the CC switch immediately
+
+let call_ext cont (pass_args:int) (ret_args:int) (st:TVMState) =
+    if cont.data.save.c0.IsSome then
+        jump_ext cont pass_args st
+    else
+        let depth = st.stack.Length
+        if pass_args > depth || cont.data.nargs > depth then
+            raise (TVMError "stack underflow while calling a continuation: not enough args on stack")
+        elif (cont.data.nargs > pass_args && (pass_args >= 0)) then
+            raise (TVMError "stack underflow while calling a closure continuation: not enough arguments passed")
+        let old_c0 = st.cr.c0
+        st.preclear_cr cont.data.save
+        let mutable copy = cont.data.nargs
+        let mutable skip = 0
+        if pass_args >=0 then
+            if copy >= 0 then
+                skip <- pass_args - copy
+            else
+                copy <- pass_args
+        else
+            ()
+        let mutable new_stk = []
+        if cont.data.stack <> [] then
+            if copy < 0 then
+                copy <- st.stack.Length
+            else
+                ()
+            new_stk <- (List.take copy st.stack) @ cont.data.stack
+            if skip > 0 then
+                new_stk <- List.skip skip new_stk
+        elif copy >= 0 then
+            new_stk <- List.take copy st.stack
+        else
+            new_stk <- st.stack
+            st.put_stack []
+        let ret = { code = st.code; data = { ControlData.Default with stack = st.stack; nargs = ret_args } }
+        ret.data.save.c0 <- old_c0
+        st.put_stack new_stk
+        st.cr.c0 <- Some ret
+        jump_to cont st
 
 let call cont (st:TVMState) =
     if cont.data.save.c0.IsSome then
         jump cont st
-    elif cont.data.stack <> [] then
-        failIf (cont.data.nargs <> -1) "CALL: nargs different from -1 is not supported"
-        let ret = { code = st.code; data = { ControlData.Default with stack = st.stack; save = { c0 = st.cr.c0; c3 = st.cr.c3; c7 = st.cr.c7 } } }
-        st.put_stack cont.data.stack
-        st.cr.c0 <- Some ret
-        jump_to cont st
+    elif (cont.data.stack <> [] || cont.data.nargs >= 0) then
+        call_ext cont -1 -1 st
     else
         let ret = { code = st.code; data = ControlData.Default }
         ret.data.save.c0 <- st.cr.c0
@@ -273,8 +313,7 @@ let printTerm term =
     NUnit.Framework.TestContext.Progress.WriteLine("{0}", str)
 
 let initialState (code:Code) : TVMState =
-    let st = { code = code; stack = []; cr = ControlRegs.Default }
-    st.cr.c0 <- Some contQuit
+    let st = { code = code; stack = []; cr = {ControlRegs.Default with c0 = Some Continuation.ContQuit } }
     st
 
 let mkBuilder (vs:SValue list) =
@@ -423,9 +462,9 @@ let xchg2 i j st =
     let sj = stk.[j]
     let tmp = stk.[j]
     let stack' =
-        Array.updateAt j si stk |>  // s[j] := s[i]
-        Array.updateAt i tmp |> // s[i] := old s[j]
-        Array.toList
+       Array.updateAt j si stk  // s[j] := s[i]
+       |> Array.updateAt i tmp // s[i] := old s[j]
+       |> Array.toList
     st.stack <- stack'
     st
 
@@ -776,8 +815,25 @@ let dropx st =
     st.stack <- stack'
     blkdrop n st
 
+let getglob k st =
+    let (Tup l) = st.cr.c7
+    st.put_stack ((List.item k l) :: st.stack)
+    st
+
+let setglob k st =
+    let (Tup l) = st.cr.c7
+    let (x :: stack') = st.stack
+    let l' = List.updateAt k x l
+    st.put_stack stack'
+    st.cr.c7 <- Tup l'
+    st
+
 let dispatch (i:Instruction) =
     match i with
+        | GetGlob k ->
+            getglob k
+        | SetGlob k ->
+            setglob k
         | IfRet ->
             ifret
         | Ret ->
@@ -2067,6 +2123,20 @@ let testExecuteTriple () =
         let finalSt = List.last (runVM st false)
         let stk = List.tail finalSt.stack
         Assert.AreEqual([Int 0; Int 1; Int 2], stk )
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testExecuteSetNumArgs () =
+    let st = initialState [PushInt 1; PushInt 2;
+                           PushCont [Depth]; // in that continuation, stack has to be empty
+                           SetNumArgs 0; Execute] // but after that, it gets restored
+    try
+        let finalSt = List.last (runVM st false)
+        let stk = List.tail finalSt.stack
+        printfn "%A" stk
+        Assert.AreEqual([Int 0; Int 2; Int 1], stk )
     with
         | TVMError s ->
             Assert.Fail(s)
