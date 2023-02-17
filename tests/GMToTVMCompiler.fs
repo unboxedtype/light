@@ -48,37 +48,30 @@ let dictSet =
 let dictGet =
     [PushInt 128; DictUGet]
 
-// _ -> c7
-let getState =
-    [PushCtr 7]
-
-// c7 -> _
-let putState =
-    [PopCtr 7]
-
 // _ -> hc
 let getHeapCounter =
-    getState @ [Index (int RuntimeGlobalVars.HeapCounter)]
+    [GetGlob (int RuntimeGlobalVars.HeapCounter)]
 
 // _ -> g
 let getGlobals =
-    getState @ [Index (int RuntimeGlobalVars.Globals)]
+    [GetGlob (int RuntimeGlobalVars.Globals)]
 
 // _ -> h
 let getHeap =
-    getState @ [Index (int RuntimeGlobalVars.Heap)]
+    [GetGlob (int RuntimeGlobalVars.Heap)]
 
 // n -> _
 let putHeapCounter =
-    getState @ [Swap] @ [SetIndex (int RuntimeGlobalVars.HeapCounter)] @ putState
+    [SetGlob (int RuntimeGlobalVars.HeapCounter)]
 
 // n -> _
 let putHeap =
-    getState @ [Swap] @ [SetIndex (int RuntimeGlobalVars.Heap)] @ putState
+    [SetGlob (int RuntimeGlobalVars.Heap)]
 
 // g -> _
 let putGlobals =
-    getState @ [Swap] @ [SetIndex (int RuntimeGlobalVars.Globals)] @ putState
+    [SetGlob (int RuntimeGlobalVars.Globals)]
+
 
 // 1. allocate address for the node
 // 2. store the node in the heap at that address
