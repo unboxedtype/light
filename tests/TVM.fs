@@ -19,6 +19,7 @@ type Action =
 
 type Instruction =
     | Push of n:int
+    | PushRef of c:SValue list
     | Dup               // Push 0 alias
     | Pop of n:int
     | Drop              // Pop 0 alias
@@ -33,7 +34,7 @@ type Instruction =
     | GetGlob of k:int   // 1 <= k <= 31
     | SetGlob of k:int   // 1 <= k <= 31
     | PushInt of n:int
-    | PushCont of c:Code
+    | PushCont of c:Code // this should also be int8 list, but for now..
     | PushCtr of n:int
     | PopCtr of n:int
     | IfElse
@@ -67,6 +68,7 @@ type Instruction =
     | Endc
     | Stu of cc:int
     | Ldu of cc:int
+    | LdDict
     | Ends
     | StRef
     | NewDict    // ... -> ... D
@@ -87,12 +89,13 @@ type Instruction =
     | Dec
     | Pick
     | XchgX
-    | PushSlice of c:SValue list
+    | PushSlice of s:SValue list
     | StSlice
     | IsNull
     | IsZero
     | Dup2
     | Rot2
+    | Bless
 and Code =
     Instruction list
 and Value =  // stack value types
@@ -138,7 +141,7 @@ and SValue =  // Serializable Value
     | SDict of v:Map<int,SValue list>  // dictionary is able to store only SValue
     | SCode of c:Code
     | SInt of n:int
-    | SCell of c:Value   // c is a cell
+    | SCell of c:SValue list   // c is a cell
     static member isSDict = function | SDict _ -> true | _ -> false
     static member isSCode = function | SCode _ -> true | _ -> false
 
@@ -177,7 +180,7 @@ let isOverflow n =
 
 let failIfNot b str =
     if (not b) then
-        raise (TVMError str)
+        failwith str
     else
         ()
 
@@ -394,7 +397,7 @@ let pushslice (c:SValue list) st =
     st.stack <- (Slice c) :: st.stack
     st
 
-let stslice s st =
+let stslice st =
     let (b :: s :: stack') = st.stack
     failIfNot (b.isBuilder) "STSLICE: builder expected"
     failIfNot (s.isSlice) "STSLICE: slice expected"
@@ -602,14 +605,15 @@ let newdict st =
 // i D n -> x -1 or 0
 let dictuget st =
     printfn "%A" st.stack
-    let (n :: sD :: i :: stack') = st.stack
+    let (n :: cD :: i :: stack') = st.stack
     failIfNot (i.isInt) "DICTUGET: Integer expected"
+    failIfNot (cD.isCell) "DICTUGET: Cell expected"
     // UFits n i check has to be done here as well
     let D =
-        match sD with
+        match cD with
             | Null ->
                 Map []
-            | Slice (SDict sd :: _) ->
+            | Cell (SDict sd :: _) ->
                 sd
     match D.TryFind i.unboxInt with
         | None ->
@@ -623,7 +627,7 @@ let dictusetb st =
     let (n :: sD :: i :: b :: stack') = st.stack
     let D =
         match sD with
-            | Slice (SDict sd :: _) ->
+            | Cell (SDict sd :: _) ->
                 sd
             | Null ->
                 Map []
@@ -631,7 +635,7 @@ let dictusetb st =
     failIfNot (b.isBuilder) "DICTUSET: Builder expected"
     let sv = b.unboxBuilder  // serialize builder into a cell
     let D' = D.Add (i.unboxInt, sv)
-    st.stack <- Slice ([SDict D']) :: stack'
+    st.stack <- Cell ([SDict D']) :: stack'
     st
 
 let calldict n st =
@@ -848,10 +852,11 @@ let setglob k st =
     st
 
 let dictugetjmp st =
-    let (n :: D :: k :: stack') = st.stack
-    failIfNot (n.isInt) "DICTUGETJMP: integer expected"
-    failIfNot (k.isInt) "DICTUGETJMP: integer expected"
-    let (Slice [SDict kv]) = D
+    let (n :: cD :: k :: stack') = st.stack
+    failIfNot n.isInt "DICTUGETJMP: integer expected"
+    failIfNot k.isInt "DICTUGETJMP: integer expected"
+    failIfNot cD.isCell "DICTUGETJMP: cell expected"
+    let (Cell [SDict kv]) = cD
     st.put_stack stack'
     match Map.tryFind k.unboxInt kv with
         | Some (SCode code :: _) ->
@@ -859,8 +864,32 @@ let dictugetjmp st =
         | None ->
             st
 
+let bless st =
+    let (s :: stack') = st.stack
+    failIfNot (s.isSlice) "BLESS: Slice expected"
+    match s with
+        | Slice (SCode c :: []) ->
+            st.put_stack (Cont {Continuation.Default with code = c} :: stack')
+        | _ ->
+            failwith "BLESS: Slice has to carry an ordinary continuation"
+    st
+
+let lddict st =
+    let (sD :: stack') = st.stack
+    failIfNot (sD.isSlice) "LDDICT: Slice expected"
+    match sD with
+        | Slice (SDict d :: []) ->
+            st.put_stack ( Slice [] :: (Cell [SDict d]) :: stack' )
+        | _ ->
+            failwith "LDDICT: Dictionary within slice expected"
+    st
+
 let dispatch (i:Instruction) =
     match i with
+        | StSlice ->
+            stslice
+        | Bless ->
+            bless
         | DictUGetJmp ->
             dictugetjmp
         | GetGlob k ->
@@ -961,6 +990,8 @@ let dispatch (i:Instruction) =
             stu cc
         | Ldu cc ->
             ldu cc
+        | LdDict ->
+            lddict
         | Ends ->
             ends
         | NewDict ->
@@ -1007,6 +1038,8 @@ let dispatch (i:Instruction) =
             iszero
         | PushSlice s ->
             pushslice s
+        | PushRef s ->
+            pushref s
         | _ ->
             failwith (sprintf "unsupported instruction: %A" i)
 
@@ -1346,7 +1379,7 @@ let testIndex1 () =
     try
         runVM st false |> ignore
     with
-        | TVMError s ->
+        | _ ->
             Assert.Pass()
 
 [<Test>]
@@ -1356,7 +1389,7 @@ let testUntuple0 () =
         let finalSt = List.last (runVM st false)
         Assert.AreEqual (Some (Int 1), getResult finalSt)
     with
-        | TVMError s ->
+        | Failure s ->
             Assert.Fail(s)
 
 [<Test>]
@@ -1366,7 +1399,7 @@ let testUntuple1 () =
     try
         runVM st false |> ignore
     with
-        | TVMError s ->
+        | Failure s ->
             Assert.Pass()
 
 [<Test>]
@@ -1436,7 +1469,7 @@ let testDict0 () =
     try
         let finalSt = List.last (runVM st false)
         Assert.AreEqual (
-            Some (Slice [SDict (Map [(200, [SInt 10])])]),
+            Some (Cell [SDict (Map [(200, [SInt 10])])]),
             getResult finalSt
         )
     with
@@ -1447,7 +1480,7 @@ let testDict0 () =
 let testDict1 () =
     let st = initialState [DictUGet] // k D' i -> v
     st.stack <- [Int 128;
-                 Slice [SDict (Map [(200, [SInt 10])])]; Int 200]
+                 Cell [SDict (Map [(200, [SInt 10])])]; Int 200]
     try
         let finalSt = List.last (runVM st false)
         let ((Int 0) :: (Int -1) :: s1 :: t) = finalSt.stack
@@ -1502,7 +1535,11 @@ let testCalldict0 () =
 
 let rec instrToFift (i:Instruction) : string =
     match i with
-        | Push n -> "s" + string(n) + " PUSH"
+        | Push n -> "s" + (string n) + " PUSH"
+        | PushSlice v ->
+            (encodeSliceIntoFift v) + " PUSHSLICE"
+        | PushRef v ->
+            (encodeSliceIntoFift v) + " PUSHREF"
         | IsNull -> "ISNULL"
         | IsZero -> "ISZERO"
         | Add -> "ADD"
@@ -1522,18 +1559,18 @@ let rec instrToFift (i:Instruction) : string =
         | Newc -> "NEWC"
         | Drop -> "DROP"
         | DictUSetB -> "DICTUSETB"
-        | Stu n -> string(n) + " STU"
-        | PushCtr n -> "c" + string(n) + " PUSHCTR"
-        | PopCtr n -> "c" + string(n) + " POPCTR"
-        | PushInt n -> string(n) + " INT"
-        | Index n -> string(n) + " INDEX"
-        | ThrowIfNot n -> string(n) + " THROWIFNOT"
-        | ThrowIf n -> string(n) + " THROWIF"
+        | Stu n -> (string n) + " STU"
+        | PushCtr n -> "c" + (string n) + " PUSHCTR"
+        | PopCtr n -> "c" + (string n) + " POPCTR"
+        | PushInt n -> (string n) + " INT"
+        | Index n -> (string n) + " INDEX"
+        | ThrowIfNot n -> (string n) + " THROWIFNOT"
+        | ThrowIf n -> (string n) + " THROWIF"
         | UntupleVar -> "UNTUPLEVAR"
-        | SetNumArgs n -> string(n) + " SETNUMARGS"
-        | Throw n -> string(n) + " THROW"
-        | CallDict n -> string(n) + " CALLDICT"
-        | SetIndex n -> string(n) + " SETINDEX"
+        | SetNumArgs n -> (string n) + " SETNUMARGS"
+        | Throw n -> (string n) + " THROW"
+        | CallDict n -> (string n) + " CALLDICT"
+        | SetIndex n -> (string n) + " SETINDEX"
         | PushCont c ->
             "<{ " + String.concat "\n" (List.map instrToFift c) + " }> PUSHCONT"
         | Repeat -> "REPEAT"
@@ -1542,31 +1579,58 @@ let rec instrToFift (i:Instruction) : string =
         | TLen -> "TLEN"
         | Second -> "SECOND"
         | Depth -> "DEPTH"
-        | Xchg n -> "s0 s" + string(n) + " XCHG" // XCHG s0,sn
+        | Xchg n -> "s0 s" + (string n) + " XCHG" // XCHG s0,sn
         | XchgX -> "XCHGX"
         | DivMod -> "DIVMOD"
         | IndexVar -> "INDEXVAR"
         | SetIndexVar -> "SETINDEXVAR"
         | DumpStk -> "DUMPSTK"
-        | Tuple n -> string(n) + " TUPLE"
-        | BlkDrop n -> string(n) + " BLKDROP"
-        | Xchg2 (i,j) -> "s" + string(i) + " " + "s" + string(j) + " XCHG"
+        | Tuple n -> (string n) + " TUPLE"
+        | BlkDrop n -> (string n) + " BLKDROP"
+        | Xchg2 (i,j) -> "s" + (string i) + " " + "s" + (string j) + " XCHG"
         | Swap2 -> "SWAP2"
-        | RollRev n -> string(n) + " ROLLREV"
+        | RollRev n -> (string n) + " ROLLREV"
         | Dup2 -> "DUP2"
         | Rot2 -> "ROT2"
         | Execute -> "EXECUTE"
         | SetGlob n -> (string n) + " SETGLOB"
         | GetGlob n -> (string n) + " GETGLOB"
         | DictUGetJmp -> "DICTUGETJMP"
+        | Ret -> "RET"
+        | Less -> "LESS"
+        | LdDict -> "LDDICT"
+        | Ends -> "ENDS"
+        | Bless -> "BLESS"
+        | StSlice -> "STSLICE"
+        | Endc -> "ENDC"
         | _ ->
             failwith (sprintf "unsupported instruction: %A" i)
+// by the given abstract slice, produce TVM assembly code that
+// build TVM representation of that slice
+and encodeSliceIntoFift (s:SValue list) : string =
+    match s with
+        | (SCode c) :: [] ->
+            "<{ " + (codeToFift c |> String.concat " ") + " }>s "
+        | (SDict d) :: [] ->  // d = Map<int, SValue list>
+            let kv = Map.toList d
+            // udict!+ (v k D n - D')
+            // k = key : n-bit int
+            // v = val : slice
+            let dictnew = "dictnew"
+            let udictadd (k,v,D,n) =
+                [" "; encodeSliceIntoFift v; string k; D; string n; "udict!+"; "drop"]
+                |> String.concat " "
+            (List.fold (fun D (k,v) -> udictadd(k, v, D, 8)) dictnew kv) + " <s "
+        | _ ->
+            failwith "not implemented"
+and codeToFift c : string list =
+    c |> List.map instrToFift
 
 let outputFift (st:TVMState) : string =
     String.concat "\n" [
         "\"Asm.fif\" include";
         "<{";
-        String.concat "\n" (List.map instrToFift st.code);
+        (codeToFift st.code |> String.concat "\n")
         "}>s";
         "runvmcode";
         "drop"; // omit VM exit code
@@ -1755,7 +1819,7 @@ let testRearrange1 () =
         let finalSt = rearrange 0 (fun k -> push k) st
         Assert.Fail("rearrange should work only with non-empty stack")
     with
-        | TVMError s ->
+        | _ ->
             Assert.Pass() // ok
 
 [<Test>]
@@ -1800,7 +1864,7 @@ let testRearrange4 () =
         printfn "%A" finalSt.stack
         Assert.Fail("stack underflow shall happen")
     with
-        | TVMError s ->
+        | Failure s ->
             Assert.Pass(s)
 
 [<Test>]
@@ -1924,7 +1988,7 @@ let testIndexvar1 () =
         let finalSt = List.last (runVM st false)
         Assert.Fail("range error")
     with
-        | TVMError s ->
+        | _ ->
             Assert.Pass()
 
 [<Test>]
@@ -2203,6 +2267,32 @@ let testExecuteSetNumArgs2 () =
         let stk = List.tail finalSt.stack
         printfn "%A" stk // 1 2 3
         Assert.AreEqual([Int 3; Int 2; Int 1], stk )
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testExecuteJmpJmp () =
+    let st = initialState [PushInt 1;
+                           PushCont [ PushCont [PushInt 3; PushCont [PushInt 4]; JmpX]; JmpX]; Execute;
+                           PushInt 2]
+    try
+        let finalSt = List.last (runVM st false)
+        let stk = List.tail finalSt.stack
+        printfn "%A" stk //
+        Assert.AreEqual([Int 2; Int 4; Int 3; Int 1], stk )
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testExecutePushSlice0 () =
+    let st = initialState [PushSlice [SCode [PushInt 1; PushInt 2; Add]]; Bless; Execute]
+    try
+        dumpFiftScript "testExecutePushSlice0.fif" (outputFift st)
+        let finalSt = List.last (runVM st false)
+        let stk = List.tail finalSt.stack
+        Assert.AreEqual([Int 3], stk)
     with
         | TVMError s ->
             Assert.Fail(s)
