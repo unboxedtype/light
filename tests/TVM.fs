@@ -112,7 +112,7 @@ and Value =  // stack value types
         match this with
         | Int n -> SInt n
         | Cont c -> SCode (c.code)
-        | Cell s as p -> SCell p
+        | Cell s -> SCell s
         | _ -> failwith "not serializable"
     member this.unboxInt = match this with | Int x -> x | _ -> failwith "Int expected"
     member this.unboxBuilder = match this with | Builder x -> x | _ -> failwith "Builder expected"
@@ -884,6 +884,10 @@ let lddict st =
             failwith "LDDICT: Dictionary within slice expected"
     st
 
+let pushref (c:SValue list) (st:TVMState) =
+    st.put_stack ((Cell c) :: st.stack)
+    st
+
 let dispatch (i:Instruction) =
     match i with
         | StSlice ->
@@ -1071,6 +1075,116 @@ let getResult st : Value option =
                     Some a
         | _ ->
             raise (TVMError "Virtual machine executed with error")
+
+let cellToSliceFift v = v + " <s "
+
+let rec instrToFift (i:Instruction) : string =
+    match i with
+        | Push n -> "s" + (string n) + " PUSH"
+        | PushSlice v ->
+            (cellToSliceFift (encodeCellIntoFift v)) + " PUSHSLICE"
+        | PushRef v ->
+            (encodeCellIntoFift v) + " PUSHREF"
+        | IsNull -> "ISNULL"
+        | IsZero -> "ISZERO"
+        | Add -> "ADD"
+        | Mul -> "MUL"
+        | Div -> "DIV"
+        | Nil -> "NIL"
+        | PushNull -> "PUSHNULL"
+        | TPush -> "TPUSH"
+        | Equal -> "EQUAL"
+        | Greater -> "GREATER"
+        | Swap -> "SWAP"
+        | IfJmp -> "IFJMP"
+        | Dup -> "DUP"
+        | DictUGet -> "DICTUGET"
+        | Inc -> "INC"
+        | Dec -> "DEC"
+        | Newc -> "NEWC"
+        | Drop -> "DROP"
+        | DictUSetB -> "DICTUSETB"
+        | Stu n -> (string n) + " STU"
+        | PushCtr n -> "c" + (string n) + " PUSHCTR"
+        | PopCtr n -> "c" + (string n) + " POPCTR"
+        | PushInt n -> (string n) + " INT"
+        | Index n -> (string n) + " INDEX"
+        | ThrowIfNot n -> (string n) + " THROWIFNOT"
+        | ThrowIf n -> (string n) + " THROWIF"
+        | UntupleVar -> "UNTUPLEVAR"
+        | SetNumArgs n -> (string n) + " SETNUMARGS"
+        | Throw n -> (string n) + " THROW"
+        | CallDict n -> (string n) + " CALLDICT"
+        | SetIndex n -> (string n) + " SETINDEX"
+        | PushCont c ->
+            "<{ " + String.concat "\n" (List.map instrToFift c) + " }> PUSHCONT"
+        | Repeat -> "REPEAT"
+        | Pick -> "PICK"
+        | TupleVar -> "TUPLEVAR"
+        | TLen -> "TLEN"
+        | Second -> "SECOND"
+        | Depth -> "DEPTH"
+        | Xchg n -> "s0 s" + (string n) + " XCHG" // XCHG s0,sn
+        | XchgX -> "XCHGX"
+        | DivMod -> "DIVMOD"
+        | IndexVar -> "INDEXVAR"
+        | SetIndexVar -> "SETINDEXVAR"
+        | DumpStk -> "DUMPSTK"
+        | Tuple n -> (string n) + " TUPLE"
+        | BlkDrop n -> (string n) + " BLKDROP"
+        | Xchg2 (i,j) -> "s" + (string i) + " " + "s" + (string j) + " XCHG"
+        | Swap2 -> "SWAP2"
+        | RollRev n -> (string n) + " ROLLREV"
+        | Dup2 -> "DUP2"
+        | Rot2 -> "ROT2"
+        | Execute -> "EXECUTE"
+        | SetGlob n -> (string n) + " SETGLOB"
+        | GetGlob n -> (string n) + " GETGLOB"
+        | DictUGetJmp -> "DICTUGETJMP"
+        | Ret -> "RET"
+        | Less -> "LESS"
+        | LdDict -> "LDDICT"
+        | Ends -> "ENDS"
+        | Bless -> "BLESS"
+        | StSlice -> "STSLICE"
+        | Endc -> "ENDC"
+        | _ ->
+            failwith (sprintf "unsupported instruction: %A" i)
+// by the given abstract slice, produce TVM assembly code that
+// build TVM representation of that slice
+and encodeCellIntoFift (s:SValue list) : string =
+    match s with
+        | (SCode c) :: [] ->
+            "<{ " + (codeToFift c |> String.concat " ") + " }>c "
+        | (SDict d) :: [] ->  // d = Map<int, SValue list>
+            let kv = Map.toList d
+            // udict!+ (v k D n - D')
+            // k = key : n-bit int
+            // v = val : slice
+            let dictnew = "dictnew"
+            let udictadd (k,v,D,n) =
+                [" "; cellToSliceFift (encodeCellIntoFift v); string k; D; string n; "udict!+"; "drop"]
+                |> String.concat " "
+            (List.fold (fun D (k,v) -> udictadd(k, v, D, 8)) dictnew kv) + " "
+        | _ ->
+            failwith "not implemented"
+and codeToFift c : string list =
+    c |> List.map instrToFift
+
+let outputFift (st:TVMState) : string =
+    String.concat "\n" [
+        "\"Asm.fif\" include";
+        "<{";
+        (codeToFift st.code |> String.concat "\n")
+        "}>s";
+        "runvmcode";
+        "drop"; // omit VM exit code
+        ".s"
+    ]
+
+let dumpFiftScript (fname:string) (str:string)  =
+    use f = System.IO.File.CreateText(fname)
+    f.WriteLine(str)
 
 [<Test>]
 let testInitState () =
@@ -1532,114 +1646,6 @@ let testCalldict0 () =
     with
         | TVMError s ->
             Assert.Fail(s)
-
-let rec instrToFift (i:Instruction) : string =
-    match i with
-        | Push n -> "s" + (string n) + " PUSH"
-        | PushSlice v ->
-            (encodeSliceIntoFift v) + " PUSHSLICE"
-        | PushRef v ->
-            (encodeSliceIntoFift v) + " PUSHREF"
-        | IsNull -> "ISNULL"
-        | IsZero -> "ISZERO"
-        | Add -> "ADD"
-        | Mul -> "MUL"
-        | Div -> "DIV"
-        | Nil -> "NIL"
-        | PushNull -> "PUSHNULL"
-        | TPush -> "TPUSH"
-        | Equal -> "EQUAL"
-        | Greater -> "GREATER"
-        | Swap -> "SWAP"
-        | IfJmp -> "IFJMP"
-        | Dup -> "DUP"
-        | DictUGet -> "DICTUGET"
-        | Inc -> "INC"
-        | Dec -> "DEC"
-        | Newc -> "NEWC"
-        | Drop -> "DROP"
-        | DictUSetB -> "DICTUSETB"
-        | Stu n -> (string n) + " STU"
-        | PushCtr n -> "c" + (string n) + " PUSHCTR"
-        | PopCtr n -> "c" + (string n) + " POPCTR"
-        | PushInt n -> (string n) + " INT"
-        | Index n -> (string n) + " INDEX"
-        | ThrowIfNot n -> (string n) + " THROWIFNOT"
-        | ThrowIf n -> (string n) + " THROWIF"
-        | UntupleVar -> "UNTUPLEVAR"
-        | SetNumArgs n -> (string n) + " SETNUMARGS"
-        | Throw n -> (string n) + " THROW"
-        | CallDict n -> (string n) + " CALLDICT"
-        | SetIndex n -> (string n) + " SETINDEX"
-        | PushCont c ->
-            "<{ " + String.concat "\n" (List.map instrToFift c) + " }> PUSHCONT"
-        | Repeat -> "REPEAT"
-        | Pick -> "PICK"
-        | TupleVar -> "TUPLEVAR"
-        | TLen -> "TLEN"
-        | Second -> "SECOND"
-        | Depth -> "DEPTH"
-        | Xchg n -> "s0 s" + (string n) + " XCHG" // XCHG s0,sn
-        | XchgX -> "XCHGX"
-        | DivMod -> "DIVMOD"
-        | IndexVar -> "INDEXVAR"
-        | SetIndexVar -> "SETINDEXVAR"
-        | DumpStk -> "DUMPSTK"
-        | Tuple n -> (string n) + " TUPLE"
-        | BlkDrop n -> (string n) + " BLKDROP"
-        | Xchg2 (i,j) -> "s" + (string i) + " " + "s" + (string j) + " XCHG"
-        | Swap2 -> "SWAP2"
-        | RollRev n -> (string n) + " ROLLREV"
-        | Dup2 -> "DUP2"
-        | Rot2 -> "ROT2"
-        | Execute -> "EXECUTE"
-        | SetGlob n -> (string n) + " SETGLOB"
-        | GetGlob n -> (string n) + " GETGLOB"
-        | DictUGetJmp -> "DICTUGETJMP"
-        | Ret -> "RET"
-        | Less -> "LESS"
-        | LdDict -> "LDDICT"
-        | Ends -> "ENDS"
-        | Bless -> "BLESS"
-        | StSlice -> "STSLICE"
-        | Endc -> "ENDC"
-        | _ ->
-            failwith (sprintf "unsupported instruction: %A" i)
-// by the given abstract slice, produce TVM assembly code that
-// build TVM representation of that slice
-and encodeSliceIntoFift (s:SValue list) : string =
-    match s with
-        | (SCode c) :: [] ->
-            "<{ " + (codeToFift c |> String.concat " ") + " }>s "
-        | (SDict d) :: [] ->  // d = Map<int, SValue list>
-            let kv = Map.toList d
-            // udict!+ (v k D n - D')
-            // k = key : n-bit int
-            // v = val : slice
-            let dictnew = "dictnew"
-            let udictadd (k,v,D,n) =
-                [" "; encodeSliceIntoFift v; string k; D; string n; "udict!+"; "drop"]
-                |> String.concat " "
-            (List.fold (fun D (k,v) -> udictadd(k, v, D, 8)) dictnew kv) + " <s "
-        | _ ->
-            failwith "not implemented"
-and codeToFift c : string list =
-    c |> List.map instrToFift
-
-let outputFift (st:TVMState) : string =
-    String.concat "\n" [
-        "\"Asm.fif\" include";
-        "<{";
-        (codeToFift st.code |> String.concat "\n")
-        "}>s";
-        "runvmcode";
-        "drop"; // omit VM exit code
-        ".s"
-    ]
-
-let dumpFiftScript (fname:string) (str:string)  =
-    use f = System.IO.File.CreateText(fname)
-    f.WriteLine(str)
 
 [<Test>]
 let testCalldict1 () =
