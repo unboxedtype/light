@@ -970,7 +970,7 @@ let testEvalAdd1 () =
 [<Test>]
 let testEvalMul1 () =
     let coreProg =
-        [("main", [], EMul(EAdd(ENum 3, ENum 7),ENum 0))]
+        [("main", [], EMul (EAdd (ENum 3, ENum 7), ENum 0))]
     let initSt = compile coreProg
     let res = getResult (List.last (eval initSt))
     Assert.AreEqual( NNum 0, res );
@@ -986,7 +986,7 @@ let testEvalEq () =
 [<Test>]
 let testIfTrue () =
     let coreProg =
-        [("main", [], EIf(ENum 1, ENum 10, ENum 20))]
+        [("main", [], EIf (ENum 1, ENum 10, ENum 20))]
     let initSt = compile coreProg
     let res = getResult (List.last (eval initSt))
     Assert.AreEqual( NNum 10, res );
@@ -994,7 +994,7 @@ let testIfTrue () =
 [<Test>]
 let testIfFalse () =
     let coreProg =
-        [("main", [], EIf(ENum 0, ENum 10, ENum 20))]
+        [("main", [], EIf (ENum 0, ENum 10, ENum 20))]
     let initSt = compile coreProg
     let res = getResult (List.last (eval initSt))
     Assert.AreEqual( NNum 20, res );
@@ -1002,7 +1002,7 @@ let testIfFalse () =
 [<Test>]
 let testSub () =
     let coreProg =
-        [("main", [], ESub(ENum 10, ENum 1))]
+        [("main", [], ESub (ENum 10, ENum 1))]
     let initSt = compile coreProg
     let res = getResult (List.last (eval initSt))
     Assert.AreEqual( NNum 9, res );
@@ -1010,14 +1010,14 @@ let testSub () =
 [<Test>]
 let testEqFalse () =
     let coreProg =
-        [("main", [], EEq(ENum 10, ENum 1))]
+        [("main", [], EEq (ENum 10, ENum 1))]
     let initSt = compile coreProg
     let res = getResult (List.last (eval initSt))
     Assert.AreEqual( NFalse, res );
 
 let testEqTrue () =
     let coreProg =
-        [("main", [], EEq(ENum 10, ENum 10))]
+        [("main", [], EEq (ENum 10, ENum 10))]
     let initSt = compile coreProg
     let res = getResult (List.last (eval initSt))
     Assert.AreEqual( NTrue, res );
@@ -1025,7 +1025,7 @@ let testEqTrue () =
 [<Test>]
 let testMul () =
     let coreProg =
-        [("main", [], EMul(ENum 10, ENum 20))]
+        [("main", [], EMul (ENum 10, ENum 20))]
     let initSt = compile coreProg
     let res = getResult (List.last (eval initSt))
     Assert.AreEqual( NNum 200, res );
@@ -1033,7 +1033,7 @@ let testMul () =
 [<Test>]
 let testGtTrue () =
     let coreProg =
-        [("main", [], EGt(ENum 10, ENum 1))]
+        [("main", [], EGt (ENum 10, ENum 1))]
     let initSt = compile coreProg
     let res = getResult (List.last (eval initSt))
     Assert.AreEqual( NTrue, res );
@@ -1041,7 +1041,7 @@ let testGtTrue () =
 [<Test>]
 let testGtFalse () =
     let coreProg =
-        [("main", [], EGt(ENum 1, ENum 10))]
+        [("main", [], EGt (ENum 1, ENum 10))]
     let initSt = compile coreProg
     let res = getResult (List.last (eval initSt))
     Assert.AreEqual( NFalse, res );

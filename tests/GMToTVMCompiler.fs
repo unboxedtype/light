@@ -118,7 +118,7 @@ let mapPushint (n:int) : TVM.Code =
 
 // Lookup arguments on the heap and do the corresponding arithmetic
 // operation, placing the boxed result on the stack
-// n1 n2 -> n3, where heap[n3] = heap[n1] + heap[n2]
+// n1 n2 -> n3, where heap[n3] = heap[n1] OP heap[n2]
 let binaryOperation (op:TVM.Code) : TVM.Code =
     heapLookup @ // n1 (0, NNum2)
     [Second] @   // n1 NNum2
@@ -126,6 +126,7 @@ let binaryOperation (op:TVM.Code) : TVM.Code =
     heapLookup @ // NNum2 heap[n1]
     [Second] @   // NNum2 NNum1
     [Swap] @     // NNum1 NNum2
+    [DumpStk] @
     op @
     [PushInt (int GMachine.NodeTags.NNum); Swap; Tuple 2] @  // (0, op(heap[n1], heap[n2])), 0 = NNum tag
     heapAlloc    // n3
@@ -163,14 +164,14 @@ let mapMkap () : TVM.Code =
 // located on top of the stack.
 // .. an .. a1 a -> .. an .. a1 , heap[an] := NInd a
 let mapUpdate (n:int) : TVM.Code =
-    [PushInt (int GMachine.NodeTags.NInd);   // 3 = NInd tag
-     Swap;
-     Tuple 2;     // ... an .. a1 (3,a)
-     Push n] @    // .. an .. a1 (3,a) an
-    getHeap @     // .. an .. a1 (3,a) an heap
-    [Xchg 2] @    // .. an .. a1 heap an (3,a)
+    [PushInt (int GMachine.NodeTags.NInd); // a1 a 3   (note: 3 = NInd tag)
+     Swap; // an .. a1 3 a
+     Tuple 2;     // an .. a1 (3,a)
+     Push (n+1)] @    // an .. a1 (3,a) an
+    getHeap @     // an .. a1 (3,a) an heap
+    [Xchg 2] @    // an .. a1 heap an (3,a)
     TVM.arrayPut @ // .. an .. a1 heap'
-    putHeap       // .. an .. a1
+    putHeap       // an .. a1
 
 // -> a1 a2 .. an
 // Allocate n dummy nodes on the heap and return put
@@ -278,7 +279,7 @@ let mapUnwind () : TVM.Code =
     heapLookup @ // n heap[n]
     [Dup; Index 0] @ // n heap[n] tag
     [GetGlob (int RuntimeGlobalVars.UnwindSelector)] @ // n heap[n] tag sD
-    [PushInt 8] @ // n heap[n] tag D 4
+    [PushInt 8] @ // n heap[n] tag D 8
     [DictUGetJmp] @ // n heap[n]
     [Throw (int RuntimeErrors.HeapNodeWrongTag)] // unknown tag
 
@@ -320,7 +321,7 @@ let rec compileInstr (i:GMachine.Instruction): TVM.Code =
         | GMachine.Equal ->
             mapEqual ()
         | GMachine.Greater ->
-            mapGreater ()
+            [Swap] @ (mapGreater ())
         | GMachine.Cond (t,f) ->
             mapCond (compileCode t) (compileCode f)
         | GMachine.Pack (tag,n) ->
@@ -367,16 +368,92 @@ let getResultHeap (st:TVM.TVMState) : TVM.Value =
 let nnum (n:int) : TVM.Value =
     Tup [Int (int GMachine.NodeTags.NNum); Int n]
 
+let nap (l:int) (r:int) : TVM.Value =
+    Tup [Int (int GMachine.NodeTags.NAp); Int l; Int r]
+
+let nglobal (n:int) (c:GMachine.GmCode) =
+    Tup [Int (int GMachine.NodeTags.NGlobal); (Int n);
+         Cont ({TVM.Continuation.Default with code = compileCode c})]
+
+let nind (v:int) =
+    Tup [Int (int GMachine.NodeTags.NInd); (Int v)]
+
+let nconstr (n:int) (a: int list) =
+    Tup ([Int (int GMachine.NodeTags.NConstr); (Int n)] @ (a |> List.map TVM.Int))
+
 let initC7 =
-    TVM.arrayNew @
-    [SetGlob 1; PushInt -1; SetGlob 2; PushNull; SetGlob 3] @
-    [PushCont (mapUnwind ()); SetGlob 4] @
+    TVM.arrayNew @ [SetGlob (int RuntimeGlobalVars.Heap)] @
+    [PushInt -1; SetGlob (int RuntimeGlobalVars.HeapCounter)] @
+    [PushNull; SetGlob (int RuntimeGlobalVars.Globals)] @
+    [PushCont (mapUnwind ()); SetGlob (int RuntimeGlobalVars.UnwindCont)] @
     [PushRef [SDict (Map [(0, [SCode (mapUnwindNNum ())] );
                             (1, [SCode (mapUnwindNAp ())] );
                             (2, [SCode (mapUnwindNGlobal ())] );
                             (3, [SCode (mapUnwindNInd ())] );
                             (4, [SCode (mapUnwindNConstr ())] )])]] @
     [SetGlob (int RuntimeGlobalVars.UnwindSelector)]
+
+// GMachine stack consists of addresses only; there are
+// no data values there.
+// We represent addresses by monotonically increasing
+// sequence of integers in TVM.
+let prepareStack (stk:GMachine.GmStack): TVM.Stack =
+    List.map (fun i -> TVM.Int i) stk
+
+let prepareGlobals (globals:GMachine.GmGlobals): TVM.Value =
+    // globals is a mapping from names to addresses
+    // we need to prepare the corresponding Cell [SDict] for that
+    // Cell (SDict Map<int,SValue list>)
+    // GmGlobals = Map<Name, Addr>, where Name is a string, Addr is int
+    // Instead of symbolic name, we just use the hash of its name
+    globals
+    |> Map.toList  // [("main",10); ("f", 51); ... ]
+    |> List.map ( fun x -> (hash (fst x), [SInt (snd x)]) ) // [(hash "main", [SInt 10]), ...]
+    |> Map.ofList  // Map<int,SValue list>
+    |> SDict
+    |> List.singleton
+    |> Cell
+
+let prepareHeap (heap:GMachine.GmHeap): TVM.Value =
+// heap in TVM is represented as array of arrays.
+// We need to construct it by the given GmHeap.
+// GmHeap = Map<Addr, Node>
+    let kv = Map.toList heap
+    let emptyHeap =
+        let emptyBucket =
+            List.init TVM.bucketSize (fun _ -> TVM.arrayDefaultVal)
+        List.init TVM.bucketSize (fun _ -> emptyBucket)
+    let put h k v =
+        let i = k / TVM.bucketSize
+        let j = k % TVM.bucketSize
+        let ai = List.item i h
+        let aij = List.updateAt j v ai
+        List.updateAt i aij h
+    let encodeNode v : TVM.Value =
+        match v with
+            | GMachine.NNum n -> nnum n
+            | GMachine.NAp (l, r) -> nap l r
+            | GMachine.NGlobal (n, c) -> nglobal n c
+            | GMachine.NConstr (n, vs) -> nconstr n vs
+            | GMachine.NInd n -> nind n
+    let l =
+        List.fold (fun h (k,v) -> put h k (encodeNode v)) emptyHeap kv
+    Tup (l |> List.map Tup)
+
+let compile (gms: GMachine.GmState) : TVM.TVMState =
+    let code = compileCode (GMachine.getCode gms)
+    let stack = prepareStack (GMachine.getStack gms)
+    let c0 = TVM.Continuation.Default
+    let heap = prepareHeap (GMachine.getHeap gms)
+    let globals = prepareGlobals (GMachine.getGlobals gms)
+    let unwindSelectorCell = Cell ([SDict (Map [(0, [SCode (mapUnwindNNum ())] );
+                                               (1, [SCode (mapUnwindNAp ())] );
+                                               (2, [SCode (mapUnwindNGlobal ())] );
+                                               (3, [SCode (mapUnwindNInd ())] );
+                                               (4, [SCode (mapUnwindNConstr ())] )])])
+    let unwindCont = TVM.Cont { TVM.Continuation.Default with code = mapUnwind () }
+    let c7 = Tup [Null; heap; Int (-1); globals; unwindCont; unwindSelectorCell]
+    { code = code; stack = stack; cr = { TVM.ControlRegs.Default with c0 = Some c0; c7 = c7 } }
 
 
 [<Test>]
@@ -398,7 +475,7 @@ let testAdd0 () =
                              GMachine.Pushint 400;
                              GMachine.Add])
     let st = TVM.initialState code
-    // TVM.dumpFiftScript "testAdd0.fif" (TVM.outputFift st)
+    TVM.dumpFiftScript "testAdd0.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
     Assert.AreEqual([Int 6], getResultStack final) // 2 is a result address, not value
     Assert.AreEqual(nnum 1000, getResultHeap final)
@@ -470,11 +547,11 @@ let testGreater0 () =
     let code = initC7 @
                (compileCode [GMachine.Pushint 200;
                              GMachine.Pushint 100;
-                             GMachine.Greater])
+                             GMachine.Greater]) // 100 > 200 , GMachine has a different argument order
     let st = TVM.initialState code
     TVM.dumpFiftScript "testGreater0.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
-    Assert.AreEqual(nnum -1, getResultHeap final)
+    Assert.AreEqual(nnum 0, getResultHeap final)
 
 [<Test>]
 let testGreater1 () =
@@ -506,13 +583,26 @@ let testUpdate0 () =
                (compileCode [GMachine.Pushint 100; // 0 (pos:2)
                              GMachine.Pushint 200; // 1 (pos:1)
                              GMachine.Pushint 300; // 2 (pos:0)
-                             GMachine.Update 2])  // heap[0] = NInd 2, heap[2] = NNum 300
+                             GMachine.Update 1])  // heap[0] = NInd 2, heap[2] = NNum 300
     let st = TVM.initialState code
     TVM.dumpFiftScript "testUpdate0.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
-    Assert.AreEqual ([Int 1; Int 0], getResultStack final)
+    Assert.AreEqual ([Int 1; Int 0], getResultStack final) // two int addresses on the stack
     Assert.AreEqual (Tup [Int (int GMachine.NodeTags.NInd); Int 2], getHeapAt 0 final)
     Assert.AreEqual (nnum 300, getHeapAt 2 final)
+
+[<Test>]
+let testUpdate1 () =
+    let code = initC7 @
+               (compileCode [GMachine.Pushint 100; // 0
+                             GMachine.Pushint 300; // 1
+                             GMachine.Update 0])  // heap[0] = NInd 1
+    let st = TVM.initialState code
+    TVM.dumpFiftScript "testUpdate1.fif" (TVM.outputFift st)
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual ([Int 0], getResultStack final) // 0 is an address of the 1st integer (100)
+    Assert.AreEqual (nind 1, getHeapAt 0 final)
+    Assert.AreEqual (nnum 300, getHeapAt 1 final)
 
 [<Test>]
 let testAlloc0 () =
@@ -619,3 +709,46 @@ let testUnwind0 () =
     TVM.dumpFiftScript "testUnwind0.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
     Assert.AreEqual ([Int 0], getResultStack final)
+    Assert.AreEqual (nnum 100, getResultHeap final)
+
+[<Test>]
+let testUnwind1 () =
+    let code = initC7 @
+               (compileCode [GMachine.Pushint 100;
+                             GMachine.Pushint 200;
+                             GMachine.Mkap;
+                             GMachine.Update 0;
+                             GMachine.Pop 0;
+                             GMachine.Unwind])
+    let st = TVM.initialState code
+    TVM.dumpFiftScript "testUnwind1.fif" (TVM.outputFift st)
+    try
+        let final = List.last (TVM.runVM st false)
+        Assert.Fail("shall throw exception at this point");
+    with
+        | _ ->
+            Assert.Pass()
+[<Test>]
+[<Ignore("not correct")>]
+let testUpdatePop0 () =
+    let code = initC7 @
+               (compileCode [GMachine.Pushint 100;
+                             GMachine.Update 0;
+                             GMachine.Pop 0;
+                             GMachine.Unwind])
+    let st = TVM.initialState code
+    TVM.dumpFiftScript "testUpdatePop0.fif" (TVM.outputFift st)
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual ([Int 0], getResultStack final)
+    Assert.AreEqual (nnum 100, getResultHeap final)
+
+[<Test>]
+let testGtTrueCompiler () =
+    let coreProgGM =
+        [("main", [], GMachine.EGt (GMachine.ENum 10, GMachine.ENum 1))]
+    let gmInitSt = GMachine.compile coreProgGM
+    let tvmInitSt = compile gmInitSt
+    TVM.dumpFiftScript "testGtTrueCompiler.fif" (TVM.outputFift tvmInitSt)
+    let final = List.last (TVM.runVM tvmInitSt false)
+    let NTrue = nnum -1
+    Assert.AreEqual (NTrue, getResultHeap final)

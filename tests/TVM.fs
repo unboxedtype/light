@@ -733,9 +733,13 @@ let blkdrop n st =
     List.fold (fun st _ -> drop st) st [1..n]
 
 let divmod st =
-    let (Int y :: Int x :: stack') = st.stack
-    let q = x / y
-    let r = x % y
+    let (y :: x :: stack') = st.stack
+    failIfNot (y.isInt) "DIVMOD: Integer expected"
+    failIfNot (x.isInt) "DIVMOD: Integer expected"
+    let x' = x.unboxInt
+    let y' = y.unboxInt
+    let q = x' / y'
+    let r = x' % y'
     st.put_stack (Int r :: Int q :: stack')
     st
 
@@ -862,7 +866,7 @@ let dictugetjmp st =
         | Some (SCode code :: _) ->
             jump { Continuation.Default with code = code } st
         | None ->
-            st
+            st // on failure, just remove stack arguments
 
 let bless st =
     let (s :: stack') = st.stack
@@ -1144,10 +1148,12 @@ let rec instrToFift (i:Instruction) : string =
         | Ret -> "RET"
         | Less -> "LESS"
         | LdDict -> "LDDICT"
+        | Ldu n -> (string n) + " LDU"
         | Ends -> "ENDS"
         | Bless -> "BLESS"
         | StSlice -> "STSLICE"
         | Endc -> "ENDC"
+        | JmpX -> "JMPX"
         | _ ->
             failwith (sprintf "unsupported instruction: %A" i)
 // by the given abstract slice, produce TVM assembly code that
@@ -2299,6 +2305,35 @@ let testExecutePushSlice0 () =
         let finalSt = List.last (runVM st false)
         let stk = List.tail finalSt.stack
         Assert.AreEqual([Int 3], stk)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testExecuteCtr0 () =
+    let st = initialState [PushInt 1; PushInt 2; Tuple 2; PopCtr 7;
+                           PushSlice [SCode [PushCtr 7; Index 1]]; Bless; Execute]
+    try
+        dumpFiftScript "testExecuteCtr0.fif" (outputFift st)
+        let finalSt = List.last (runVM st false)
+        let stk = List.tail finalSt.stack
+        printfn "%A" stk
+        Assert.AreEqual([Int 2], stk)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testExecuteCtr1 () =
+    let st = initialState [PushInt 1; PushInt 2; Tuple 2; PopCtr 7;
+                           PushSlice [SCode [PushCtr 7; Index 1]];
+                           Bless; Execute; Drop; PushCtr 7; Index 0]
+    try
+        dumpFiftScript "testExecuteCtr0.fif" (outputFift st)
+        let finalSt = List.last (runVM st false)
+        let stk = List.tail finalSt.stack
+        printfn "%A" stk
+        Assert.AreEqual([Int 1], stk)
     with
         | TVMError s ->
             Assert.Fail(s)
