@@ -1085,6 +1085,7 @@ let rec instrToFift (i:Instruction) : string =
         | Add -> "ADD"
         | Mul -> "MUL"
         | Div -> "DIV"
+        | Sub -> "SUB"
         | Nil -> "NIL"
         | PushNull -> "PUSHNULL"
         | TPush -> "TPUSH"

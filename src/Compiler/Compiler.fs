@@ -117,14 +117,13 @@ let mapPushint (n:int) : TVM.Code =
 
 // Lookup arguments on the heap and do the corresponding arithmetic
 // operation, placing the boxed result on the stack
-// n1 n2 -> n3, where heap[n3] = heap[n1] OP heap[n2]
+// n2 n1 -> n3, where heap[n3] = heap[n1] OP heap[n2]
 let binaryOperation (op:TVM.Code) : TVM.Code =
-    heapLookup @ // n1 (0, NNum2)
-    [Second] @   // n1 NNum2
-    [Swap] @     // NNum2 n1
-    heapLookup @ // NNum2 heap[n1]
-    [Second] @   // NNum2 NNum1
-    [Swap] @     // NNum1 NNum2
+    heapLookup @ // n2 (0, NNum1)
+    [Second] @   // n2 NNum1
+    [Swap] @     // NNum1 n2
+    heapLookup @ // NNum1 heap[n2]
+    [Second] @   // NNum1 NNum2
     op @
     [PushInt (int GMachine.NodeTags.NNum); Swap; Tuple 2] @  // (0, op(heap[n1], heap[n2])), 0 = NNum tag
     heapAlloc    // n3
@@ -319,7 +318,7 @@ let rec compileInstr (i:GMachine.Instruction): TVM.Code =
         | GMachine.Equal ->
             mapEqual ()
         | GMachine.Greater ->
-            [Swap] @ (mapGreater ())
+            mapGreater ()
         | GMachine.Cond (t,f) ->
             mapCond (compileCode t) (compileCode f)
         | GMachine.Pack (tag,n) ->

@@ -20,7 +20,8 @@ let testPushInt0 () =
                (compileCode [GMachine.Pushint 100;
                              GMachine.Pushint 200])
     let st = TVM.initialState code
-    Assert.Pass()
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual([Int 1; Int 0], getResultStack final)
 
 [<Test>]
 let testAdd0 () =
@@ -72,11 +73,11 @@ let testMixedArith0 () =
                              GMachine.Pushint 300;
                              GMachine.Mul;
                              GMachine.Pushint 500;
-                             GMachine.Div])
+                             GMachine.Div]) // 500 / 900
     let st = TVM.initialState code
     TVM.dumpFiftScript "testMixedArith0.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
-    Assert.AreEqual(nnum 180, getResultHeap final)
+    Assert.AreEqual(nnum 0, getResultHeap final)
 
 [<Test>]
 let testEqual0 () =
@@ -121,6 +122,61 @@ let testGreater1 () =
     TVM.dumpFiftScript "testGreater1.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
     Assert.AreEqual(nnum 0, getResultHeap final)
+
+[<Test>]
+let testGreater2 () =
+    let code = initC7 @
+               (compileCode [GMachine.Pushint 100;
+                             GMachine.Pushint 200;
+                             GMachine.Greater]) // 200 > 100
+    let st = TVM.initialState code
+    TVM.dumpFiftScript "testGreater2.fif" (TVM.outputFift st)
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual(nnum -1, getResultHeap final)
+
+[<Test>]
+let testDiv0 () =
+    let code = initC7 @
+               (compileCode [GMachine.Pushint 100;
+                             GMachine.Pushint 50;
+                             GMachine.Div]) // 50 / 100
+    let st = TVM.initialState code
+    TVM.dumpFiftScript "testDiv0.fif" (TVM.outputFift st)
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual(nnum 0, getResultHeap final)
+
+[<Test>]
+let testDiv1 () =
+    let code = initC7 @
+               (compileCode [GMachine.Pushint 50;
+                             GMachine.Pushint 100;
+                             GMachine.Div]) // 100 / 50
+    let st = TVM.initialState code
+    TVM.dumpFiftScript "testDiv1.fif" (TVM.outputFift st)
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual(nnum 2, getResultHeap final)
+
+[<Test>]
+let testSub0 () =
+    let code = initC7 @
+               (compileCode [GMachine.Pushint 50;
+                             GMachine.Pushint 100;
+                             GMachine.Sub]) // 100 - 50
+    let st = TVM.initialState code
+    TVM.dumpFiftScript "testSub0.fif" (TVM.outputFift st)
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual(nnum 50, getResultHeap final)
+
+[<Test>]
+let testSub1 () =
+    let code = initC7 @
+               (compileCode [GMachine.Pushint -50;
+                             GMachine.Pushint 50;
+                             GMachine.Sub]) // 50 - (-50)
+    let st = TVM.initialState code
+    TVM.dumpFiftScript "testSub1.fif" (TVM.outputFift st)
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual(nnum 100, getResultHeap final)
 
 [<Test>]
 let testmkAp () =
@@ -286,20 +342,6 @@ let testUnwind1 () =
     with
         | _ ->
             Assert.Pass()
-[<Test>]
-[<Ignore("not correct")>]
-let testUpdatePop0 () =
-    let code = initC7 @
-               (compileCode [GMachine.Pushint 100;
-                             GMachine.Update 0;
-                             GMachine.Pop 0;
-                             GMachine.Unwind])
-    let st = TVM.initialState code
-    TVM.dumpFiftScript "testUpdatePop0.fif" (TVM.outputFift st)
-    let final = List.last (TVM.runVM st false)
-    Assert.AreEqual ([Int 0], getResultStack final)
-    Assert.AreEqual (nnum 100, getResultHeap final)
-
 [<Test>]
 let testGtTrueCompiler () =
     let coreProgGM =
