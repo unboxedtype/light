@@ -230,33 +230,43 @@ let mapCond (t:TVM.Code) (f:TVM.Code) : TVM.Code =
 let doUnwind =
     [GetGlob (int RuntimeGlobalVars.UnwindCont); Execute]
 
+// n heap[n]
 let mapUnwindNNum () : TVM.Code =
     [Drop; Ret]
 
+// n heap[n]
 let mapUnwindNAp () : TVM.Code =
-    [Index 1] @ doUnwind
+    [Index 1; // n a1
+     Swap] @ // a1 n
+    doUnwind
 
+// n heap[n]
 let mapUnwindNInd () : TVM.Code =
-    [Index 1] @ doUnwind
+    [Index 1; // n m
+     Swap; // m n
+     Drop] @ // m
+     doUnwind
 
+// n heap[n]
 let mapUnwindNConstr () : TVM.Code =
     [Drop; Ret]
 
 let unwindRearrange () : TVM.Code =
     []  // not done
 
+// n heap[n]
 let mapUnwindNGlobal () : TVM.Code =
-    [Dup;        // heap[n] heap[n]
-     Index 1;    // heap[n] NGlobal.n
-     Depth; Dec; // heap[n] NGlobal.n k
+    [Dup;        // n heap[n] heap[n]
+     Index 1;    // n heap[n] NGlobal.n
+     Depth; Dec; // n heap[n] NGlobal.n k
      Swap;
-     Less;        // heap[n] k<NGlobal.n?
-     PushCont []; // heap[n] k<N c
-     IfJmp;       // heap[n]
-     Dup;
-     Index 1; SetGlob 9; // NGlobal.n
-     Index 2; SetGlob 10] @ // NGlobal.c
-     (unwindRearrange ()) @
+     Less;        // n heap[n] k<NGlobal.n?
+     PushCont []; // n heap[n] k<N c
+     IfJmp;       // n heap[n]
+     Dup; // n heap[n] heap[n]
+     Index 1; SetGlob 9; // n heap[n]
+     Index 2; SetGlob 10] @ // n
+     (unwindRearrange ()) @ // ?
      [GetGlob 10; Execute]
 
 // If the current top stack element is:
@@ -272,16 +282,22 @@ let mapUnwindNGlobal () : TVM.Code =
 //    of the application) on the stack and Unwind further
 // n
 let mapUnwind () : TVM.Code =
+    // we need to duplicate n (object heap address) because
+    // several unwind routines need it (unwindNNum, unwindNAp,
+    // unwindNConstr)
     [Dup] @ // n n
     heapLookup @ // n heap[n]
     [Dup; Index 0] @ // n heap[n] tag
-    [GetGlob (int RuntimeGlobalVars.UnwindSelector)] @ // n heap[n] tag sD
+    [GetGlob (int RuntimeGlobalVars.UnwindSelector)] @ // n heap[n] tag cD
     [PushInt 8] @ // n heap[n] tag D 8
     [DictUGetJmp] @ // n heap[n]
     [Throw (int RuntimeErrors.HeapNodeWrongTag)] // unknown tag
 
 let mapEval () : TVM.Code =
     [GetGlob (int RuntimeGlobalVars.UnwindCont); SetNumArgs 1; JmpX]
+
+let mapDumpstk () : TVM.Code =
+    [DumpStk]
 
 let rec compileInstr (i:GMachine.Instruction): TVM.Code =
     // some GMachine.Instruction has to be mapped into code fragments
@@ -328,6 +344,9 @@ let rec compileInstr (i:GMachine.Instruction): TVM.Code =
             mapCasejump l'
         | GMachine.Split n ->
             mapSplit n
+        | GMachine.DumpStk ->
+            mapDumpstk ()
+
 and compileCode (code:GMachine.GmCode) : TVM.Code =
     code
     |> List.map (fun c -> compileInstr c) // list of lists of Instructions

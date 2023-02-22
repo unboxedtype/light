@@ -573,14 +573,14 @@ let testLazyDiv0 () =
 let testUnwindInd0 () =
     let heap = Map []
     let stk = []
-    let dump = []
+    let dump = [([],[])]  // this is as if the code was called using Eval
     let globals = Map []
     let stats = 0
     let code = [Pushint 100; Pushint 200; Update 0; DumpStk; Unwind]
     try
         let trace = eval (code, stk, dump, heap, globals, stats)
         Assert.AreEqual (NNum 200, getResult (List.last trace))
-        Assert.AreEqual ([1; 0], getStack (List.last trace))
+        Assert.AreEqual ([1], getStack (List.last trace))
     with
         | GMError s ->
             Assert.Fail(s)

@@ -463,12 +463,12 @@ let testUnwindNConstr0 () =
 [<Test>]
 let testUnwindNInd0 () =
     let code = initC7 @
-               (compileCode [GMachine.Pushint 100; // 0     heap = [(0, Int 100)] 
+               (compileCode [GMachine.Pushint 100; // 0     heap = [(0, Int 100)]
                              GMachine.Pushint 200; // 0 1   heap = [(0, Int 100), (1, Int 200)]
                              GMachine.Update 0; // 0        heap = [(0, NInd 1), (1, Int 200)]
                              GMachine.Unwind])
     let st = TVM.initialState code
     TVM.dumpFiftScript "testUnwindNInd0.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
-    Assert.AreEqual ([Int 1; Int 0], getResultStack final)
+    Assert.AreEqual ([Int 1], getResultStack final)
     Assert.AreEqual (nnum 200, getResultHeap final)
