@@ -198,15 +198,15 @@ type TVMState =
     member this.preclear_cr (save:ControlRegs) =
         if save.c0.IsSome then this.cr.c0 <- None else ()
         if save.c3.IsSome then this.cr.c3 <- None else ()
-        // if save.c7.IsSome then this.cr.c7 <- None else ()
     member this.adjust_cr regs =
         this.cr.c0 <- if regs.c0.IsSome then regs.c0 else this.cr.c0
         this.cr.c3 <- if regs.c3.IsSome then regs.c3 else this.cr.c0
-        // this.cr.c7 <- if regs.c7.IsSome then regs.c7 else this.cr.c7
     member this.put_code code =
         this.code <- code
     member this.put_stack stk =
         this.stack <- stk
+    member this.put_c7 c7 =
+        this.cr.c7 <- c7
 
 // do the ordinary jump into continuation cont
 let switch_to_cont cont (st:TVMState) =

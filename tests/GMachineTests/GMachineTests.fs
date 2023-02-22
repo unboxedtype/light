@@ -568,3 +568,19 @@ let testLazyDiv0 () =
     let initSt = compile coreProg
     let res = getResult (List.last (eval initSt))
     Assert.AreEqual( NNum 10, res );
+
+[<Test>]
+let testUnwindInd0 () =
+    let heap = Map []
+    let stk = []
+    let dump = []
+    let globals = Map []
+    let stats = 0
+    let code = [Pushint 100; Pushint 200; Update 0; DumpStk; Unwind]
+    try
+        let trace = eval (code, stk, dump, heap, globals, stats)
+        Assert.AreEqual (NNum 200, getResult (List.last trace))
+        Assert.AreEqual ([1; 0], getStack (List.last trace))
+    with
+        | GMError s ->
+            Assert.Fail(s)

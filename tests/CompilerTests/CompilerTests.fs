@@ -40,23 +40,25 @@ let testAdd0 () =
     Assert.AreEqual(nnum 1000, getResultHeap final)
 
 [<Test>]
-[<Ignore("globals are empty")>]
 let testPushglobal0 () =
-    let code = initC7 @ (mapPushglobal (hash "fact"))
+    let globals = Map [("add", 1)]
+    let c7 = prepareC7 (prepareHeap (Map [])) (Int -1) (prepareGlobals globals) Null Null
+    let code = compileCode [GMachine.Pushglobal "add"]
     let st = TVM.initialState code
-    // TVM.dumpFiftScript "testAdd0.fif" (TVM.outputFift st)
+    st.put_c7 c7
     let final = List.last (TVM.runVM st false)
-    Assert.AreEqual([Int 200], getResultStack final) // 2 is a result address, not value
+    Assert.AreEqual([Int 1], getResultStack final)
 
 [<Test>]
-[<Ignore("globals are empty")>]
 let testPushglobal1 () =
-    let code = initC7 @ (mapPushglobal (hash "fibonacci"))
+    let globals = Map [("fact", 1); ("main", 0)]
+    let c7 = prepareC7 (prepareHeap (Map [])) (Int -1) (prepareGlobals globals) Null Null
+    let code = compileCode [GMachine.Pushglobal "fib"]
     let st = TVM.initialState code
-    // TVM.dumpFiftScript "testAdd0.fif" (TVM.outputFift st)
+    st.put_c7 c7
     try
         let final = List.last (TVM.runVM st false)
-        Assert.Fail ("global does not exist")
+        Assert.Fail("unreachable")
     with
         | TVM.TVMError(x) ->
             if x = string (int RuntimeErrors.GlobalNotFound) then
@@ -357,23 +359,6 @@ let testUnwind0 () =
     Assert.AreEqual (nnum 100, getResultHeap final)
 
 [<Test>]
-let testUnwind1 () =
-    let code = initC7 @
-               (compileCode [GMachine.Pushint 100;
-                             GMachine.Pushint 200;
-                             GMachine.Mkap;
-                             GMachine.Update 0;
-                             GMachine.Pop 0;
-                             GMachine.Unwind])
-    let st = TVM.initialState code
-    TVM.dumpFiftScript "testUnwind1.fif" (TVM.outputFift st)
-    try
-        let final = List.last (TVM.runVM st false)
-        Assert.Fail("shall throw exception at this point");
-    with
-        | _ ->
-            Assert.Pass()
-[<Test>]
 let testGtTrueCompiler () =
     let coreProgGM =
         [("main", [], GMachine.EGt (GMachine.ENum 10, GMachine.ENum 1))]
@@ -416,3 +401,74 @@ let testSlide2 () =
     let st = TVM.initialState code
     let final = List.last (TVM.runVM st false)
     Assert.AreEqual([Int 2; Int 1; Int 0], getResultStack final)
+
+[<Test>]
+let testPush0 () =
+    let code = initC7 @
+               (compileCode [GMachine.Pushint 100;
+                             GMachine.Pushint 100;
+                             GMachine.Push 0])
+    let st = TVM.initialState code
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual([Int 1; Int 1; Int 0], getResultStack final)
+
+[<Test>]
+let testPop0 () =
+    let code = initC7 @
+               (compileCode [GMachine.Pushint 100;
+                             GMachine.Pushint 100;
+                             GMachine.Push 0;
+                             GMachine.Pop 3])
+    let st = TVM.initialState code
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual([] :> TVM.Stack, getResultStack final)
+
+[<Test>]
+[<Ignore("not working yet")>]
+let testUnwindNAp0 () =
+    let globals = Map [("add", 1)]
+    let addGlobal = GMachine.NGlobal (2, [GMachine.Push 2;
+                                          GMachine.Push 2;
+                                          GMachine.Add;
+                                          GMachine.Update 0;
+                                          GMachine.Slide 2;
+                                          GMachine.Pop 0;
+                                          GMachine.Unwind])
+    let heap = prepareHeap (Map [(1, addGlobal)])
+    let c7 = prepareC7 (prepareHeap (Map [])) (Int -1) (prepareGlobals globals) Null Null
+    let code = compileCode [GMachine.Pushint 1;
+                            GMachine.Pushint 2;
+                            GMachine.Pushglobal "add";
+                            GMachine.Mkap;
+                            GMachine.Mkap;
+                            GMachine.Eval]
+    let st = TVM.initialState code
+    st.put_c7 c7
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual([Int 1], getResultStack final)
+
+[<Test>]
+let testUnwindNConstr0 () =
+    let code = initC7 @
+               (compileCode [GMachine.Pushint 100;
+                             GMachine.Pushint 200;
+                             GMachine.Pack (1,2);
+                             GMachine.Unwind])
+    let st = TVM.initialState code
+    TVM.dumpFiftScript "testUnwindNConstr0.fif" (TVM.outputFift st)
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual ([Int 2], getResultStack final)
+    Assert.AreEqual (nconstr 1 [0;1], getResultHeap final)
+
+[<Test>]
+let testUnwindNInd0 () =
+    let code = initC7 @
+               (compileCode [GMachine.Pushint 100; // 0     heap = [(0, Int 100)] 
+                             GMachine.Pushint 200; // 0 1   heap = [(0, Int 100), (1, Int 200)]
+                             GMachine.Update 0; // 0        heap = [(0, NInd 1), (1, Int 200)]
+                             GMachine.Unwind])
+    let st = TVM.initialState code
+    TVM.dumpFiftScript "testUnwindNInd0.fif" (TVM.outputFift st)
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual ([Int 1; Int 0], getResultStack final)
+    Assert.AreEqual (nnum 200, getResultHeap final)

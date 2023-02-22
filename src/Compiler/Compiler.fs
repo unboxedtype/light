@@ -368,7 +368,7 @@ let nnum (n:int) : TVM.Value =
 let nap (l:int) (r:int) : TVM.Value =
     Tup [Int (int GMachine.NodeTags.NAp); Int l; Int r]
 
-let nglobal (n:int) (c:GMachine.GmCode) =
+let nglobal (n:int) (c:GMachine.GmCode) : TVM.Value =
     Tup [Int (int GMachine.NodeTags.NGlobal); (Int n);
          Cont ({TVM.Continuation.Default with code = compileCode c})]
 
@@ -383,11 +383,11 @@ let initC7 =
     [PushInt -1; SetGlob (int RuntimeGlobalVars.HeapCounter)] @
     [PushNull; SetGlob (int RuntimeGlobalVars.Globals)] @
     [PushCont (mapUnwind ()); SetGlob (int RuntimeGlobalVars.UnwindCont)] @
-    [PushRef [SDict (Map [(0, [SCode (mapUnwindNNum ())] );
-                            (1, [SCode (mapUnwindNAp ())] );
-                            (2, [SCode (mapUnwindNGlobal ())] );
-                            (3, [SCode (mapUnwindNInd ())] );
-                            (4, [SCode (mapUnwindNConstr ())] )])]] @
+    [PushRef [SDict (Map [(int GMachine.NodeTags.NNum, [SCode (mapUnwindNNum ())] );
+                          (int GMachine.NodeTags.NAp, [SCode (mapUnwindNAp ())] );
+                          (int GMachine.NodeTags.NGlobal, [SCode (mapUnwindNGlobal ())] );
+                          (int GMachine.NodeTags.NInd, [SCode (mapUnwindNInd ())] );
+                          (int GMachine.NodeTags.NConstr, [SCode (mapUnwindNConstr ())] )])]] @
     [SetGlob (int RuntimeGlobalVars.UnwindSelector)]
 
 // GMachine stack consists of addresses only; there are
@@ -437,6 +437,9 @@ let prepareHeap (heap:GMachine.GmHeap): TVM.Value =
         List.fold (fun h (k,v) -> put h k (encodeNode v)) emptyHeap kv
     Tup (l |> List.map Tup)
 
+let prepareC7 heap heapCounter globals unwindCont unwindSelector =
+    Tup [Null; heap; heapCounter; globals; unwindCont; unwindSelector]
+
 let compile (gms: GMachine.GmState) : TVM.TVMState =
     let code = compileCode (GMachine.getCode gms)
     let stack = prepareStack (GMachine.getStack gms)
@@ -449,5 +452,5 @@ let compile (gms: GMachine.GmState) : TVM.TVMState =
                                                (3, [SCode (mapUnwindNInd ())] );
                                                (4, [SCode (mapUnwindNConstr ())] )])])
     let unwindCont = TVM.Cont { TVM.Continuation.Default with code = mapUnwind () }
-    let c7 = Tup [Null; heap; Int (-1); globals; unwindCont; unwindSelectorCell]
+    let c7 = prepareC7 heap (Int -1) globals unwindCont unwindSelectorCell
     { code = code; stack = stack; cr = { TVM.ControlRegs.Default with c0 = Some c0; c7 = c7 } }

@@ -99,6 +99,9 @@ type Instruction =
     // Deconstruct the constructor object located on the stack,
     // having n arguments. All arguments are placed onto the stack.
     | Split of n:int
+
+    // output current stack to stdout
+    | DumpStk
 and
     GmCode = Instruction list
 
@@ -431,8 +434,14 @@ let split n state =
         | _ ->
             raise (GMError "no constructor object found on the heap")
 
+let dumpstk state =
+    printfn "GMachine stack = %A" (getStack state)
+    state
+
 let dispatch i =
     match i with
+        | DumpStk ->
+            dumpstk
         | Pushglobal f ->
             pushglobal f
         | Pushint n ->
