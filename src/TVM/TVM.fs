@@ -1045,10 +1045,10 @@ let dispatch (i:Instruction) =
 let step (st:TVMState) : TVMState =
     match (st.code) with
         | [] ->
-            printfn "Implicit RET"
+            // printfn "Implicit RET"
             ret st
         | i :: code' ->
-            printfn "Executing %A" i
+            // printfn "Executing %A" i
             st.code <- code'
             dispatch i st
 

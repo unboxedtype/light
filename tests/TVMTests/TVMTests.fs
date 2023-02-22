@@ -123,7 +123,7 @@ let testExecute1 () =
 
 [<Test>]
 let testExecute2 () =
-    let st = initialState [PushCont [PushInt 10]; DumpStk; Execute]
+    let st = initialState [PushCont [PushInt 10]; Execute]
     try
         let finalSt = List.last (runVM st false)
         Assert.AreEqual (Some (Int 10), getResult finalSt)
@@ -422,7 +422,6 @@ let testDict1 () =
     try
         let finalSt = List.last (runVM st false)
         let ((Int 0) :: (Int -1) :: s1 :: t) = finalSt.stack
-        printfn "%A" finalSt.stack
         Assert.AreEqual (
             (Int 0) :: (Int -1) :: [Slice [SInt 10]],
             List.take 3 finalSt.stack)
@@ -603,7 +602,6 @@ let testRollRev4 () =
     let st = initialState [PushInt 1; PushInt 2; PushInt 3; RollRev 2]
     try
         let finalSt = List.last (runVM st false)
-        printfn "%A" finalSt.stack
         Assert.AreEqual([Int 0; Int 2; Int 1; Int 3], finalSt.stack)
     with
         | TVMError s ->
@@ -633,7 +631,6 @@ let testRearrange0 () =
     st.put_stack ([Int 1; Int 2; Int 3])
     try
         let finalSt = rearrange 2 (fun k -> push k) st
-        printfn "%A" finalSt.stack
         Assert.AreEqual([Int 2; Int 3; Int 3], finalSt.stack)
     with
         | TVMError s ->
@@ -661,7 +658,6 @@ let testRearrange2 () =
     st.put_stack ([Int 1; Int 2])
     try
         let finalSt = rearrange 1 (fun k -> push k) st
-        printfn "%A" finalSt.stack
         Assert.AreEqual([Int 2; Int 2], finalSt.stack)
     with
         | TVMError s ->
@@ -676,7 +672,6 @@ let testRearrange3 () =
     st.put_stack ([Int 1; Int 2; Int 3; Int 4])
     try
         let finalSt = rearrange 2 (fun k -> push k) st
-        printfn "%A" finalSt.stack
         Assert.AreEqual([Int 2; Int 3; Int 3; Int 4], finalSt.stack)
     with
         | TVMError s ->
@@ -691,7 +686,6 @@ let testRearrange4 () =
     st.put_stack ([Int 1])
     try
         let finalSt = rearrange 1 (fun k -> push k) st
-        printfn "%A" finalSt.stack
         Assert.Fail("stack underflow shall happen")
     with
         | Failure s ->
@@ -704,7 +698,6 @@ let testRearrange5 () =
     st.put_stack ([Int 1])
     try
         let finalSt = rearrange 0 (fun k -> push k) st
-        printfn "%A" finalSt.stack
         Assert.AreEqual([], finalSt.stack)
     with
         | TVMError s ->
@@ -716,7 +709,6 @@ let testRearrange6 () =
     st.put_stack ([Int 1; Int 2; Int 3])
     try
         let finalSt = rearrange 0 (fun k -> push k) st
-        printfn "%A" finalSt.stack
         Assert.AreEqual([Int 2; Int 3], finalSt.stack)
     with
         | TVMError s ->
@@ -757,7 +749,6 @@ let testDivmod0 () =
     let st = initialState [PushInt 10; PushInt 3; DivMod]
     try
         let finalSt = List.last (runVM st false)
-        printfn "%A" finalSt.stack
         Assert.AreEqual([Int 1; Int 3], List.tail finalSt.stack)
     with
         | TVMError s ->
@@ -839,7 +830,7 @@ let testRepeat2 () =
 
 [<Test>]
 let testArrayGetPut1 () =
-    let code = arrayNew @ [PushInt 1; PushInt 600] @ arrayPut @ [DumpStk; PushInt 1] @ arrayGet
+    let code = arrayNew @ [PushInt 1; PushInt 600] @ arrayPut @ [PushInt 1] @ arrayGet
     let st = initialState code
     dumpFiftScript "testArrayGetPut1.fif" (outputFift st)
     try
@@ -974,7 +965,6 @@ let testSwap2 () =
     try
         let finalSt = List.last (runVM st false)
         let stk = List.tail finalSt.stack
-        printfn "%A" stk
         Assert.AreEqual([Int 2; Int 1; Int 4; Int 3], stk )
     with
         | TVMError s ->
@@ -987,7 +977,6 @@ let testRot2 () =
     try
         let finalSt = List.last (runVM st false)
         let stk = List.tail finalSt.stack
-        printfn "%A" stk
         Assert.AreEqual([Int 2; Int 1; Int 6; Int 5; Int 4; Int 3], stk )
     with
         | TVMError s ->
@@ -1031,7 +1020,6 @@ let testExecuteSetNumArgs0 () =
     try
         let finalSt = List.last (runVM st false)
         let stk = List.tail finalSt.stack
-        printfn "%A" stk
         Assert.AreEqual([Int 0; Int 2; Int 1], stk )
     with
         | TVMError s ->
@@ -1045,7 +1033,6 @@ let testExecuteSetNumArgs1 () =
     try
         let finalSt = List.last (runVM st false)
         let stk = List.tail finalSt.stack
-        printfn "%A" stk
         Assert.AreEqual([Int 2; Int 2; Int 1], stk )
     with
         | TVMError s ->
@@ -1059,7 +1046,6 @@ let testExecuteSetNumArgs2 () =
     try
         let finalSt = List.last (runVM st false)
         let stk = List.tail finalSt.stack
-        printfn "%A" stk // 1 2 3
         Assert.AreEqual([Int 3; Int 2; Int 1], stk )
     with
         | TVMError s ->
@@ -1073,7 +1059,6 @@ let testExecuteJmpJmp () =
     try
         let finalSt = List.last (runVM st false)
         let stk = List.tail finalSt.stack
-        printfn "%A" stk //
         Assert.AreEqual([Int 2; Int 4; Int 3; Int 1], stk )
     with
         | TVMError s ->
@@ -1099,7 +1084,6 @@ let testExecuteCtr0 () =
         dumpFiftScript "testExecuteCtr0.fif" (outputFift st)
         let finalSt = List.last (runVM st false)
         let stk = List.tail finalSt.stack
-        printfn "%A" stk
         Assert.AreEqual([Int 2], stk)
     with
         | TVMError s ->
@@ -1114,7 +1098,6 @@ let testExecuteCtr1 () =
         dumpFiftScript "testExecuteCtr0.fif" (outputFift st)
         let finalSt = List.last (runVM st false)
         let stk = List.tail finalSt.stack
-        printfn "%A" stk
         Assert.AreEqual([Int 1], stk)
     with
         | TVMError s ->

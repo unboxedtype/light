@@ -564,7 +564,7 @@ let testCase2 () =
 let testLazyDiv0 () =
     let coreProg =
         [("main", [], EAp (EAp (EVar "K", ENum 1), EDiv(ENum 1, ENum 0)))]
-    printTerm (compile coreProg)
+    // printTerm (compile coreProg)
     let initSt = compile coreProg
     let res = getResult (List.last (eval initSt))
     Assert.AreEqual( NNum 10, res );

@@ -125,7 +125,6 @@ let binaryOperation (op:TVM.Code) : TVM.Code =
     heapLookup @ // NNum2 heap[n1]
     [Second] @   // NNum2 NNum1
     [Swap] @     // NNum1 NNum2
-    [DumpStk] @
     op @
     [PushInt (int GMachine.NodeTags.NNum); Swap; Tuple 2] @  // (0, op(heap[n1], heap[n2])), 0 = NNum tag
     heapAlloc    // n3
