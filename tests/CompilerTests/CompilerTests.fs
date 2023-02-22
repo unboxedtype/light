@@ -239,9 +239,24 @@ let testPack0 () =
     let st = TVM.initialState code
     TVM.dumpFiftScript "testPack0.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
-    Assert.AreEqual (Tup [Int (int GMachine.NodeTags.NConstr); Int 30; Tup [Int 0; Int 1]], getResultHeap final)
+    Assert.AreEqual (nconstr 30 [0; 1], getResultHeap final)
     Assert.AreEqual (nnum 100, getHeapAt 0 final)
     Assert.AreEqual (nnum 200, getHeapAt 1 final)
+
+[<Test>]
+let testPack1 () =
+    let code = initC7 @
+               (compileCode [GMachine.Pushint 100;
+                             GMachine.Pushint 200;
+                             GMachine.Pack (30, 2);
+                             GMachine.Pack (40, 1)]) // nested constructor
+    let st = TVM.initialState code
+    TVM.dumpFiftScript "testPack1.fif" (TVM.outputFift st)
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual (nconstr 40 [2], getResultHeap final)
+    Assert.AreEqual (nnum 100, getHeapAt 0 final)
+    Assert.AreEqual (nnum 200, getHeapAt 1 final)
+    Assert.AreEqual (nconstr 30 [0; 1], getHeapAt 2 final)
 
 [<Test>]
 let testSplit0 () =
@@ -252,6 +267,22 @@ let testSplit0 () =
                              GMachine.Split 2])
     let st = TVM.initialState code
     TVM.dumpFiftScript "testSplit0.fif" (TVM.outputFift st)
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual ([Int 1; Int 0], getResultStack final)
+    Assert.AreEqual (nnum 100, getHeapAt 0 final)
+    Assert.AreEqual (nnum 200, getHeapAt 1 final)
+
+[<Test>]
+let testSplit1 () =
+    let code = initC7 @
+               (compileCode [GMachine.Pushint 100;
+                             GMachine.Pushint 200;
+                             GMachine.Pack (30, 2);
+                             GMachine.Pack (40, 1);
+                             GMachine.Split 1;
+                             GMachine.Split 2])
+    let st = TVM.initialState code
+    TVM.dumpFiftScript "testSplit1.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
     Assert.AreEqual ([Int 1; Int 0], getResultStack final)
     Assert.AreEqual (nnum 100, getHeapAt 0 final)
@@ -352,3 +383,36 @@ let testGtTrueCompiler () =
     let final = List.last (TVM.runVM tvmInitSt false)
     let NTrue = nnum -1
     Assert.AreEqual (NTrue, getResultHeap final)
+
+[<Test>]
+let testSlide0 () =
+    let code = initC7 @
+               (compileCode [GMachine.Pushint 100;
+                             GMachine.Pushint 200;
+                             GMachine.Pushint 300;
+                             GMachine.Slide 2])
+    let st = TVM.initialState code
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual([Int 2], getResultStack final)
+
+[<Test>]
+let testSlide1 () =
+    let code = initC7 @
+               (compileCode [GMachine.Pushint 100;
+                             GMachine.Pushint 200;
+                             GMachine.Pushint 300;
+                             GMachine.Slide 1])
+    let st = TVM.initialState code
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual([Int 2; Int 0], getResultStack final)
+
+[<Test>]
+let testSlide2 () =
+    let code = initC7 @
+               (compileCode [GMachine.Pushint 100;
+                             GMachine.Pushint 200;
+                             GMachine.Pushint 300;
+                             GMachine.Slide 0])
+    let st = TVM.initialState code
+    let final = List.last (TVM.runVM st false)
+    Assert.AreEqual([Int 2; Int 1; Int 0], getResultStack final)

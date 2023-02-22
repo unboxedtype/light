@@ -376,7 +376,7 @@ let nind (v:int) =
     Tup [Int (int GMachine.NodeTags.NInd); (Int v)]
 
 let nconstr (n:int) (a: int list) =
-    Tup ([Int (int GMachine.NodeTags.NConstr); (Int n)] @ (a |> List.map TVM.Int))
+    Tup ([Int (int GMachine.NodeTags.NConstr); (Int n); Tup (a |> List.map TVM.Int)])
 
 let initC7 =
     TVM.arrayNew @ [SetGlob (int RuntimeGlobalVars.Heap)] @
