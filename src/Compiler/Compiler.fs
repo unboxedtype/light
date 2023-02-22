@@ -232,7 +232,8 @@ let doUnwind =
 
 // n heap[n]
 let mapUnwindNNum () : TVM.Code =
-    [Drop; Ret]
+    [Drop; // n
+     Ret]
 
 // n heap[n]
 let mapUnwindNAp () : TVM.Code =
@@ -249,24 +250,41 @@ let mapUnwindNInd () : TVM.Code =
 
 // n heap[n]
 let mapUnwindNConstr () : TVM.Code =
-    [Drop; Ret]
+    [Drop; Ret] // n
 
+// an .. a0   h[a0:NGlobal n c; a1: NAp a0 a1', a2:NAp a1 a2'...]
+// -->
+// an, an', ..., a2', a1'
+// Please note that in case of n = 0 the result will be 'a0'
+// so we keep the root node at stack at all times
 let unwindRearrange () : TVM.Code =
-    []  // not done
+    [GetGlob 9; // an .. a0 n
+     Pick;  // an .. a0 an
+     GetGlob 9; // an ... a0 an n
+     RollRevX; // an an .. a1 a0
+     Drop; // an an .. a1
+     GetGlob 9; // an an .. a1 n
+     PushCont (getHeap @  // an an .. (NAp a0 a1')
+               [Index 2;   // an an .. a1'
+                GetGlob 9; // an an .. a1' n
+                Dec;       // an an .. a1' (n-1)
+                RollRevX]);// an a1' an .. a2
+     // an an .. a1 n c
+     Repeat] // an an' .. a1'
 
-// n heap[n]
+// an ... a1 n heap[n]
 let mapUnwindNGlobal () : TVM.Code =
     [Dup;        // n heap[n] heap[n]
      Index 1;    // n heap[n] NGlobal.n
-     Depth; Dec; // n heap[n] NGlobal.n k
+     Depth; Dec; Dec; Dec; // n heap[n] NGlobal.n k   (k = number of passed arguments)
      Swap;
      Less;        // n heap[n] k<NGlobal.n?
      PushCont []; // n heap[n] k<N c
      IfJmp;       // n heap[n]
      Dup; // n heap[n] heap[n]
-     Index 1; SetGlob 9; // n heap[n]
-     Index 2; SetGlob 10] @ // n
-     (unwindRearrange ()) @ // ?
+     Index 1; SetGlob 9; // n heap[n]  (c7[9] = nglobal.n)
+     Index 2; SetGlob 10] @ // n       (c7[10] = nglobal.code)
+     (unwindRearrange ()) @ //
      [GetGlob 10; Execute]
 
 // If the current top stack element is:
@@ -294,7 +312,9 @@ let mapUnwind () : TVM.Code =
     [Throw (int RuntimeErrors.HeapNodeWrongTag)] // unknown tag
 
 let mapEval () : TVM.Code =
-    [GetGlob (int RuntimeGlobalVars.UnwindCont); SetNumArgs 1; JmpX]
+    [GetGlob (int RuntimeGlobalVars.UnwindCont);
+     SetNumArgs 1;
+     Execute]
 
 let mapDumpstk () : TVM.Code =
     [DumpStk]
@@ -459,17 +479,21 @@ let prepareHeap (heap:GMachine.GmHeap): TVM.Value =
 let prepareC7 heap heapCounter globals unwindCont unwindSelector =
     Tup [Null; heap; heapCounter; globals; unwindCont; unwindSelector]
 
+let unwindSelectorCell =
+    Cell ([SDict (Map [(0, [SCode (mapUnwindNNum ())] );
+                       (1, [SCode (mapUnwindNAp ())] );
+                       (2, [SCode (mapUnwindNGlobal ())] );
+                       (3, [SCode (mapUnwindNInd ())] );
+                       (4, [SCode (mapUnwindNConstr ())] )])])
+
+let unwindCont =
+    TVM.Cont { TVM.Continuation.Default with code = mapUnwind () }
+
 let compile (gms: GMachine.GmState) : TVM.TVMState =
     let code = compileCode (GMachine.getCode gms)
     let stack = prepareStack (GMachine.getStack gms)
     let c0 = TVM.Continuation.Default
     let heap = prepareHeap (GMachine.getHeap gms)
     let globals = prepareGlobals (GMachine.getGlobals gms)
-    let unwindSelectorCell = Cell ([SDict (Map [(0, [SCode (mapUnwindNNum ())] );
-                                               (1, [SCode (mapUnwindNAp ())] );
-                                               (2, [SCode (mapUnwindNGlobal ())] );
-                                               (3, [SCode (mapUnwindNInd ())] );
-                                               (4, [SCode (mapUnwindNConstr ())] )])])
-    let unwindCont = TVM.Cont { TVM.Continuation.Default with code = mapUnwind () }
     let c7 = prepareC7 heap (Int -1) globals unwindCont unwindSelectorCell
     { code = code; stack = stack; cr = { TVM.ControlRegs.Default with c0 = Some c0; c7 = c7 } }

@@ -86,7 +86,7 @@ type Instruction =
     | Repeat
     | Depth
     | Dec
-    | Pick
+    | Pick   // PushX
     | XchgX
     | PushSlice of s:SValue list
     | StSlice
@@ -1040,25 +1040,36 @@ let dispatch (i:Instruction) =
         | PushRef s ->
             pushref s
         | _ ->
-            failwith (sprintf "unsupported instruction: %A" i)
+            failwith ("unsupported instruction: " + (string i))
 
-let step (st:TVMState) : TVMState =
+let step (st:TVMState) trace : TVMState =
     match (st.code) with
         | [] ->
-            // printfn "Implicit RET"
+            if trace then
+                printfn "Implicit RET"
+            else
+                ()
             ret st
         | i :: code' ->
-            // printfn "Executing %A" i
+            if trace then
+                printfn "Executing %A" i
+            else
+                ()
             st.code <- code'
             dispatch i st
 
-let rec runVM st (trace:bool) =
-    let st' = step st
+let rec runVMLimits st trace maxSteps =
+    if maxSteps = 0 then
+        failwith "runVM: max steps exceeded"
+    let st' = step st trace
     if st.code = [] && st.cr.c0 = None then
-        st'.stack <- (Int 0) :: (st'.stack)
+        st'.put_stack ((Int 0) :: (st'.stack))
         [st']
     else
-        st' :: (runVM st' trace)
+        runVMLimits st' trace (maxSteps - 1)
+
+let rec runVM st (trace:bool) =
+    runVMLimits st trace 10000
 
 let getResult st : Value option =
     match st.stack with
@@ -1146,6 +1157,7 @@ let rec instrToFift (i:Instruction) : string =
         | StSlice -> "STSLICE"
         | Endc -> "ENDC"
         | JmpX -> "JMPX"
+        | RollRevX -> "ROLLREVX"
         | _ ->
             failwith (sprintf "unsupported instruction: %A" i)
 // by the given abstract slice, produce TVM assembly code that
@@ -1220,4 +1232,3 @@ let arrayGet =
 // a k -> a[k] -1 | null 0
 let arrayGetWithCode =
     arrayGet @ [Dup; IsNull; IsZero]
-

@@ -212,7 +212,7 @@ let testEval3 () =
 
 [<Test>]
 let testEval4 () =
-    let heap = Map [(0, NGlobal (0, [Pushint 3; Pushint 2; Push 0;
+    let heap = Map [(0, NGlobal (0, [DumpStk; Pushint 3; Pushint 2; Push 0;
                                      Slide 2; Update 0; Pop 0; Unwind]))]
     let stk = []
     let dump = []
@@ -576,7 +576,7 @@ let testUnwindInd0 () =
     let dump = [([],[])]  // this is as if the code was called using Eval
     let globals = Map []
     let stats = 0
-    let code = [Pushint 100; Pushint 200; Update 0; DumpStk; Unwind]
+    let code = [Pushint 100; Pushint 200; Update 0; Unwind]
     try
         let trace = eval (code, stk, dump, heap, globals, stats)
         Assert.AreEqual (NNum 200, getResult (List.last trace))
