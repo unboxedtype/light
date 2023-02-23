@@ -510,6 +510,90 @@ let testUnwindNAp3 () =
     Assert.AreEqual(nnum 30, getResultHeap final)
 
 [<Test>]
+let testUnwindNAp4 () =
+    let globals = prepareGlobals (Map [("inc", 66); ("dec", 67); ("mix", 68)])
+    let incGlobal =
+        GMachine.NGlobal (1, [GMachine.Push 0;    // @f @x @x
+                              GMachine.Eval;      // @f @x @!x
+                              GMachine.Pushint 1; // @f @x @!x 10
+                              GMachine.Add;       // @f @x @(!x+1)
+                              GMachine.Update 1;  // @f' @x
+                              GMachine.Pop 1;     // @f'
+                              GMachine.Unwind])
+    let decGlobal =
+        GMachine.NGlobal (1, [GMachine.Pushint 1; // @f @x 1
+                              GMachine.Push 1;    // @f @x 1 @x
+                              GMachine.Eval;      // @f @x 1 @!x
+                              GMachine.Sub;       // @f @x @(!x-1)
+                              GMachine.Update 1;  // @f' @x
+                              GMachine.Pop 1;     // @f'
+                              GMachine.Unwind])
+    let mixGlobal =
+        GMachine.NGlobal (1, [GMachine.Push 0;             // @f @x @x
+                              GMachine.Eval;
+                              GMachine.Pushglobal "inc";   // @f @x @x @inc
+                              GMachine.Mkap;               // @f @x @(ap @inc @x)
+                              GMachine.Eval;               // @f @x @!(inc x)
+                              GMachine.Pushglobal "dec";   // @f @x @!(inc x) @dec
+                              GMachine.Mkap;               // @f @x @(ap @dec @!(inc x))
+                              GMachine.Eval;               // @f @x @!ap
+                              GMachine.Update 1;           // @f' @x
+                              GMachine.Pop 1;              // @f'
+                              GMachine.Unwind])
+
+    let heap = prepareHeap (Map [(66, incGlobal); (67, decGlobal); (68, mixGlobal)])
+    let c7 = prepareC7 heap (Int -1) globals unwindCont unwindSelectorCell
+    let code = compileCode [GMachine.Pushint 10;
+                            GMachine.Pushglobal "mix";
+                            GMachine.Mkap;
+                            GMachine.Eval]
+    let st = TVM.initialState code
+    st.put_c7 c7
+    let final = List.last (TVM.runVMLimits st false 1000)
+    Assert.AreEqual(nnum 10, getResultHeap final)
+
+[<Test>]
+// NOTE: recursive function is used!
+let testUnwindNAp5 () =
+    let globals = prepareGlobals (Map [("inc", 66); ("func", 68)])
+    let incGlobal =
+        GMachine.NGlobal (1, [GMachine.Push 0;    // @f @x @x
+                              GMachine.Eval;      // @f @x @!x
+                              GMachine.Pushint 1; // @f @x @!x 10
+                              GMachine.Add;       // @f @x @(!x+1)
+                              GMachine.Update 1;  // @f' @x
+                              GMachine.Pop 1;     // @f'
+                              GMachine.Unwind])
+    // func x = if x < 10 then func (inc x) else x
+    let funcGlobal =
+        GMachine.NGlobal (1, [GMachine.Pushint 10; // @f @x @10
+                              GMachine.Push 1;     // @f @x @10 @x
+                              GMachine.Eval;       // @f @x @10 @!x
+                              GMachine.Less;       // @f @x @(!x < 10?)
+                              GMachine.Cond ([GMachine.Push 0; // @f @x @x
+                                              GMachine.Eval;   // @f @x @!x
+                                              GMachine.Pushglobal "inc";   // @f @x @!x @inc
+                                              GMachine.Mkap;               // @f @x @(ap @inc @x)
+                                              GMachine.Eval;               // @f @x @!(inc x)
+                                              GMachine.Pushglobal "func";  // @f @x @!(inc x) @func
+                                              GMachine.Mkap;               // @f @x @(ap @func @!(inc x))
+                                              GMachine.Eval],               // @f @x @!ap
+                                             [GMachine.Push 0])
+                              GMachine.Update 1;   // @f' @x
+                              GMachine.Pop 1;      // @f'
+                              GMachine.Unwind])
+    let heap = prepareHeap (Map [(66, incGlobal); (68, funcGlobal)])
+    let c7 = prepareC7 heap (Int -1) globals unwindCont unwindSelectorCell
+    let code = compileCode [GMachine.Pushint 5;
+                            GMachine.Pushglobal "func";
+                            GMachine.Mkap;
+                            GMachine.Eval]
+    let st = TVM.initialState code
+    st.put_c7 c7
+    let final = List.last (TVM.runVMLimits st false 5000)
+    Assert.AreEqual(nnum 10, getResultHeap final)
+
+[<Test>]
 let testUnwindNConstr0 () =
     let code = initC7 @
                (compileCode [GMachine.Pushint 100;

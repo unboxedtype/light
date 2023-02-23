@@ -79,7 +79,7 @@ type Instruction =
     | Add | Sub | Mul | Div
 
     // same for logical operations
-    | Equal | Greater
+    | Equal | Greater | Less
 
     // Cond (t, f)
     // If the top stack element evaluates to True, transfer control
@@ -400,6 +400,9 @@ let eq state =
     cmpop (fun a b -> a = b) state
 let gt state =
     cmpop (fun a b -> a > b) state
+let lt state =
+    cmpop (fun a b -> a < b) state
+
 
 let cond i1 i2 state =
     let (a :: s') = getStack state
@@ -494,6 +497,8 @@ let dispatch i =
             eq
         | Greater ->
             gt
+        | Less ->
+            lt
         | Pack (tag, n) ->
             pack tag n
         | Casejump cases ->

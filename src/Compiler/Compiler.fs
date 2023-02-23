@@ -158,6 +158,9 @@ let mapEqual () : TVM.Code =
 let mapGreater () : TVM.Code =
     binaryOperation [Greater]
 
+let mapLess () : TVM.Code =
+    binaryOperation [Less]
+
 // Allocate a node for function application on the heap and
 // put the address of that node on the stack
 // a1 f -> a2 , where heap[a3] = NAp (f, a1)
@@ -373,6 +376,8 @@ let rec compileInstr (i:GMachine.Instruction): TVM.Code =
             mapEqual ()
         | GMachine.Greater ->
             mapGreater ()
+        | GMachine.Less ->
+            mapLess ()
         | GMachine.Cond (t,f) ->
             mapCond (compileCode t) (compileCode f)
         | GMachine.Pack (tag,n) ->
