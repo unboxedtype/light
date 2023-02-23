@@ -631,3 +631,25 @@ let testCompileConstr2 () =
            Assert.AreEqual (nnum 5, getHeapAt y.unboxInt final)
         | _ ->
             Assert.Fail("heap object is not a constructor")
+
+[<Test>]
+let testCompileConstr3 () =
+    let coreProgGM =
+        [("main", [], GMachine.EPack (0, 1, [GMachine.EPack (1, 0, [])]))]
+    let gmInitSt = GMachine.compile coreProgGM
+    printfn "gmInitSt = %A" gmInitSt
+    let tvmInitSt = compile gmInitSt
+    printfn "tvmInitSt = %A" tvmInitSt
+    let final = List.last (TVM.runVMLimits tvmInitSt false 1000)
+    match (getResultHeap final) with
+        | Tup [Int 4; Int 0; Tup [Int 0]] ->
+           match (getHeapAt 0 final) with
+               | Tup [Int 4; Int 1; Tup []] ->
+                    Assert.Pass()
+               | _ as other ->
+                    printfn "%A" other
+                    printfn "%A" (tvmHeap final)
+                    Assert.Fail("incorrect heap object")
+        | _ as other ->
+               printfn "%A" other
+               Assert.Fail("incorrect heap object")

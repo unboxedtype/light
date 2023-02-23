@@ -438,6 +438,10 @@ let getResultHeap (st:TVM.TVMState) : TVM.Value =
     let ((Int n) :: _) = getResultStack st
     getHeapAt n st
 
+let tvmHeap (st:TVM.TVMState) =
+    let (Tup (Null :: Tup heap :: _))  = st.cr.c7
+    heap
+
 let nnum (n:int) : TVM.Value =
     Tup [Int (int GMachine.NodeTags.NNum); Int n]
 
