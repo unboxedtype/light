@@ -102,6 +102,12 @@ type Instruction =
 
     // output current stack to stdout
     | DumpStk
+
+    // output current heap to stdout
+    | DumpHeap
+
+    // Stop the execution with an error code n
+    | Halt of n:int
 and
     GmCode = Instruction list
 
@@ -438,10 +444,22 @@ let dumpstk state =
     printfn "GMachine stack = %A" (getStack state)
     state
 
+let dumpheap state =
+    printfn "GMachine heap = %A" (getHeap state)
+    state
+
+let halt n state =
+    failwith ("Execution is aborted with the code: " + (string n))
+    state
+
 let dispatch i =
     match i with
+        | Halt n ->
+            halt n
         | DumpStk ->
             dumpstk
+        | DumpHeap ->
+            dumpheap
         | Pushglobal f ->
             pushglobal f
         | Pushint n ->

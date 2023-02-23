@@ -15,6 +15,7 @@ type RuntimeErrors =
     | HeapNodeNotFound = 11
     | HeapNodeWrongTag = 12
     | CaseNotFound = 13
+    | PartialApplication = 14
 
 type RuntimeGlobalVars =
     | Heap = 1
@@ -82,6 +83,14 @@ let heapLookup =
     TVM.arrayGetWithCode @
     [ThrowIfNot (int RuntimeErrors.HeapNodeNotFound)]
 
+// (tag, ...)
+let checkTag tag =
+    [Dup; // node node
+     Index 0; // node tag'
+     PushInt tag; // node tag' tag
+     Equal; // node (tag'==tag?)
+     ThrowIfNot (int RuntimeErrors.HeapNodeWrongTag)]
+
 // Put the n-th element of the stack on top of the stack;
 // 0 denotes the current top value of the stack.
 let mapPush (n:int) : TVM.Code =
@@ -120,9 +129,11 @@ let mapPushint (n:int) : TVM.Code =
 // n2 n1 -> n3, where heap[n3] = heap[n1] OP heap[n2]
 let binaryOperation (op:TVM.Code) : TVM.Code =
     heapLookup @ // n2 (0, NNum1)
+    checkTag (int GMachine.NodeTags.NNum) @
     [Second] @   // n2 NNum1
     [Swap] @     // NNum1 n2
     heapLookup @ // NNum1 heap[n2]
+    checkTag (int GMachine.NodeTags.NNum) @
     [Second] @   // NNum1 NNum2
     op @
     [PushInt (int GMachine.NodeTags.NNum); Swap; Tuple 2] @  // (0, op(heap[n1], heap[n2])), 0 = NNum tag
@@ -149,12 +160,13 @@ let mapGreater () : TVM.Code =
 
 // Allocate a node for function application on the heap and
 // put the address of that node on the stack
-// a1 a2 -> a3 , where heap[a3] = NAp (a1,a2)
+// a1 f -> a2 , where heap[a3] = NAp (f, a1)
 let mapMkap () : TVM.Code =
-    [PushInt (int GMachine.NodeTags.NAp);  // a1 a2 1
-     RollRev 2;  // 1 a1 a2
-     Tuple 3] @ // (1, a1, a2)
-    heapAlloc // a3
+    [PushInt (int GMachine.NodeTags.NAp);  // a1 f 1
+     RollRev 2;  // 1 a1 f
+     Swap;       // 1 f a1
+     Tuple 3] @ // (1, f, a1)
+    heapAlloc   // a2
 
 // Change the node pointed by the n-th + 1 element of the stack
 // to the Indirection node pointing to the node with the address
@@ -232,13 +244,14 @@ let doUnwind =
 
 // n heap[n]
 let mapUnwindNNum () : TVM.Code =
+    [StrDump "Unwind NNum"; (* DumpStk *)] @
     [Drop; // n
      Ret]
 
-// n heap[n]
+// n heap[n]  (heap[n] = (NAp, f, arg) )
 let mapUnwindNAp () : TVM.Code =
-    [Index 1; // n a1
-     Swap] @ // a1 n
+    [StrDump "Unwind NAp"; (* DumpStk *)] @
+    [Index 1] @ // n f
     doUnwind
 
 // n heap[n]
@@ -260,11 +273,13 @@ let mapUnwindNConstr () : TVM.Code =
 let unwindRearrange () : TVM.Code =
     [GetGlob 9; // an .. a0 n
      Pick;  // an .. a0 an
+     (* DumpStk; *)
      GetGlob 9; // an ... a0 an n
      RollRevX; // an an .. a1 a0
-     Drop; // an an .. a1
-     GetGlob 9; // an an .. a1 n
-     PushCont (getHeap @  // an an .. (NAp a0 a1')
+     Drop;
+     GetGlob 9; // an an .. a1 n  (note: n = args count )
+     PushCont (heapLookup @  // an an .. (NAp a0 a1')
+               checkTag (int GMachine.NodeTags.NAp) @
                [Index 2;   // an an .. a1'
                 GetGlob 9; // an an .. a1' n
                 Dec;       // an an .. a1' (n-1)
@@ -272,19 +287,21 @@ let unwindRearrange () : TVM.Code =
      // an an .. a1 n c
      Repeat] // an an' .. a1'
 
-// an ... a1 n heap[n]
+// an .. a1 a0 heap[n]
 let mapUnwindNGlobal () : TVM.Code =
-    [Dup;        // n heap[n] heap[n]
-     Index 1;    // n heap[n] NGlobal.n
-     Depth; Dec; Dec; Dec; // n heap[n] NGlobal.n k   (k = number of passed arguments)
+    [StrDump "unwind NGlobal"; (* DumpStk; *)
+     Dup;        // an .. a1 a0 heap[n] heap[n]
+     Index 1;    // an .. a0 heap[n] NGlobal.n
+     Depth; Dec; Dec; Dec; // ... a0 heap[a0] NGlobal.n k   (k = number of passed arguments)
      Swap;
-     Less;        // n heap[n] k<NGlobal.n?
-     PushCont []; // n heap[n] k<N c
-     IfJmp;       // n heap[n]
-     Dup; // n heap[n] heap[n]
-     Index 1; SetGlob 9; // n heap[n]  (c7[9] = nglobal.n)
-     Index 2; SetGlob 10] @ // n       (c7[10] = nglobal.code)
-     (unwindRearrange ()) @ //
+     Less;        // an .. a0 heap[a0] k<NGlobal.n?
+     ThrowIf (int RuntimeErrors.PartialApplication); // ... a0 heap[a0]
+     Dup; // an ... a0 heap[a0] heap[a0]
+     Index 1; SetGlob 9; // an ... a0 heap[a0]  (c7[9] = nglobal.a0)
+     Index 2; SetGlob 10] @ // an ... a0       (c7[10] = nglobal.c)
+     [StrDump "Before rearrange"; (* DumpStk *)] @
+     (unwindRearrange ()) @ // an ... a0
+     [StrDump "After rearrange"; (* DumpStk *)] @
      [GetGlob 10; Execute]
 
 // If the current top stack element is:
@@ -303,6 +320,7 @@ let mapUnwind () : TVM.Code =
     // we need to duplicate n (object heap address) because
     // several unwind routines need it (unwindNNum, unwindNAp,
     // unwindNConstr)
+    [StrDump "Unwind"; (* DumpStk *) ] @
     [Dup] @ // n n
     heapLookup @ // n heap[n]
     [Dup; Index 0] @ // n heap[n] tag
@@ -313,7 +331,7 @@ let mapUnwind () : TVM.Code =
 
 let mapEval () : TVM.Code =
     [GetGlob (int RuntimeGlobalVars.UnwindCont);
-     SetNumArgs 1;
+     // SetNumArgs 1;
      Execute]
 
 let mapDumpstk () : TVM.Code =

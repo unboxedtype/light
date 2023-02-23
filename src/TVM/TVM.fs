@@ -17,6 +17,7 @@ type Action =
     | Reserve
 
 type Instruction =
+    | StrDump of s:string // this one is artificial. Maps into NOP
     | Push of n:int
     | PushRef of c:SValue list
     | Dup               // Push 0 alias
@@ -883,8 +884,14 @@ let pushref (c:SValue list) (st:TVMState) =
     st.put_stack ((Cell c) :: st.stack)
     st
 
+let strdump s st =
+    // printfn "%A" s
+    st
+
 let dispatch (i:Instruction) =
     match i with
+        | StrDump s ->
+            strdump s
         | StSlice ->
             stslice
         | Bless ->
@@ -1086,6 +1093,7 @@ let cellToSliceFift v = v + " <s "
 
 let rec instrToFift (i:Instruction) : string =
     match i with
+        | StrDump s -> " NOP"
         | Push n -> "s" + (string n) + " PUSH"
         | PushSlice v ->
             (cellToSliceFift (encodeCellIntoFift v)) + " PUSHSLICE"

@@ -584,3 +584,25 @@ let testUnwindInd0 () =
     with
         | GMError s ->
             Assert.Fail(s)
+
+[<Test>]
+let testMkApp0 () =
+    let stk = []
+    let heap = Map [(66, NGlobal (1, [Push 0; // f arg1 arg1
+                                      Eval;
+                                      Pushint 1; // f arg1 arg1 @1
+                                      Add; // f arg1 @(arg1 + 1)
+                                      Update 1; // f' arg1
+                                      Pop 1; // f'
+                                      Unwind]))]
+    let dump = [([],[])]  // this is as if the code was called using Eval
+    let globals = Map [("inc", 66)]
+    let stats = 0
+    let code = [Pushint 10; Pushglobal "inc"; Mkap; Pushglobal "inc"; Mkap; Eval]
+    try
+        let trace = eval (code, stk, dump, heap, globals, stats)
+        Assert.AreEqual (NNum 12, getResult (List.last trace))
+        // Assert.AreEqual ([1], getStack (List.last trace))
+    with
+        | GMError s ->
+            Assert.Fail(s)
