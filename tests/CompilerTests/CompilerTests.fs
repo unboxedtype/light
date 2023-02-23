@@ -241,7 +241,7 @@ let testPack0 () =
     let st = TVM.initialState code
     TVM.dumpFiftScript "testPack0.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
-    Assert.AreEqual (nconstr 30 [0; 1], getResultHeap final)
+    Assert.AreEqual (nconstr 30 [1; 0], getResultHeap final)
     Assert.AreEqual (nnum 100, getHeapAt 0 final)
     Assert.AreEqual (nnum 200, getHeapAt 1 final)
 
@@ -258,7 +258,7 @@ let testPack1 () =
     Assert.AreEqual (nconstr 40 [2], getResultHeap final)
     Assert.AreEqual (nnum 100, getHeapAt 0 final)
     Assert.AreEqual (nnum 200, getHeapAt 1 final)
-    Assert.AreEqual (nconstr 30 [0; 1], getHeapAt 2 final)
+    Assert.AreEqual (nconstr 30 [1; 0], getHeapAt 2 final)
 
 [<Test>]
 let testSplit0 () =
@@ -359,14 +359,12 @@ let testUnwind0 () =
     Assert.AreEqual (nnum 100, getResultHeap final)
 
 [<Test>]
-[<Ignore("involves nglobal. not working yet")>]
 let testGtTrueCompiler () =
     let coreProgGM =
         [("main", [], GMachine.EGt (GMachine.ENum 10, GMachine.ENum 1))]
     let gmInitSt = GMachine.compile coreProgGM
     let tvmInitSt = compile gmInitSt
-    TVM.dumpFiftScript "testGtTrueCompiler.fif" (TVM.outputFift tvmInitSt)
-    let final = List.last (TVM.runVMLimits tvmInitSt false 5)
+    let final = List.last (TVM.runVMLimits tvmInitSt false 1000)
     let NTrue = nnum -1
     Assert.AreEqual (NTrue, getResultHeap final)
 
@@ -552,8 +550,8 @@ let testUnwindNAp4 () =
     let final = List.last (TVM.runVMLimits st false 1000)
     Assert.AreEqual(nnum 10, getResultHeap final)
 
-[<Test>]
 // NOTE: recursive function is used!
+[<Test>]
 let testUnwindNAp5 () =
     let globals = prepareGlobals (Map [("inc", 66); ("func", 68)])
     let incGlobal =
@@ -604,7 +602,7 @@ let testUnwindNConstr0 () =
     TVM.dumpFiftScript "testUnwindNConstr0.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
     Assert.AreEqual ([Int 2], getResultStack final)
-    Assert.AreEqual (nconstr 1 [0;1], getResultHeap final)
+    Assert.AreEqual (nconstr 1 [1; 0], getResultHeap final)
 
 [<Test>]
 let testUnwindNInd0 () =
@@ -618,3 +616,18 @@ let testUnwindNInd0 () =
     let final = List.last (TVM.runVM st false)
     Assert.AreEqual ([Int 1], getResultStack final)
     Assert.AreEqual (nnum 200, getResultHeap final)
+
+[<Test>]
+let testCompileConstr2 () =
+    let coreProgGM =
+        [("main", [], GMachine.EPack (0, 2, [GMachine.EAdd (GMachine.ENum 1, GMachine.ENum 2);
+                                             GMachine.ESub (GMachine.ENum 10, GMachine.ENum 5)]))]
+    let gmInitSt = GMachine.compile coreProgGM
+    let tvmInitSt = compile gmInitSt
+    let final = List.last (TVM.runVMLimits tvmInitSt false 1000)
+    match (getResultHeap final) with
+        | Tup [Int 4; Int 0; Tup [x; y]] ->
+           Assert.AreEqual (nnum 3, getHeapAt x.unboxInt final)
+           Assert.AreEqual (nnum 5, getHeapAt y.unboxInt final)
+        | _ ->
+            Assert.Fail("heap object is not a constructor")

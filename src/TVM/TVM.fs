@@ -460,6 +460,7 @@ let pop n st =
     st
 
 let xchg2 i j st =
+    failIf (List.length st.stack <= i) "XCHG: Stack underflow"
     failIf (List.length st.stack <= j) "XCHG: Stack underflow"
     let stk = List.toArray st.stack
     let si = stk.[i]
@@ -596,7 +597,6 @@ let newdict st =
 
 // i D n -> x -1 or 0
 let dictuget st =
-    printfn "%A" st.stack
     let (n :: cD :: i :: stack') = st.stack
     failIfNot (i.isInt) "DICTUGET: Integer expected"
     failIfNot (cD.isCell) "DICTUGET: Cell expected"

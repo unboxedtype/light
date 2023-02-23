@@ -191,9 +191,20 @@ let mapUpdate (n:int) : TVM.Code =
 let mapAlloc (n:int) : TVM.Code =
     [PushInt n; PushCont ([PushNull] @ heapAlloc); Repeat]
 
-// Put the boxed constructor object onto the stack
-// a1 .. an -> a  , where heap[a] = NConstr(tag, [a1, ... an])
+let rec xchgs l acc =
+    let len = List.length l
+    if len > 1 then
+        let (s,e) = (List.head l, List.last l)
+        let next = List.take (len-2) (List.tail l)
+        xchgs next ((s,e) :: acc)
+    else
+        acc
+
+// Put the (address of) boxed constructor object onto the stack
+// an .. a1 -> a  , where heap[a] = NConstr(tag, [a1, ... an])
 let mapPack (tag:int) (n:int) : TVM.Code =
+    let pairs = xchgs [0..(n-1)] []
+    [for (i,j) in pairs -> Xchg2 (i,j)] @
     [PushInt n; TupleVar] @ // (a1,...,an)
     [PushInt (int GMachine.NodeTags.NConstr); Swap; PushInt tag; Swap; Tuple 3] @ // (4, tag, (a1,...,an))
     heapAlloc
@@ -209,7 +220,10 @@ let mapSplit (n:int) : TVM.Code =
     // (4, tag, (a1am))
     [Index 2; Dup] @  // (a1am) (a1am)
     [TLen] @        // (a1am) m
-    [UntupleVar]    // a1 .. am
+    [UntupleVar] @   // a1 .. am
+    (let pairs = xchgs [0..(n-1)] []
+     [for (i,j) in pairs -> Xchg2 (i,j)])
+
 
 // Extract the constructor object's tag and transfer
 // control the code given in the corresponding case branch.
