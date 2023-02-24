@@ -537,9 +537,12 @@ let inc st =
     st.stack <- Int (a1.unboxInt + 1) :: stack'
     st
 
-let dumpstk st =
+let dumpstk trace st =
     let stk = st.stack
-    printfn "STACK: %A"  stk
+    if trace then
+        printfn "STACK: %A"  stk
+    else
+        ()
     st
 
 let nop st =
@@ -884,14 +887,17 @@ let pushref (c:SValue list) (st:TVMState) =
     st.put_stack ((Cell c) :: st.stack)
     st
 
-let strdump s st =
-    // printfn "%A" s
+let strdump s trace st =
+    if trace then
+        printfn "%A" s
+    else
+        ()
     st
 
-let dispatch (i:Instruction) =
+let dispatch (i:Instruction) (trace:bool) =
     match i with
         | StrDump s ->
-            strdump s
+            strdump s trace
         | StSlice ->
             stslice
         | Bless ->
@@ -961,7 +967,7 @@ let dispatch (i:Instruction) =
         | IfElse ->
             ifelse
         | DumpStk ->
-            dumpstk
+            dumpstk trace
         | Nop ->
             nop
         | Tuple n ->
@@ -1063,7 +1069,7 @@ let step (st:TVMState) trace : TVMState =
             else
                 ()
             st.code <- code'
-            dispatch i st
+            dispatch i trace st
 
 let rec runVMLimits st trace maxSteps =
     if maxSteps = 0 then

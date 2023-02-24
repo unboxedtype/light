@@ -638,16 +638,38 @@ let testCompileConstr3 () =
         [("main", [], GMachine.EPack (0, 1, [GMachine.EPack (1, 0, [])]))]
     let gmInitSt = GMachine.compile coreProgGM
     let tvmInitSt = compile gmInitSt
-    let final = List.last (TVM.runVMLimits tvmInitSt true 1000)
+    let final = List.last (TVM.runVMLimits tvmInitSt false 1000)
     match (getResultHeap final) with
-        | Tup [Int 4; Int 0; Tup [Int 2]] ->
-           match (getHeapAt 2 final) with
+        | Tup [Int 4; Int 0; Tup [x]] ->
+           match (getHeapAt x.unboxInt final) with
                | Tup [Int 4; Int 1; Tup []] ->
                     Assert.Pass()
                | _ as other ->
-                    printfn "%A" other
-                    printfn "%A" (tvmHeap final)
                     Assert.Fail("incorrect heap object")
         | _ as other ->
-               printfn "%A" other
+               Assert.Fail("incorrect heap object")
+
+[<Test>]
+let testCompileConstr4 () =
+    let coreProgGM =
+        let c1 = GMachine.EPack (1, 0, []) // tag 1
+        let c2 = GMachine.EPack (2, 1, [c1]) // tag 2
+        let c3 = GMachine.EPack (3, 2, [c2; c1]) // tag 3
+        let c4 = GMachine.EPack (4, 3, [c3; c1; c2]) // tag 4
+        [("main", [], c4)] // 0
+    let gmInitSt = GMachine.compile coreProgGM
+    let tvmInitSt = compile gmInitSt
+    let final = List.last (TVM.runVMLimits tvmInitSt false 1000)
+    match (getResultHeap final) with
+        | Tup [Int 4; Int 4; Tup l4] ->
+           match (getHeapAt (List.item 0 l4).unboxInt final) with
+               | Tup [Int 4; Int 3; Tup l3] ->
+                   match (getHeapAt (List.item 1 l4).unboxInt final) with
+                       | Tup [Int 4; Int 1; _] ->
+                           Assert.Pass()
+                       | _ as other ->
+                           Assert.Fail("incorrect heap object")
+               | _ as other ->
+                    Assert.Fail("incorrect heap object")
+        | _ as other ->
                Assert.Fail("incorrect heap object")
