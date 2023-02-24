@@ -13,7 +13,7 @@ open TVM
 [<Test>]
 let testInitState () =
     let st = initialState []
-    Assert.AreEqual (st, step st)
+    Assert.AreEqual (st, step st false)
 
 [<Test>]
 let testPushInt0 () =

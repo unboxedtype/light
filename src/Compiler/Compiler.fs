@@ -63,6 +63,7 @@ let putGlobals =
 
 // node -> a , where heap[a] := n
 let heapAlloc =
+    [StrDump "heapAlloc"; DumpStk] @
     getHeapCounter @ // node k
     [Inc; Dup] @ // node k' k'
     putHeapCounter @ // node k'
@@ -78,6 +79,7 @@ let ifThenElse cond trueBlock falseBlock =
 
 // k -> heap[k] or exception
 let heapLookup =
+    [StrDump "heapLookup"; DumpStk] @
     getHeap @ // k h
     [Swap] @ // h k
     TVM.arrayGetWithCode @
@@ -110,6 +112,7 @@ let mapSlide (n:int) : TVM.Code =
 // and put it on the stack; if the function with the given
 // name n is not found, raise exception.
 let mapPushglobal (n:int) : TVM.Code =
+    [StrDump (sprintf "mapPushglobal %d" n); DumpStk] @
     [PushInt n] @
     getGlobals @
     [PushInt 128;       // n D 128
@@ -165,6 +168,7 @@ let mapLess () : TVM.Code =
 // put the address of that node on the stack
 // a1 f -> a2 , where heap[a3] = NAp (f, a1)
 let mapMkap () : TVM.Code =
+    [StrDump "mapMkap"; DumpStk] @
     [PushInt (int GMachine.NodeTags.NAp);  // a1 f 1
      RollRev 2;  // 1 a1 f
      Swap;       // 1 f a1
@@ -176,6 +180,7 @@ let mapMkap () : TVM.Code =
 // located on top of the stack.
 // .. an .. a1 a -> .. an .. a1 , heap[an] := NInd a
 let mapUpdate (n:int) : TVM.Code =
+    [StrDump (sprintf "mapUpdate %d" n); DumpStk] @
     [PushInt (int GMachine.NodeTags.NInd); // a1 a 3   (note: 3 = NInd tag)
      Swap; // an .. a1 3 a
      Tuple 2;     // an .. a1 (3,a)
@@ -203,8 +208,9 @@ let rec xchgs l acc =
 // Put the (address of) boxed constructor object onto the stack
 // an .. a1 -> a  , where heap[a] = NConstr(tag, [a1, ... an])
 let mapPack (tag:int) (n:int) : TVM.Code =
-    let pairs = xchgs [0..(n-1)] []
-    [for (i,j) in pairs -> Xchg2 (i,j)] @
+    [StrDump (sprintf "mapPack %d %d" tag n); DumpStk] @
+    (let pairs = xchgs [0..(n-1)] []
+    [for (i,j) in pairs -> Xchg2 (i,j)]) @
     [PushInt n; TupleVar] @ // (a1,...,an)
     [PushInt (int GMachine.NodeTags.NConstr); Swap; PushInt tag; Swap; Tuple 3] @ // (4, tag, (a1,...,an))
     heapAlloc
@@ -273,6 +279,7 @@ let mapUnwindNAp () : TVM.Code =
 
 // n heap[n]
 let mapUnwindNInd () : TVM.Code =
+    [StrDump "Unwind NInd"; (* DumpStk *)] @
     [Index 1; // n m
      Swap; // m n
      Drop] @ // m
@@ -280,6 +287,7 @@ let mapUnwindNInd () : TVM.Code =
 
 // n heap[n]
 let mapUnwindNConstr () : TVM.Code =
+    [StrDump "Unwind NConstr"; (* DumpStk *)] @
     [Drop; Ret] // n
 
 // an .. a0   h[a0:NGlobal n c; a1: NAp a0 a1', a2:NAp a1 a2'...]
@@ -536,5 +544,9 @@ let compile (gms: GMachine.GmState) : TVM.TVMState =
     let c0 = TVM.Continuation.Default
     let heap = prepareHeap (GMachine.getHeap gms)
     let globals = prepareGlobals (GMachine.getGlobals gms)
-    let c7 = prepareC7 heap (Int -1) globals unwindCont unwindSelectorCell
+    // let us know how many addresses were already allocated for globals
+    // this is to provide monotonic increase of the address counter.
+    // Otherwise heap may become corrupted.
+    let globalsCnt = Map.count (GMachine.getGlobals gms)
+    let c7 = prepareC7 heap (Int globalsCnt) globals unwindCont unwindSelectorCell
     { code = code; stack = stack; cr = { TVM.ControlRegs.Default with c0 = Some c0; c7 = c7 } }

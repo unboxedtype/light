@@ -637,13 +637,11 @@ let testCompileConstr3 () =
     let coreProgGM =
         [("main", [], GMachine.EPack (0, 1, [GMachine.EPack (1, 0, [])]))]
     let gmInitSt = GMachine.compile coreProgGM
-    printfn "gmInitSt = %A" gmInitSt
     let tvmInitSt = compile gmInitSt
-    printfn "tvmInitSt = %A" tvmInitSt
-    let final = List.last (TVM.runVMLimits tvmInitSt false 1000)
+    let final = List.last (TVM.runVMLimits tvmInitSt true 1000)
     match (getResultHeap final) with
-        | Tup [Int 4; Int 0; Tup [Int 0]] ->
-           match (getHeapAt 0 final) with
+        | Tup [Int 4; Int 0; Tup [Int 2]] ->
+           match (getHeapAt 2 final) with
                | Tup [Int 4; Int 1; Tup []] ->
                     Assert.Pass()
                | _ as other ->
