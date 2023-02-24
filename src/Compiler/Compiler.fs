@@ -106,6 +106,7 @@ let mapPop (n:int) : TVM.Code =
 // element of the stack, i.e. leaving the top stack element inplace.
 // ... sn .. s2 s1 s -> ...  s
 let mapSlide (n:int) : TVM.Code =
+    [StrDump (sprintf "mapSlide %d" n); DumpStk] @
     [RollRev n; BlkDrop n]
 
 // Extract the address of a function with id = n from the globals

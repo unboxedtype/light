@@ -568,6 +568,7 @@ let testUnwindNAp5 () =
                               GMachine.Pop 1;     // @f'
                               GMachine.Unwind])
     // func x = if x < 10 then func (inc x) else x
+    // This function is tail recursive, so the stack doesn't grow
     let funcGlobal =
         GMachine.NGlobal (1, [GMachine.Pushint 10; // @f @x @10
                               GMachine.Push 1;     // @f @x @10 @x
@@ -580,23 +581,23 @@ let testUnwindNAp5 () =
                                               GMachine.Eval;               // @f @x @!(inc x)
                                               GMachine.Pushglobal "func";  // @f @x @!(inc x) @func
                                               GMachine.Mkap;               // @f @x @(ap @func @!(inc x))
-                                              GMachine.Eval],               // @f @x @!ap
+                                              GMachine.Slide 2;            // @(ap ...)
+                                              GMachine.Eval],              // @!ap
                                              [GMachine.Push 0])
                               GMachine.Update 1;   // @f' @x
                               GMachine.Pop 1;      // @f'
                               GMachine.Unwind])
     let heap = prepareHeap (Map [(66, incGlobal); (68, funcGlobal)])
     let c7 = prepareC7 heap (Int -1) globals unwindCont unwindSelectorCell
-    let code = compileCode [GMachine.Pushint 5;
+    let code = compileCode [GMachine.Pushint 1;
                             GMachine.Pushglobal "func";
                             GMachine.Mkap;
                             GMachine.Eval]
     let st = TVM.initialState code
     st.put_c7 c7
-    let final = List.last (TVM.runVMLimits st true 4000)
-    // printfn "%A" (getResultStack final)
-    Assert.AreEqual (1, List.length (getResultStack final));
+    let final = List.last (TVM.runVMLimits st true 10000)
     Assert.AreEqual(nnum 10, getResultHeap final)
+    Assert.AreEqual (1, List.length (getResultStack final));
 
 [<Test>]
 let testUnwindNConstr0 () =
