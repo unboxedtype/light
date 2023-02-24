@@ -267,19 +267,19 @@ let doUnwind =
 
 // n heap[n]
 let mapUnwindNNum () : TVM.Code =
-    [StrDump "Unwind NNum"; (* DumpStk *)] @
+    [StrDump "Unwind NNum"; DumpStk] @
     [Drop; // n
      Ret]
 
 // n heap[n]  (heap[n] = (NAp, f, arg) )
 let mapUnwindNAp () : TVM.Code =
-    [StrDump "Unwind NAp"; (* DumpStk *)] @
+    [StrDump "Unwind NAp"; DumpStk] @
     [Index 1] @ // n f
     doUnwind
 
 // n heap[n]
 let mapUnwindNInd () : TVM.Code =
-    [StrDump "Unwind NInd"; (* DumpStk *)] @
+    [StrDump "Unwind NInd"; DumpStk] @
     [Index 1; // n m
      Swap; // m n
      Drop] @ // m
@@ -314,7 +314,7 @@ let unwindRearrange () : TVM.Code =
 
 // an .. a1 a0 heap[n]
 let mapUnwindNGlobal () : TVM.Code =
-    [StrDump "unwind NGlobal"; (* DumpStk; *)
+    [StrDump "unwind NGlobal"; DumpStk;
      Dup;        // an .. a1 a0 heap[n] heap[n]
      Index 1;    // an .. a0 heap[n] NGlobal.n
      Depth; Dec; Dec; Dec; // ... a0 heap[a0] NGlobal.n k   (k = number of passed arguments)
@@ -345,7 +345,7 @@ let mapUnwind () : TVM.Code =
     // we need to duplicate n (object heap address) because
     // several unwind routines need it (unwindNNum, unwindNAp,
     // unwindNConstr)
-    [StrDump "Unwind"; (* DumpStk *) ] @
+    [StrDump "Unwind"; DumpStk ] @
     [Dup] @ // n n
     heapLookup @ // n heap[n]
     [Dup; Index 0] @ // n heap[n] tag
@@ -355,6 +355,7 @@ let mapUnwind () : TVM.Code =
     [Throw (int RuntimeErrors.HeapNodeWrongTag)] // unknown tag
 
 let mapEval () : TVM.Code =
+    [StrDump "Eval"; DumpStk] @
     [GetGlob (int RuntimeGlobalVars.UnwindCont);
      // SetNumArgs 1;
      Execute]

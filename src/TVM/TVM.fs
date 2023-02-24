@@ -107,7 +107,8 @@ and Value =  // stack value types
     | Cell of vs:SValue list
     | Slice of vs:SValue list
     static member unboxCont = function | Cont x -> x | _ -> failwith "Cont expected"
-    static member unboxTup = function | Tup x -> x | _ -> failwith "Tup expected"
+    member this.unboxTup : Value list =
+        match this with | Tup x -> x | _ -> failwith "Tup expected"
     member this.asSV : SValue =
         match this with
         | Int n -> SInt n
