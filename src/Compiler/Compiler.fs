@@ -122,7 +122,7 @@ let mapPushglobal (n:int) : TVM.Code =
     [PushInt 128;       // n D 128
      DictIGet;        // D[n] -1 | 0
      ThrowIfNot (int RuntimeErrors.GlobalNotFound);
-     Ldu 128; // n s'
+     Ldi 128; // n s'
      Ends] // n
 
 // Allocate a node for the given integer on the heap and put the
@@ -272,18 +272,18 @@ let doUnwind =
     [GetGlob (int RuntimeGlobalVars.UnwindCont); Execute]
 
 // n heap[n]
-let mapUnwindNNum () : TVM.Code =
+let mapUnwindNNum : TVM.Code =
     [StrDump "Unwind NNum"; DumpStk] @
     [Drop] // n
 
 // n heap[n]  (heap[n] = (NAp, f, arg) )
-let mapUnwindNAp () : TVM.Code =
+let mapUnwindNAp : TVM.Code =
     [StrDump "Unwind NAp"; DumpStk] @
     [Index 1] @ // n f
     doUnwind
 
 // n heap[n]
-let mapUnwindNInd () : TVM.Code =
+let mapUnwindNInd : TVM.Code =
     [StrDump "Unwind NInd"; DumpStk] @
     [Index 1; // n m
      Swap; // m n
@@ -291,7 +291,7 @@ let mapUnwindNInd () : TVM.Code =
      doUnwind
 
 // n heap[n]
-let mapUnwindNConstr () : TVM.Code =
+let mapUnwindNConstr : TVM.Code =
     [StrDump "Unwind NConstr"; (* DumpStk *)] @
     [Drop] // n
 
@@ -318,7 +318,7 @@ let unwindRearrange () : TVM.Code =
      Repeat] // an an' .. a1'
 
 // an .. a1 a0 heap[n]
-let mapUnwindNGlobal () : TVM.Code =
+let mapUnwindNGlobal : TVM.Code =
     [StrDump "unwind NGlobal"; DumpStk;
      Dup;        // an .. a1 a0 heap[n] heap[n]
      Index 1;    // an .. a0 heap[n] NGlobal.n
@@ -551,12 +551,14 @@ let prepareHeap (heap:GMachine.GmHeap): TVM.Value =
 let prepareC7 heap heapCounter globals unwindCont unwindSelector =
     Tup [Null; heap; heapCounter; globals; unwindCont; unwindSelector]
 
+let selectorMap = Map [(0, [SCode mapUnwindNNum] );
+                       (1, [SCode mapUnwindNAp] );
+                       (2, [SCode mapUnwindNGlobal] );
+                       (3, [SCode mapUnwindNInd] );
+                       (4, [SCode mapUnwindNConstr] )]
+
 let unwindSelectorCell =
-    Cell ([SDict (Map [(0, [SCode (mapUnwindNNum ())] );
-                       (1, [SCode (mapUnwindNAp ())] );
-                       (2, [SCode (mapUnwindNGlobal ())] );
-                       (3, [SCode (mapUnwindNInd ())] );
-                       (4, [SCode (mapUnwindNConstr ())] )])])
+    Cell ([SDict selectorMap])
 
 let unwindCont =
     TVM.Cont { TVM.Continuation.Default with code = mapUnwind () }
@@ -566,11 +568,7 @@ let initC7 =
     [PushInt -1; SetGlob (int RuntimeGlobalVars.HeapCounter)] @
     [PushNull; SetGlob (int RuntimeGlobalVars.Globals)] @
     [PushCont (mapUnwind ()); SetGlob (int RuntimeGlobalVars.UnwindCont)] @
-    [PushRef [SDict (Map [(int GMachine.NodeTags.NNum, [SCode (mapUnwindNNum ())] );
-                          (int GMachine.NodeTags.NAp, [SCode (mapUnwindNAp ())] );
-                          (int GMachine.NodeTags.NGlobal, [SCode (mapUnwindNGlobal ())] );
-                          (int GMachine.NodeTags.NInd, [SCode (mapUnwindNInd ())] );
-                          (int GMachine.NodeTags.NConstr, [SCode (mapUnwindNConstr ())] )])]] @
+    [PushRef [SDict selectorMap]] @
     [SetGlob (int RuntimeGlobalVars.UnwindSelector)]
 
 let compileInt (n:int) : TVM.Code =
@@ -582,7 +580,7 @@ let compileHeap heapKV : TVM.Code =
                  h @ (compileInt k) @ v' @ TVM.arrayPut) TVM.arrayNew heapKV
 
 let compileIntBuilder (n:int) : TVM.Code =
-    [PushInt n; Newc; Stu 128]
+    [PushInt n; Newc; Sti 128]
 
 // Cell ([SDict vs]), vs = [(int,int)]
 let compileGlobals globals : TVM.Code =

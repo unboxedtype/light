@@ -68,8 +68,8 @@ type Instruction =
     | TPush
     | Newc
     | Endc
-    | Stu of cc:int
-    | Ldu of cc:int
+    | Sti of cc:int
+    | Ldi of cc:int
     | LdDict
     | Ends
     | StRef
@@ -333,18 +333,18 @@ let mkCell (b:Value) : Value =
     failIfNot (b.isBuilder) "not a builder"
     Cell b.unboxBuilder
 
-let stu cc st =
+let sti cc st =
     let (b :: x :: stack') = st.stack
-    failIfNot (b.isBuilder) "STU: not a builder"
-    failIfNot (x.isInt) "STU: not an integer"
+    failIfNot (b.isBuilder) "STI: not a builder"
+    failIfNot (x.isInt) "STI: not an integer"
     let vs = b.unboxBuilder
     // failIf (x > float 2 ** cc) "STU: Range check exception"
     st.put_stack (mkBuilder (vs @ [x.asSV]) :: stack')
     st
 
-let ldu cc st =
+let ldi cc st =
     let (s :: stack') = st.stack
-    failIfNot (s.isSlice) "LDU: slice expected"
+    failIfNot (s.isSlice) "LDI: slice expected"
     let (Slice (SInt n :: t)) = s
     let logBase b v = (log v) / (log b)
     failIf (logBase 2.0 (float n) > cc) "not enough bits for the integer"
@@ -1024,10 +1024,10 @@ let dispatch (i:Instruction) (trace:bool) =
             newc
         | Endc ->
             endc
-        | Stu cc ->
-            stu cc
-        | Ldu cc ->
-            ldu cc
+        | Sti cc ->
+            sti cc
+        | Ldi cc ->
+            ldi cc
         | LdDict ->
             lddict
         | Ends ->
@@ -1157,7 +1157,8 @@ let rec instrToFift (i:Instruction) : string =
         | Newc -> "NEWC"
         | Drop -> "DROP"
         | DictISetB -> "DICTISETB"
-        | Stu n -> (string n) + " STU"
+        | Sti n -> (string n) + " STI"
+        | Ldi n -> (string n) + " LDI"
         | PushCtr n -> "c" + (string n) + " PUSHCTR"
         | PopCtr n -> "c" + (string n) + " POPCTR"
         | PushInt n -> (string n) + " INT"
@@ -1197,7 +1198,6 @@ let rec instrToFift (i:Instruction) : string =
         | Ret -> "RET"
         | Less -> "LESS"
         | LdDict -> "LDDICT"
-        | Ldu n -> (string n) + " LDU"
         | Ends -> "ENDS"
         | Bless -> "BLESS"
         | StSlice -> "STSLICE"
