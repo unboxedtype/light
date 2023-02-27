@@ -17,6 +17,8 @@ type Action =
     | Reserve
 
 type Instruction =
+    | CondSel
+    | DumpHeap          // this is artificial instruction.
     | StrDump of s:string // this one is artificial. Maps into NOP
     | Push of n:int
     | PushRef of c:SValue list
@@ -695,12 +697,14 @@ let ifjmp st =
 let setnumargs n st =
     let (cont :: stack') = st.stack
     failIfNot (cont.isCont) "SETNUMARGS: continuation expected"
-    let c = Value.unboxCont cont
-    if c.data.nargs < 0 then
-        c.data.nargs <- n + (List.length c.data.stack)
-    else
-        ()
-    st.put_stack (Cont c :: stack')
+    let c : Continuation = Value.unboxCont cont
+    let c1 : Continuation =
+        if c.data.nargs < 0 then
+            // this is the record "copy with update" operation;
+            { c with data = { c.data with nargs = n + (List.length c.data.stack) } }
+        else
+            c
+    st.put_stack (Cont c1 :: stack')
     st
 
 // rollrev 1:
@@ -888,15 +892,32 @@ let pushref (c:SValue list) (st:TVMState) =
     st.put_stack ((Cell c) :: st.stack)
     st
 
+// log of the mere instruction is enough to see the dbg message
 let strdump s trace st =
+    st
+
+let dumpheap trace st =
     if trace then
-        printfn "%A" s
+        printfn "%A" (st.cr.c7.unboxTup.[1])
     else
         ()
     st
 
+let condsel st =
+    let (y :: x :: f :: stack') = st.stack
+    failIfNot (f.isInt) "CONDSEL: integer expected"
+    if f.unboxInt <> 0 then
+        st.put_stack (x :: stack')
+    else
+        st.put_stack (y :: stack')
+    st
+
 let dispatch (i:Instruction) (trace:bool) =
     match i with
+        | CondSel ->
+            condsel
+        | DumpHeap ->
+            dumpheap trace
         | StrDump s ->
             strdump s trace
         | StSlice ->
@@ -1173,6 +1194,7 @@ let rec instrToFift (i:Instruction) : string =
         | Endc -> "ENDC"
         | JmpX -> "JMPX"
         | RollRevX -> "ROLLREVX"
+        | CondSel -> "CONDSEL"
         | _ ->
             failwith (sprintf "unsupported instruction: %A" i)
 // by the given abstract slice, produce TVM assembly code that

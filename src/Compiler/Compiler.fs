@@ -85,21 +85,24 @@ let heapLookup =
     TVM.arrayGetWithCode @
     [ThrowIfNot (int RuntimeErrors.HeapNodeNotFound)]
 
-// (tag, ...)
+// (T, ...) -> (T, ...) if T = tag,
+    // or throws otherwise
 let checkTag tag =
-    [Dup; // node node
+    [Dup;     // node node
      Index 0; // node tag'
      PushInt tag; // node tag' tag
-     Equal; // node (tag'==tag?)
+     Equal;   // node (tag'==tag?)
      ThrowIfNot (int RuntimeErrors.HeapNodeWrongTag)]
 
 // Put the n-th element of the stack on top of the stack;
 // 0 denotes the current top value of the stack.
 let mapPush (n:int) : TVM.Code =
+    [StrDump (sprintf "mapPush %d" n); DumpStk] @
     [Push n]
 
 // Remove n consecutive elements from the stack
 let mapPop (n:int) : TVM.Code =
+    [StrDump (sprintf "mapPop %d" n); DumpStk] @
     [BlkDrop n]
 
 // Remove n elements from the stack, starting from the second
@@ -195,6 +198,7 @@ let mapUpdate (n:int) : TVM.Code =
 // Allocate n dummy nodes on the heap and return put
 // their addresses on the stack
 let mapAlloc (n:int) : TVM.Code =
+    [StrDump (sprintf "mapAlloc %d" n); DumpStk] @
     [PushInt n; PushCont ([PushNull] @ heapAlloc); Repeat]
 
 let rec xchgs l acc =
@@ -220,6 +224,7 @@ let mapPack (tag:int) (n:int) : TVM.Code =
 // having n arguments. All arguments (their addresses) are placed onto the stack.
 // n -> a1 .. am  , where heap[n] = NConstr (tag, [a1..am])
 let mapSplit (n:int) : TVM.Code =
+    [StrDump (sprintf "mapSplit %d" n); DumpStk] @
     heapLookup @    // heap[n]
     [Dup; Index 0] @  // heap[n] 4
     [PushInt (int GMachine.NodeTags.NConstr); Equal] @ // (4, tag, (a1am)) 4=4?
@@ -240,6 +245,7 @@ let mapSplit (n:int) : TVM.Code =
 // throws exception.
 // n -> n
 let mapCasejump (cs:TVM.Code) : TVM.Code =
+    [StrDump (sprintf "mapCasejump %A" cs); DumpStk] @
     [Dup] @             // n n
     heapLookup @        // n heap[n]
     [Dup] @             // n heap[n] heap[n]
@@ -253,15 +259,14 @@ let mapCasejump (cs:TVM.Code) : TVM.Code =
 // to the t branch; else to the f branch
 // n -> _
 let mapCond (t:TVM.Code) (f:TVM.Code) : TVM.Code =
+    [StrDump (sprintf "mapCond %A %A" t f); DumpStk] @
     heapLookup @    // heap[n]
-    [Dup] @         // heap[n] heap[n]
-    [Index 0] @     // heap[n] tag
-    [PushInt (int GMachine.NodeTags.NNum); Equal] @ // heap[n] (tag==0?)
-    [ThrowIfNot (int RuntimeErrors.HeapNodeWrongTag)] @   // typecheck error
-    [Index 1] @     // NNum
-    [PushCont t] @  // NNum c
-    [IfJmp] @       // goto c if NNum is non-zero (true)
-    f // otherwise proceed to false branch
+    checkTag (int GMachine.NodeTags.NNum) @
+    [Index 1] @     // num
+    [PushCont t] @  // num t
+    [PushCont f] @  // num t f
+    [CondSel] @     // t or f
+    [Execute]
 
 let doUnwind =
     [GetGlob (int RuntimeGlobalVars.UnwindCont); Execute]
@@ -269,8 +274,7 @@ let doUnwind =
 // n heap[n]
 let mapUnwindNNum () : TVM.Code =
     [StrDump "Unwind NNum"; DumpStk] @
-    [Drop; // n
-     Ret]
+    [Drop] // n
 
 // n heap[n]  (heap[n] = (NAp, f, arg) )
 let mapUnwindNAp () : TVM.Code =
@@ -289,7 +293,7 @@ let mapUnwindNInd () : TVM.Code =
 // n heap[n]
 let mapUnwindNConstr () : TVM.Code =
     [StrDump "Unwind NConstr"; (* DumpStk *)] @
-    [Drop; Ret] // n
+    [Drop] // n
 
 // an .. a0   h[a0:NGlobal n c; a1: NAp a0 a1', a2:NAp a1 a2'...]
 // -->
@@ -357,9 +361,9 @@ let mapUnwind () : TVM.Code =
 
 let mapEval () : TVM.Code =
     [StrDump "Eval"; DumpStk] @
-    [GetGlob (int RuntimeGlobalVars.UnwindCont);
-     // SetNumArgs 1;
-     Execute]
+    [GetGlob (int RuntimeGlobalVars.UnwindCont)] @
+//  [SetNumArgs 1] @
+    [Execute]
 
 let mapDumpstk () : TVM.Code =
     [DumpStk]

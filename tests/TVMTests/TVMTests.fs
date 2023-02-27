@@ -1028,8 +1028,8 @@ let testExecuteSetNumArgs0 () =
 [<Test>]
 let testExecuteSetNumArgs1 () =
     let st = initialState [PushInt 1; PushInt 2;
-                           PushCont [Dup]; // in that continuation, stack has to be empty
-                           SetNumArgs 1; Execute] // but after that, it gets restored
+                           PushCont [Dup];
+                           SetNumArgs 1; Execute]
     try
         let finalSt = List.last (runVM st false)
         let stk = List.tail finalSt.stack
@@ -1099,6 +1099,22 @@ let testExecuteCtr1 () =
         let finalSt = List.last (runVM st false)
         let stk = List.tail finalSt.stack
         Assert.AreEqual([Int 1], stk)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+// the idea of this test is to check wether DUP copies the object itself
+// or only the reference to it, in case of continuations.
+let testExecuteDupCont () =
+    let st = initialState [PushInt 1; PushInt 2; PushInt 3;
+                           PushCont [Depth]; Dup; SetNumArgs 0;
+                           Execute; Swap; Execute]
+    try
+        let finalSt = List.last (runVM st false)
+        let stk = List.tail finalSt.stack
+        printfn "%A" stk
+        Assert.AreEqual([Int 4; Int 0; Int 3; Int 2; Int 1], stk )
     with
         | TVMError s ->
             Assert.Fail(s)

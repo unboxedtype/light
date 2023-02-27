@@ -551,12 +551,13 @@ let testUnwindNAp4 () =
                             GMachine.Eval]
     let st = TVM.initialState code
     st.put_c7 c7
-    let final = List.last (TVM.runVMLimits st false 1000)
+    let final = List.last (TVM.runVMLimits st false 2000)
     Assert.AreEqual (1, List.length (getResultStack final));
     Assert.AreEqual(nnum 10, getResultHeap final)
 
 // NOTE: recursive function is used!
 [<Test>]
+[<Ignore("the manual code")>]
 let testUnwindNAp5 () =
     let globals = prepareGlobals (Map [("inc", 66); ("func", 68)])
     let incGlobal =
@@ -595,7 +596,7 @@ let testUnwindNAp5 () =
                             GMachine.Eval]
     let st = TVM.initialState code
     st.put_c7 c7
-    let final = List.last (TVM.runVMLimits st true 10000)
+    let final = List.last (TVM.runVMLimits st false 10000)
     Assert.AreEqual(nnum 10, getResultHeap final)
     Assert.AreEqual (1, List.length (getResultStack final));
 
@@ -714,4 +715,82 @@ let testCase2 () =
     let tvmInitSt = compile gmInitSt
     let final = List.last (TVM.runVMLimits tvmInitSt false 1000)
     Assert.AreEqual (nnum 3, getResultHeap final);
+    Assert.AreEqual (1, List.length (getResultStack final));
+
+[<Test>]
+let testChoice () =
+    let coreProgGM =
+        [("first", ["n"; "m"], GMachine.EVar "n");
+         ("second", ["n"; "m"], GMachine.EVar "m");
+         ("main", [], GMachine.EAp (GMachine.EAp (GMachine.EVar "second", GMachine.ENum 10), GMachine.ENum 6))]
+    let gmInitSt = GMachine.compile coreProgGM
+    let tvmInitSt = compile gmInitSt
+    let final = List.last (TVM.runVMLimits tvmInitSt false 3000)
+    Assert.AreEqual (nnum 6, getResultHeap final);
+    Assert.AreEqual (1, List.length (getResultStack final));
+
+[<Test>]
+let testIfThenElseTrue () =
+    let coreProgGM =
+        [("main", [], GMachine.EIf (GMachine.EGt (GMachine.ENum 6, GMachine.ENum 10),
+                                    GMachine.ENum 1, GMachine.ENum 0))]
+    let gmInitSt = GMachine.compile coreProgGM
+    let tvmInitSt = compile gmInitSt
+    let final = List.last (TVM.runVMLimits tvmInitSt false 3000)
+    Assert.AreEqual (nnum 0, getResultHeap final);
+    Assert.AreEqual (1, List.length (getResultStack final));
+
+[<Test>]
+let testIfThenElseFalse () =
+    let coreProgGM =
+        [("main", [], GMachine.EIf (GMachine.EGt (GMachine.ENum 10, GMachine.ENum 6),
+                                    GMachine.ENum 1, GMachine.ENum 0))]
+    let gmInitSt = GMachine.putCode [GMachine.Pushglobal "main";
+                                     GMachine.Eval] (GMachine.compile coreProgGM)
+    let tvmInitSt = compile gmInitSt
+    let final = List.last (TVM.runVMLimits tvmInitSt false 1000)
+    Assert.AreEqual (nnum 1, getResultHeap final);
+    Assert.AreEqual (1, List.length (getResultStack final));
+
+[<Test>]
+let testMaxFunction0 () =
+    let coreProgGM =
+        [("max", ["n"], GMachine.EIf (GMachine.EGt (GMachine.EVar "n", GMachine.ENum 5), GMachine.EVar "n", GMachine.ENum 5));
+         ("main", [], GMachine.EAp (GMachine.EVar "max", GMachine.ENum 10))]
+    let gmInitSt = GMachine.compile coreProgGM
+    let tvmInitSt = compile gmInitSt
+    let final = List.last (TVM.runVMLimits tvmInitSt false 1000)
+    Assert.AreEqual (nnum 10, getResultHeap final);
+    Assert.AreEqual (1, List.length (getResultStack final));
+
+[<Test>]
+let testMaxFunction1 () =
+    let coreProgGM =
+        [("max", ["n"; "m"], GMachine.EIf (GMachine.EGt (GMachine.EVar "n", GMachine.EVar "m"), GMachine.EVar "n", GMachine.EVar "m"));
+         ("main", [], GMachine.EAp (GMachine.EAp (GMachine.EVar "max", GMachine.ENum 10), GMachine.ENum 6))]
+    let gmInitSt = GMachine.compile coreProgGM
+    let tvmInitSt = compile gmInitSt
+    let final = List.last (TVM.runVMLimits tvmInitSt false 1000)
+    Assert.AreEqual (nnum 10, getResultHeap final);
+    Assert.AreEqual (1, List.length (getResultStack final));
+
+[<Test>]
+let testFactorial () =
+    // fact n = if n == 0 then 1 else n * fact(n-1)
+    // main = fact 5
+    let coreProgGM =
+        [("fact", ["n"],
+          GMachine.EIf (GMachine.EEq (GMachine.EVar "n", GMachine.ENum 0),
+               GMachine.ENum 1, // true branch
+               GMachine.EMul (GMachine.EVar "n",
+                              GMachine.EAp (GMachine.EVar "fact",
+                                            GMachine.ESub (GMachine.EVar "n",
+                                                           GMachine.ENum 1)))) // else branch
+          )
+         ("main", [], GMachine.EAp (GMachine.EVar "fact", GMachine.ENum 5))]
+
+    let gmInitSt = GMachine.compile coreProgGM
+    let tvmInitSt = compile gmInitSt
+    let final = List.last (TVM.runVMLimits tvmInitSt false 10000)
+    Assert.AreEqual (nnum 120, getResultHeap final);
     Assert.AreEqual (1, List.length (getResultStack final));

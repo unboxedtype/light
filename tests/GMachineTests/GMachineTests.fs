@@ -465,10 +465,9 @@ let testFact () =
     let coreProg =
         // fact n = if n == 0 then 1 else n * fact(n-1)
         // main = fact 5
-        [("fact", ["n"],
-          EIf (EEq (EVar "n", ENum 0),
-               ENum 1, // true branch
-               EMul (EVar "n", EAp (EVar "fact", ESub (EVar "n", ENum 1)))) // else branch
+        [("fact", ["n"], EIf (EEq (EVar "n", ENum 0),
+                              ENum 1, // true branch
+                              EMul (EVar "n", EAp (EVar "fact", ESub (EVar "n", ENum 1)))) // else branch
           )
          ("main", [], EAp (EVar "fact", ENum 5))]
     try
