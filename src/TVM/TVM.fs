@@ -108,7 +108,8 @@ and Value =  // stack value types
     | Builder of vs:SValue list
     | Cell of vs:SValue list
     | Slice of vs:SValue list
-    static member unboxCont = function | Cont x -> x | _ -> failwith "Cont expected"
+    member this.unboxCont =
+        match this with | Cont x -> x | _ -> failwith "Cont expected"
     member this.unboxTup : Value list =
         match this with | Tup x -> x | _ -> failwith "Tup expected"
     member this.asSV : SValue =
@@ -117,9 +118,11 @@ and Value =  // stack value types
         | Cont c -> SCode (c.code)
         | Cell s -> SCell s
         | _ -> failwith "not serializable"
-    member this.unboxInt = match this with | Int x -> x | _ -> failwith "Int expected"
+    member this.unboxInt =
+        match this with | Int x -> x | _ -> failwith "Int expected"
     member this.unboxBuilder = match this with | Builder x -> x | _ -> failwith "Builder expected"
     member this.unboxSlice = match this with | Slice vs -> vs | _ -> failwith "Slice expected"
+    member this.unboxCell = match this with | Cell x -> x | _ -> failwith "Cell expected"
     member this.isInt = match this with | Int _ -> true | _ -> false
     member this.isCont = match this with | Cont _ -> true | _ -> false
     member this.isTuple = match this with | Tup _ -> true | _ -> false
@@ -370,7 +373,7 @@ let execute st =
     failIf (List.length st.stack < 1) "EXECUTE: stack underflow"
     let (cont :: stack') = st.stack
     st.stack <- stack'
-    call (Value.unboxCont cont) st
+    call cont.unboxCont st
 
 let pushcont c st =
     let stack' = st.stack
@@ -454,7 +457,7 @@ let popctr n st =
         let (c3 :: stack) = st.stack
         failIfNot (c3.isCont) "POPCTR: c3 is a continuation"
         st.stack <- stack
-        st.cr.c3 <- Some (Value.unboxCont c3)
+        st.cr.c3 <- Some c3.unboxCont
     st
 
 let pop n st =
@@ -605,7 +608,7 @@ let newdict st =
 let dictuget st =
     let (n :: cD :: i :: stack') = st.stack
     failIfNot (i.isInt) "DICTUGET: Integer expected"
-    failIfNot (cD.isCell) "DICTUGET: Cell expected"
+    failIfNot (cD.isCell || cD.isNull) "DICTUGET: Cell or Null expected"
     // UFits n i check has to be done here as well
     let D =
         match cD with
@@ -623,14 +626,15 @@ let dictuget st =
 // b i D n --> D'
 let dictusetb st =
     let (n :: sD :: i :: b :: stack') = st.stack
+    failIfNot (sD.isCell || sD.isNull) "DICTUSETB: Cell or Null expected"
     let D =
         match sD with
             | Cell (SDict sd :: _) ->
                 sd
             | Null ->
                 Map []
-    failIfNot (i.isInt) "DICTUSET: Integer expected"
-    failIfNot (b.isBuilder) "DICTUSET: Builder expected"
+    failIfNot (i.isInt) "DICTUSETB: Integer expected"
+    failIfNot (b.isBuilder) "DICTUSETB: Cell expected"
     let sv = b.unboxBuilder  // serialize builder into a cell
     let D' = D.Add (i.unboxInt, sv)
     st.stack <- Cell ([SDict D']) :: stack'
@@ -682,7 +686,7 @@ let jmpx st =
     let (c :: stack') = st.stack
     failIfNot (c.isCont) "JMPX: continuation expected"
     st.put_stack stack'
-    jump (Value.unboxCont c) st
+    jump c.unboxCont st
 
 let ifjmp st =
     let (c :: f :: stack') = st.stack
@@ -690,14 +694,14 @@ let ifjmp st =
     failIfNot (c.isCont) "IFJMP: Continuation expected"
     st.put_stack stack'
     if (f.unboxInt <> 0) then
-        jump (Value.unboxCont c) st
+        jump c.unboxCont st
     else
         st
 
 let setnumargs n st =
     let (cont :: stack') = st.stack
     failIfNot (cont.isCont) "SETNUMARGS: continuation expected"
-    let c : Continuation = Value.unboxCont cont
+    let c : Continuation = cont.unboxCont
     let c1 : Continuation =
         if c.data.nargs < 0 then
             // this is the record "copy with update" operation;
@@ -752,7 +756,7 @@ let rec repeat st =
 
    if n > 0 then
        st.put_stack stack'
-       let st' = call (Value.unboxCont c) st
+       let st' = call c.unboxCont st
        st'.put_stack (c :: Int (n - 1) :: st'.stack)
        repeat st'
    else
@@ -1091,7 +1095,13 @@ let step (st:TVMState) trace : TVMState =
             else
                 ()
             st.code <- code'
-            dispatch i trace st
+            try
+               dispatch i trace st
+            with
+                | TVMError s ->
+                    failwith ("Execution aborted with TVM exception: " + s)
+                | _ as exp ->
+                    failwith (sprintf "Execution aborted with unknown exception: %A" exp)
 
 let rec runVMLimits st trace maxSteps =
     if maxSteps = 0 then

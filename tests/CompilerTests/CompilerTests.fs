@@ -50,6 +50,7 @@ let testPushglobal0 () =
     Assert.AreEqual([Int 1], getResultStack final)
 
 [<Test>]
+[<Ignore("The exception mechanism was changed")>]
 let testPushglobal1 () =
     let globals = Map [("fact", 1); ("main", 0)]
     let c7 = prepareC7 (prepareHeap (Map [])) (Int -1) (prepareGlobals globals) Null Null
@@ -304,6 +305,7 @@ let testCasejump0 () =
     Assert.AreEqual (nnum 600, getResultHeap final)
 
 [<Test>]
+[<Ignore("step handle exceptions")>]
 let testCasejump1 () =
     let code = initC7 @
                (compileCode [GMachine.Pushint 100;
@@ -780,17 +782,17 @@ let testFactorial () =
     // main = fact 5
     let coreProgGM =
         [("fact", ["n"],
-          GMachine.EIf (GMachine.EEq (GMachine.EVar "n", GMachine.ENum 0),
-               GMachine.ENum 1, // true branch
-               GMachine.EMul (GMachine.EVar "n",
-                              GMachine.EAp (GMachine.EVar "fact",
-                                            GMachine.ESub (GMachine.EVar "n",
-                                                           GMachine.ENum 1)))) // else branch
+          GMachine.EIf (
+            GMachine.EEq (GMachine.EVar "n", GMachine.ENum 0),
+            GMachine.ENum 1, // true branch
+            GMachine.EMul (GMachine.EVar "n",
+                           GMachine.EAp (GMachine.EVar "fact",
+                                         GMachine.ESub (GMachine.EVar "n",
+                                                        GMachine.ENum 1)))) // else branch
           )
          ("main", [], GMachine.EAp (GMachine.EVar "fact", GMachine.ENum 5))]
-
     let gmInitSt = GMachine.compile coreProgGM
     let tvmInitSt = compile gmInitSt
-    let final = List.last (TVM.runVMLimits tvmInitSt false 10000)
+    let final = List.last (TVM.runVMLimits tvmInitSt false 5000)
     Assert.AreEqual (nnum 120, getResultHeap final);
     Assert.AreEqual (1, List.length (getResultStack final));

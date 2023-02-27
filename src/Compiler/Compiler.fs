@@ -472,18 +472,6 @@ let nind (v:int) =
 let nconstr (n:int) (a: int list) =
     Tup ([Int (int GMachine.NodeTags.NConstr); (Int n); Tup (a |> List.map TVM.Int)])
 
-let initC7 =
-    TVM.arrayNew @ [SetGlob (int RuntimeGlobalVars.Heap)] @
-    [PushInt -1; SetGlob (int RuntimeGlobalVars.HeapCounter)] @
-    [PushNull; SetGlob (int RuntimeGlobalVars.Globals)] @
-    [PushCont (mapUnwind ()); SetGlob (int RuntimeGlobalVars.UnwindCont)] @
-    [PushRef [SDict (Map [(int GMachine.NodeTags.NNum, [SCode (mapUnwindNNum ())] );
-                          (int GMachine.NodeTags.NAp, [SCode (mapUnwindNAp ())] );
-                          (int GMachine.NodeTags.NGlobal, [SCode (mapUnwindNGlobal ())] );
-                          (int GMachine.NodeTags.NInd, [SCode (mapUnwindNInd ())] );
-                          (int GMachine.NodeTags.NConstr, [SCode (mapUnwindNConstr ())] )])]] @
-    [SetGlob (int RuntimeGlobalVars.UnwindSelector)]
-
 // GMachine stack consists of addresses only; there are
 // no data values there.
 // We represent addresses by monotonically increasing
@@ -544,6 +532,45 @@ let unwindSelectorCell =
 let unwindCont =
     TVM.Cont { TVM.Continuation.Default with code = mapUnwind () }
 
+let initC7 =
+    TVM.arrayNew @ [SetGlob (int RuntimeGlobalVars.Heap)] @
+    [PushInt -1; SetGlob (int RuntimeGlobalVars.HeapCounter)] @
+    [PushNull; SetGlob (int RuntimeGlobalVars.Globals)] @
+    [PushCont (mapUnwind ()); SetGlob (int RuntimeGlobalVars.UnwindCont)] @
+    [PushRef [SDict (Map [(int GMachine.NodeTags.NNum, [SCode (mapUnwindNNum ())] );
+                          (int GMachine.NodeTags.NAp, [SCode (mapUnwindNAp ())] );
+                          (int GMachine.NodeTags.NGlobal, [SCode (mapUnwindNGlobal ())] );
+                          (int GMachine.NodeTags.NInd, [SCode (mapUnwindNInd ())] );
+                          (int GMachine.NodeTags.NConstr, [SCode (mapUnwindNConstr ())] )])]] @
+    [SetGlob (int RuntimeGlobalVars.UnwindSelector)]
+
+let compileHeap heap : TVM.Code =
+    TVM.arrayNew
+
+let compileInt (n:int) : TVM.Code =
+    [PushInt n]
+
+let compileIntBuilder (n:int) : TVM.Code =
+    [PushInt n; Newc; Stu 128]
+
+// Cell ([SDict vs]), vs = [(int,int)]
+let compileGlobals globals : TVM.Code =
+    (List.fold (fun d (k, v) ->
+               (compileIntBuilder v) @
+               (compileInt k) @
+               d @
+               dictSet) [PushNull] globals)
+
+let initC7with heap globals globalsCnt (unwindCont:TVM.Value) (unwindSelectorCell:TVM.Value) : TVM.Code =
+    // we need to compile each object and put everything into C7
+    // the order of putting items in C7 matters here: greater indexes
+    // become accessible only after the lesser ones were added.
+    (compileHeap heap) @ [SetGlob (int RuntimeGlobalVars.Heap)] @
+    [PushInt globalsCnt; SetGlob (int RuntimeGlobalVars.HeapCounter)] @
+    (compileGlobals globals) @ [SetGlob (int RuntimeGlobalVars.Globals)] @
+    [PushCont unwindCont.unboxCont.code; SetGlob (int RuntimeGlobalVars.UnwindCont)] @
+    [PushRef unwindSelectorCell.unboxCell; SetGlob (int RuntimeGlobalVars.UnwindSelector)]
+
 let compile (gms: GMachine.GmState) : TVM.TVMState =
     let code = compileCode (GMachine.getCode gms)
     let stack = prepareStack (GMachine.getStack gms)
@@ -554,5 +581,10 @@ let compile (gms: GMachine.GmState) : TVM.TVMState =
     // this is to provide monotonic increase of the address counter.
     // Otherwise heap may become corrupted.
     let globalsCnt = Map.count (GMachine.getGlobals gms)
-    let c7 = prepareC7 heap (Int globalsCnt) globals unwindCont unwindSelectorCell
-    { code = code; stack = stack; cr = { TVM.ControlRegs.Default with c0 = Some c0; c7 = c7 } }
+    let c7 = prepareC7 heap (Int (globalsCnt - 1)) globals unwindCont unwindSelectorCell
+    let globalsInts =
+        (GMachine.getGlobals gms)
+        |> Map.toList  // [("main",10); ("f", 51); ... ]
+        |> List.map ( fun x -> (hash (fst x), snd x) ) // [(hash "main", [SInt 10]), ...]
+    let initC7Code = initC7with heap globalsInts (globalsCnt - 1) unwindCont unwindSelectorCell
+    { code = initC7Code @ code; stack = stack; cr = { TVM.ControlRegs.Default with c0 = Some c0; c7 = c7 } }
