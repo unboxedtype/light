@@ -777,7 +777,7 @@ let testMaxFunction1 () =
     Assert.AreEqual (1, List.length (getResultStack final));
 
 [<Test>]
-let testFactorial () =
+let testFactorial5 () =
     // fact n = if n == 0 then 1 else n * fact(n-1)
     // main = fact 5
     let coreProgGM =
@@ -793,6 +793,7 @@ let testFactorial () =
          ("main", [], GMachine.EAp (GMachine.EVar "fact", GMachine.ENum 5))]
     let gmInitSt = GMachine.compile coreProgGM
     let tvmInitSt = compile gmInitSt
+    TVM.dumpFiftScript "testFactorial5.fif" (TVM.outputFift tvmInitSt)
     let final = List.last (TVM.runVMLimits tvmInitSt false 5000)
     Assert.AreEqual (nnum 120, getResultHeap final);
     Assert.AreEqual (1, List.length (getResultStack final));

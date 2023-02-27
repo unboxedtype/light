@@ -74,8 +74,8 @@ type Instruction =
     | Ends
     | StRef
     | NewDict    // ... -> ... D
-    | DictUGet   // i D n -> x (-1),  or 0
-    | DictUSetB  // b i D n -> D'
+    | DictIGet   // i D n -> x (-1),  or 0
+    | DictISetB  // b i D n -> D'
     | ThrowIfNot of nn:int
     | ThrowIf of nn:int
     | Throw of nn:int
@@ -605,11 +605,11 @@ let newdict st =
     pushnull st
 
 // i D n -> x -1 or 0
-let dictuget st =
+let dictiget st =
     let (n :: cD :: i :: stack') = st.stack
-    failIfNot (i.isInt) "DICTUGET: Integer expected"
-    failIfNot (cD.isCell || cD.isNull) "DICTUGET: Cell or Null expected"
-    // UFits n i check has to be done here as well
+    failIfNot (i.isInt) "DICTIGET: Integer expected"
+    failIfNot (cD.isCell || cD.isNull) "DICTIGET: Cell or Null expected"
+    // Fits n i check has to be done here as well
     let D =
         match cD with
             | Null ->
@@ -624,7 +624,7 @@ let dictuget st =
     st
 
 // b i D n --> D'
-let dictusetb st =
+let dictisetb st =
     let (n :: sD :: i :: b :: stack') = st.stack
     failIfNot (sD.isCell || sD.isNull) "DICTUSETB: Cell or Null expected"
     let D =
@@ -1034,10 +1034,10 @@ let dispatch (i:Instruction) (trace:bool) =
             ends
         | NewDict ->
             newdict
-        | DictUGet ->
-            dictuget
-        | DictUSetB ->
-            dictusetb
+        | DictIGet ->
+            dictiget
+        | DictISetB ->
+            dictisetb
         | ThrowIfNot n ->
             throwifnot n
         | ThrowIf n ->
@@ -1151,12 +1151,12 @@ let rec instrToFift (i:Instruction) : string =
         | Swap -> "SWAP"
         | IfJmp -> "IFJMP"
         | Dup -> "DUP"
-        | DictUGet -> "DICTUGET"
+        | DictIGet -> "DICTIGET"
         | Inc -> "INC"
         | Dec -> "DEC"
         | Newc -> "NEWC"
         | Drop -> "DROP"
-        | DictUSetB -> "DICTUSETB"
+        | DictISetB -> "DICTISETB"
         | Stu n -> (string n) + " STU"
         | PushCtr n -> "c" + (string n) + " PUSHCTR"
         | PopCtr n -> "c" + (string n) + " POPCTR"

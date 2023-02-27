@@ -24,13 +24,13 @@ type RuntimeGlobalVars =
     | UnwindCont = 4
     | UnwindSelector = 5
 
-// v k D -> D'
+// v:builder k:uint D:cell -> D'
 let dictSet =
-    [PushInt 128; DictUSetB]
+    [PushInt 128; DictISetB]
 
 // k D -> D[k] -1 | 0
 let dictGet =
-    [PushInt 128; DictUGet]
+    [PushInt 128; DictIGet]
 
 // _ -> hc
 let getHeapCounter =
@@ -120,7 +120,7 @@ let mapPushglobal (n:int) : TVM.Code =
     [PushInt n] @
     getGlobals @
     [PushInt 128;       // n D 128
-     DictUGet;        // D[n] -1 | 0
+     DictIGet;        // D[n] -1 | 0
      ThrowIfNot (int RuntimeErrors.GlobalNotFound);
      Ldu 128; // n s'
      Ends] // n
@@ -493,6 +493,42 @@ let prepareGlobals (globals:GMachine.GmGlobals): TVM.Value =
     |> List.singleton
     |> Cell
 
+let encodeNode (v:GMachine.Node) : TVM.Value =
+    match v with
+        | GMachine.NNum n -> nnum n
+        | GMachine.NAp (l, r) -> nap l r
+        | GMachine.NGlobal (n, c) -> nglobal n c
+        | GMachine.NConstr (n, vs) -> nconstr n vs
+        | GMachine.NInd n -> nind n
+
+let rec compileTuple t : TVM.Code =
+    match t with
+        | Tup l ->
+            l
+            |> List.map compileElem
+            |> List.concat
+            |> fun l -> l @ [Tuple l.Length]
+            | _ -> failwith "not a tuple"
+and compileSlice s : TVM.Code =
+    match s with
+        | Slice (SDict d :: []) ->
+            if Map.isEmpty d then
+                [PushNull]
+            else
+                failwith "not implemented"
+        | Slice vs ->
+            [PushSlice vs]
+        | _ ->
+            failwith "not implemented"
+and compileElem e : TVM.Code =
+    match e with
+        | Int n -> [PushInt n]
+        | Tup _ -> compileTuple e
+        | Cont c -> [PushCont c.code]
+        | Null -> [PushNull]
+        | Slice _ -> compileSlice e
+        | _ -> failwith "not implemented"
+
 let prepareHeap (heap:GMachine.GmHeap): TVM.Value =
 // heap in TVM is represented as array of arrays.
 // We need to construct it by the given GmHeap.
@@ -508,13 +544,6 @@ let prepareHeap (heap:GMachine.GmHeap): TVM.Value =
         let ai = List.item i h
         let aij = List.updateAt j v ai
         List.updateAt i aij h
-    let encodeNode v : TVM.Value =
-        match v with
-            | GMachine.NNum n -> nnum n
-            | GMachine.NAp (l, r) -> nap l r
-            | GMachine.NGlobal (n, c) -> nglobal n c
-            | GMachine.NConstr (n, vs) -> nconstr n vs
-            | GMachine.NInd n -> nind n
     let l =
         List.fold (fun h (k,v) -> put h k (encodeNode v)) emptyHeap kv
     Tup (l |> List.map Tup)
@@ -544,28 +573,30 @@ let initC7 =
                           (int GMachine.NodeTags.NConstr, [SCode (mapUnwindNConstr ())] )])]] @
     [SetGlob (int RuntimeGlobalVars.UnwindSelector)]
 
-let compileHeap heap : TVM.Code =
-    TVM.arrayNew
-
 let compileInt (n:int) : TVM.Code =
     [PushInt n]
+
+let compileHeap heapKV : TVM.Code =
+    List.fold (fun h (k,v) ->
+                 let v' = compileTuple (encodeNode v)
+                 h @ (compileInt k) @ v' @ TVM.arrayPut) TVM.arrayNew heapKV
 
 let compileIntBuilder (n:int) : TVM.Code =
     [PushInt n; Newc; Stu 128]
 
 // Cell ([SDict vs]), vs = [(int,int)]
 let compileGlobals globals : TVM.Code =
-    (List.fold (fun d (k, v) ->
+    List.fold (fun d (k, v) ->
                (compileIntBuilder v) @
                (compileInt k) @
                d @
-               dictSet) [PushNull] globals)
+               dictSet) [PushNull] globals
 
 let initC7with heap globals globalsCnt (unwindCont:TVM.Value) (unwindSelectorCell:TVM.Value) : TVM.Code =
     // we need to compile each object and put everything into C7
     // the order of putting items in C7 matters here: greater indexes
     // become accessible only after the lesser ones were added.
-    (compileHeap heap) @ [SetGlob (int RuntimeGlobalVars.Heap)] @
+    (compileHeap (Map.toList heap)) @ [SetGlob (int RuntimeGlobalVars.Heap)] @
     [PushInt globalsCnt; SetGlob (int RuntimeGlobalVars.HeapCounter)] @
     (compileGlobals globals) @ [SetGlob (int RuntimeGlobalVars.Globals)] @
     [PushCont unwindCont.unboxCont.code; SetGlob (int RuntimeGlobalVars.UnwindCont)] @
@@ -575,16 +606,14 @@ let compile (gms: GMachine.GmState) : TVM.TVMState =
     let code = compileCode (GMachine.getCode gms)
     let stack = prepareStack (GMachine.getStack gms)
     let c0 = TVM.Continuation.Default
-    let heap = prepareHeap (GMachine.getHeap gms)
-    let globals = prepareGlobals (GMachine.getGlobals gms)
     // let us know how many addresses were already allocated for globals
     // this is to provide monotonic increase of the address counter.
     // Otherwise heap may become corrupted.
     let globalsCnt = Map.count (GMachine.getGlobals gms)
-    let c7 = prepareC7 heap (Int (globalsCnt - 1)) globals unwindCont unwindSelectorCell
     let globalsInts =
         (GMachine.getGlobals gms)
         |> Map.toList  // [("main",10); ("f", 51); ... ]
         |> List.map ( fun x -> (hash (fst x), snd x) ) // [(hash "main", [SInt 10]), ...]
-    let initC7Code = initC7with heap globalsInts (globalsCnt - 1) unwindCont unwindSelectorCell
-    { code = initC7Code @ code; stack = stack; cr = { TVM.ControlRegs.Default with c0 = Some c0; c7 = c7 } }
+    let heap' = GMachine.getHeap gms
+    let initC7Code = initC7with heap' globalsInts (globalsCnt - 1) unwindCont unwindSelectorCell
+    { code = initC7Code @ code; stack = stack; cr = { TVM.ControlRegs.Default with c0 = Some c0 } }
