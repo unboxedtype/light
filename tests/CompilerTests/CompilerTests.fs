@@ -190,7 +190,7 @@ let testmkAp () =
     let st = TVM.initialState code
     TVM.dumpFiftScript "testGreater1.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
-    Assert.AreEqual(Tup [Int (int GMachine.NodeTags.NAp); Int 1; Int 0], getResultHeap final)
+    Assert.AreEqual(nap 1 0, getResultHeap final)
     Assert.AreEqual(nnum 100, getHeapAt 0 final)
     Assert.AreEqual(nnum 200, getHeapAt 1 final)
 
@@ -205,7 +205,7 @@ let testUpdate0 () =
     TVM.dumpFiftScript "testUpdate0.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
     Assert.AreEqual ([Int 1; Int 0], getResultStack final) // two int addresses on the stack
-    Assert.AreEqual (Tup [Int (int GMachine.NodeTags.NInd); Int 2], getHeapAt 0 final)
+    Assert.AreEqual (nind 2, getHeapAt 0 final)
     Assert.AreEqual (nnum 300, getHeapAt 2 final)
 
 [<Test>]
@@ -640,7 +640,7 @@ let testCompileConstr2 () =
     let final = List.last (TVM.runVMLimits tvmInitSt false 1000)
     Assert.AreEqual (1, List.length (getResultStack final));
     match (getResultHeap final) with
-        | Tup [Int 4; Int 0; Tup [x; y]] ->
+        | Tup [Int 4; _; Int 0; Tup [x; y]] ->
            Assert.AreEqual (nnum 3, getHeapAt x.unboxInt final)
            Assert.AreEqual (nnum 5, getHeapAt y.unboxInt final)
         | _ ->
@@ -655,9 +655,9 @@ let testCompileConstr3 () =
     let final = List.last (TVM.runVMLimits tvmInitSt false 1000)
     Assert.AreEqual (1, List.length (getResultStack final));
     match (getResultHeap final) with
-        | Tup [Int 4; Int 0; Tup [x]] ->
+        | Tup [Int 4; _; Int 0; Tup [x]] ->
            match (getHeapAt x.unboxInt final) with
-               | Tup [Int 4; Int 1; Tup []] ->
+               | Tup [Int 4; _; Int 1; Tup []] ->
                     Assert.Pass()
                | _ as other ->
                     Assert.Fail("incorrect heap object")
@@ -676,12 +676,12 @@ let testCompileConstr4 () =
     let tvmInitSt = compile gmInitSt
     let final = List.last (TVM.runVMLimits tvmInitSt false 1000)
     match (getResultHeap final) with
-        | Tup [Int 4; Int 4; Tup l4] ->
+        | Tup [Int 4; _; Int 4; Tup l4] ->
             let c3' = getHeapAt (List.item 0 l4).unboxInt final
             let c1' = getHeapAt (List.item 1 l4).unboxInt final
             let c2' = getHeapAt (List.item 2 l4).unboxInt final
             if ( (c3'.unboxTup.[0].unboxInt + c1'.unboxTup.[0].unboxInt + c2'.unboxTup.[0].unboxInt) = 4 * 3) &&
-               (c3'.unboxTup.[1].unboxInt = 3) && (c1'.unboxTup.[1].unboxInt = 1) && (c2'.unboxTup.[1].unboxInt = 2) then
+               (c3'.unboxTup.[2].unboxInt = 3) && (c1'.unboxTup.[2].unboxInt = 1) && (c2'.unboxTup.[2].unboxInt = 2) then
                 Assert.Pass()
             else
                 Assert.Fail("incorrect heap object")
@@ -698,7 +698,7 @@ let testCase1 () =
     let tvmInitSt = compile gmInitSt
     let final = List.last (TVM.runVMLimits tvmInitSt false 1000)
     match (getResultHeap final) with
-        | Tup [Int 4; Int 1; Tup []] ->
+        | Tup [Int 4; _; Int 1; Tup []] ->
             Assert.AreEqual (1, List.length (getResultStack final));
         | _ as other ->
             printfn "%A" other

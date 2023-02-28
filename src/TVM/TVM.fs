@@ -60,6 +60,7 @@ type Instruction =
     | Nil
     | PushNull
     | Second
+    | Third
     | Index of k:int
     | IndexVar
     | Untuple of n:int
@@ -799,6 +800,11 @@ let second st =
     st.put_stack (a1 :: stack')
     st
 
+let third st =
+    let (Tup (a0 :: a1 :: a2 :: _) :: stack') = st.stack
+    st.put_stack (a2 :: stack')
+    st
+
 let depth (st:TVMState) =
     st.put_stack (Int (List.length st.stack) :: st.stack)
     st
@@ -1005,7 +1011,9 @@ let dispatch (i:Instruction) (trace:bool) =
         | TLen ->
             tlen
         | Second ->
-            second
+            second            
+        | Third ->
+            third
         | Nil ->
             nil
         | Index k ->
@@ -1177,6 +1185,7 @@ let rec instrToFift (i:Instruction) : string =
         | TupleVar -> "TUPLEVAR"
         | TLen -> "TLEN"
         | Second -> "SECOND"
+        | Third -> "THIRD"
         | Depth -> "DEPTH"
         | Xchg n -> "s0 s" + (string n) + " XCHG" // XCHG s0,sn
         | XchgX -> "XCHGX"
