@@ -794,6 +794,6 @@ let testFactorial5 () =
     let gmInitSt = GMachine.compile coreProgGM
     let tvmInitSt = compile gmInitSt
     TVM.dumpFiftScript "testFactorial5.fif" (TVM.outputFift tvmInitSt)
-    let final = List.last (TVM.runVMLimits tvmInitSt true 5000)
+    let final = List.last (TVM.runVMLimits tvmInitSt false 5000)
     Assert.AreEqual (nnum 120, getResultHeap final);
     Assert.AreEqual (1, List.length (getResultStack final));

@@ -1245,8 +1245,8 @@ let outputFift (st:TVMState) : string =
         "<{";
         (codeToFift st.code |> String.concat "\n")
         "}>s";
-        "runvmcode";
-        "drop"; // omit VM exit code
+        "1000000 gasrunvmcode";  // 1000000 = TVM gas limit
+        "swap drop"; // omit VM exit code
         ".s"
     ]
 
