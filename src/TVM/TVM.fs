@@ -19,7 +19,7 @@ type Action =
 type Instruction =
     | CondSel
     | DumpHeap          // this is artificial instruction.
-    | StrDump of s:string // this one is artificial. Maps into NOP
+    | PrintStr of s:string
     | Push of n:int
     | PushRef of c:SValue list
     | Dup               // Push 0 alias
@@ -903,7 +903,9 @@ let pushref (c:SValue list) (st:TVMState) =
     st
 
 // log of the mere instruction is enough to see the dbg message
-let strdump s trace st =
+let printstr s trace st =
+    if trace then
+        printfn "%A" s
     st
 
 let dumpheap trace st =
@@ -928,8 +930,8 @@ let dispatch (i:Instruction) (trace:bool) =
             condsel
         | DumpHeap ->
             dumpheap trace
-        | StrDump s ->
-            strdump s trace
+        | PrintStr s ->
+            printstr s trace
         | StSlice ->
             stslice
         | Bless ->
@@ -1011,7 +1013,7 @@ let dispatch (i:Instruction) (trace:bool) =
         | TLen ->
             tlen
         | Second ->
-            second            
+            second
         | Third ->
             third
         | Nil ->
@@ -1139,7 +1141,7 @@ let cellToSliceFift v = v + " <s "
 
 let rec instrToFift (i:Instruction) : string =
     match i with
-        | StrDump s -> " NOP"
+        | PrintStr s -> "\"" + s + "\" PRINTSTR"
         | Push n -> "s" + (string n) + " PUSH"
         | PushSlice v ->
             (cellToSliceFift (encodeCellIntoFift v)) + " PUSHSLICE"

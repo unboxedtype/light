@@ -61,16 +61,15 @@ let putGlobals =
     [SetGlob (int RuntimeGlobalVars.Globals)]
 
 
-let printStack s =
+let printStack (s:string) =
     if debug then
-        [StrDump s; DumpStk]
+        [PrintStr s.[0..14]; DumpStk]
     else
         []
 
 // 1. allocate address for the node
 // 2. store the node in the heap at that address
 // 3. return the new heap on the stack
-
 // node -> a , where heap[a] := n
 let heapAlloc =
     (printStack "heapAlloc") @
@@ -215,6 +214,7 @@ let mapPushglobal (n:int) : TVM.Code =
 // Allocate a node for the given integer on the heap and put the
 // address of that node on the stack;
 let mapPushint (n:int) : TVM.Code =
+    (printStack (sprintf "mapPushint %d" n)) @
     [PushInt (int GMachine.NodeTags.NNum);
      PushCont mapUnwindNNum;
      PushInt n;
@@ -225,6 +225,7 @@ let mapPushint (n:int) : TVM.Code =
 // operation, placing the boxed result on the stack
 // n2 n1 -> n3, where heap[n3] = heap[n1] OP heap[n2]
 let binaryOperation (op:TVM.Code) : TVM.Code =
+    (printStack (sprintf "binaryOperation %A" op)) @
     heapLookup @ // n2 (0, NNum1)
     checkTag (int GMachine.NodeTags.NNum) @
     [Third] @   // n2 NNum1  // (tag,_,NNum1)
@@ -278,7 +279,7 @@ let mapMkap () : TVM.Code =
 // located on top of the stack.
 // .. an .. a1 a -> .. an .. a1 , heap[an] := NInd a
 let mapUpdate (n:int) : TVM.Code =
-//    [StrDump (sprintf "mapUpdate %d" n); DumpStk] @
+    (printStack (sprintf "mapUpdate %d" n)) @
     [PushInt (int GMachine.NodeTags.NInd); // a1 a 3   (note: 3 = NInd tag)
      Swap; // an .. a1 3 a
      PushCont mapUnwindNInd; Swap; // an .. a1 3 c a
@@ -293,7 +294,7 @@ let mapUpdate (n:int) : TVM.Code =
 // Allocate n dummy nodes on the heap and return put
 // their addresses on the stack
 let mapAlloc (n:int) : TVM.Code =
-    [StrDump (sprintf "mapAlloc %d" n); DumpStk] @
+    (printStack (sprintf "mapAlloc %d" n)) @
     [PushInt n; PushCont ([PushNull] @ heapAlloc); Repeat]
 
 let rec xchgs l acc =
@@ -308,7 +309,7 @@ let rec xchgs l acc =
 // Put the (address of) boxed constructor object onto the stack
 // an .. a1 -> a  , where heap[a] = NConstr(tag, [a1, ... an])
 let mapPack (tag:int) (n:int) : TVM.Code =
-//    [StrDump (sprintf "mapPack %d %d" tag n); DumpStk] @
+    (printStack (sprintf "mapPack %d %d" tag n)) @
     (let pairs = xchgs [0..(n-1)] []
     [for (i,j) in pairs -> Xchg2 (i,j)]) @
     [PushInt n; TupleVar] @ // (a1,...,an)
@@ -323,7 +324,7 @@ let mapSplit (n:int) : TVM.Code =
     (printStack (sprintf "mapSplit %d" n)) @
     heapLookup @    // heap[n]
     checkTag (int GMachine.NodeTags.NConstr) @
-    //  (4, tag, (a1am))
+    // (4, tag, (a1am))
     [Index 3; Dup] @  // (a1am) (a1am)
     [TLen] @        // (a1am) m
     [UntupleVar] @   // a1 .. am
@@ -605,7 +606,6 @@ let initC7with heap globals globalsCnt (unwindCont:TVM.Value) : TVM.Code =
     [PushInt globalsCnt; SetGlob (int RuntimeGlobalVars.HeapCounter)] @
     (compileGlobals globals) @ [SetGlob (int RuntimeGlobalVars.Globals)] @
     [PushCont unwindCont.unboxCont.code; SetGlob (int RuntimeGlobalVars.UnwindCont)]
-    // [PushRef unwindSelectorCell.unboxCell; SetGlob (int RuntimeGlobalVars.UnwindSelector)]
 
 let compile (gms: GMachine.GmState) : TVM.TVMState =
     let code = compileCode (GMachine.getCode gms)
