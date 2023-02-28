@@ -464,8 +464,11 @@ let popctr n st =
     st
 
 let pop n st =
-    let (a :: _) = st.stack
-    st.stack <- List.tail (List.updateAt n a st.stack)
+    let (a :: stack') = st.stack
+    if n > 0 then
+        st.put_stack (List.updateAt (n-1) a stack')
+    else
+        st.put_stack stack'
     st
 
 let xchg2 i j st =
@@ -1189,6 +1192,7 @@ let rec instrToFift (i:Instruction) : string =
         | Ldi n -> (string n) + " LDI"
         | PushCtr n -> "c" + (string n) + " PUSHCTR"
         | PopCtr n -> "c" + (string n) + " POPCTR"
+        | Pop n -> "s" + (string n) + " POP"
         | PushInt n -> (string n) + " INT"
         | Index n -> (string n) + " INDEX"
         | ThrowIfNot n -> (string n) + " THROWIFNOT"

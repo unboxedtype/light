@@ -124,8 +124,7 @@ let mapUnwindNAp : TVM.Code =
 let mapUnwindNInd : TVM.Code =
     (printStack "Unwind NInd") @
     [Index 2; // n m
-     Swap; // m n
-     Drop] @ // m
+     Pop 1] @ // m
      doUnwind
 
 // n heap[n]  (heap[n] = (NConstr _ tag [a1,...,an])
