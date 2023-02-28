@@ -88,8 +88,11 @@ let heapLookup =
     (printStack "heapLookup") @
     getHeap @ // k h
     [Swap] @ // h k
-    TVM.arrayGetWithCode @
-    [ThrowIfNot (int RuntimeErrors.HeapNodeNotFound)]
+    if debug then (
+        TVM.arrayGetWithCode @
+        [ThrowIfNot (int RuntimeErrors.HeapNodeNotFound)])
+    else
+        TVM.arrayGet
 
 // (T, ...) -> (T, ...) if T = tag,
 // or throws otherwise
