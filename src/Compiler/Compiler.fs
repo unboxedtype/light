@@ -285,8 +285,8 @@ let mapUpdate (n:int) : TVM.Code =
     (printStack (sprintf "mapUpdate %d" n)) @
     [Push (n+1); Swap] @ // an .. a1 an a
     [PushInt (int GMachine.NodeTags.NInd); // a1 an a 3   (note: 3 = NInd tag)
-     Swap; // an .. a1 an 3 a
-     PushCont mapUnwindNInd; Swap; // an .. a1 3 c a
+     PushCont mapUnwindNInd; // an .. a1 an a 3 c
+     Rot; // an .. a1 an 3 c a
      Tuple 3;     // an .. a1 an (3,c,a)
      ] @    // an .. a1 an (3,c,a)
     getHeap @     // an .. a1 an (3,c,a) heap
