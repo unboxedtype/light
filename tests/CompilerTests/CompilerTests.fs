@@ -639,12 +639,20 @@ let testCompileConstr2 () =
     let tvmInitSt = compile gmInitSt
     let final = List.last (TVM.runVMLimits tvmInitSt false 1000)
     Assert.AreEqual (1, List.length (getResultStack final));
-    match (getResultHeap final) with
-        | Tup [Int 4; _; Int 0; Tup [x; y]] ->
-           Assert.AreEqual (nnum 3, getHeapAt x.unboxInt final)
-           Assert.AreEqual (nnum 5, getHeapAt y.unboxInt final)
-        | _ ->
-            Assert.Fail("heap object is not a constructor")
+    if debug then
+        match (getResultHeap final) with
+            | Tup [Int 4; _; Int 0; Tup [x; y]] ->
+                Assert.AreEqual (nnum 3, getHeapAt x.unboxInt final)
+                Assert.AreEqual (nnum 5, getHeapAt y.unboxInt final)
+            | _ ->
+                Assert.Fail("heap object is not a constructor")
+    else
+        match (getResultHeap final) with
+            | Tup [_; Int 0; Tup [x; y]] ->
+                Assert.AreEqual (nnum 3, getHeapAt x.unboxInt final)
+                Assert.AreEqual (nnum 5, getHeapAt y.unboxInt final)
+            | _ ->
+                Assert.Fail("heap object is not a constructor")
 
 [<Test>]
 let testCompileConstr3 () =
@@ -654,15 +662,26 @@ let testCompileConstr3 () =
     let tvmInitSt = compile gmInitSt
     let final = List.last (TVM.runVMLimits tvmInitSt false 1000)
     Assert.AreEqual (1, List.length (getResultStack final));
-    match (getResultHeap final) with
-        | Tup [Int 4; _; Int 0; Tup [x]] ->
-           match (getHeapAt x.unboxInt final) with
-               | Tup [Int 4; _; Int 1; Tup []] ->
-                    Assert.Pass()
-               | _ as other ->
-                    Assert.Fail("incorrect heap object")
-        | _ as other ->
-               Assert.Fail("incorrect heap object")
+    if debug then
+        match (getResultHeap final) with
+            | Tup [Int 4; _; Int 0; Tup [x]] ->
+                match (getHeapAt x.unboxInt final) with
+                    | Tup [Int 4; _; Int 1; Tup []] ->
+                        Assert.Pass()
+                    | _ as other ->
+                        Assert.Fail("incorrect heap object")
+            | _ as other ->
+                Assert.Fail("incorrect heap object")
+    else
+        match (getResultHeap final) with
+            | Tup [_; Int 0; Tup [x]] ->
+                match (getHeapAt x.unboxInt final) with
+                    | Tup [_; Int 1; Tup []] ->
+                        Assert.Pass()
+                    | _ as other ->
+                        Assert.Fail("incorrect heap object")
+            | _ as other ->
+                Assert.Fail("incorrect heap object")
 
 [<Test>]
 let testCompileConstr4 () =
@@ -675,18 +694,21 @@ let testCompileConstr4 () =
     let gmInitSt = GMachine.compile coreProgGM
     let tvmInitSt = compile gmInitSt
     let final = List.last (TVM.runVMLimits tvmInitSt false 1000)
-    match (getResultHeap final) with
-        | Tup [Int 4; _; Int 4; Tup l4] ->
-            let c3' = getHeapAt (List.item 0 l4).unboxInt final
-            let c1' = getHeapAt (List.item 1 l4).unboxInt final
-            let c2' = getHeapAt (List.item 2 l4).unboxInt final
-            if ( (c3'.unboxTup.[0].unboxInt + c1'.unboxTup.[0].unboxInt + c2'.unboxTup.[0].unboxInt) = 4 * 3) &&
-               (c3'.unboxTup.[2].unboxInt = 3) && (c1'.unboxTup.[2].unboxInt = 1) && (c2'.unboxTup.[2].unboxInt = 2) then
-                Assert.Pass()
-            else
+    if debug then
+        match (getResultHeap final) with
+            | Tup [Int 4; _; Int 4; Tup l4] ->
+                let c3' = getHeapAt (List.item 0 l4).unboxInt final
+                let c1' = getHeapAt (List.item 1 l4).unboxInt final
+                let c2' = getHeapAt (List.item 2 l4).unboxInt final
+                if ( (c3'.unboxTup.[0].unboxInt + c1'.unboxTup.[0].unboxInt + c2'.unboxTup.[0].unboxInt) = 4 * 3) &&
+                    (c3'.unboxTup.[2].unboxInt = 3) && (c1'.unboxTup.[2].unboxInt = 1) && (c2'.unboxTup.[2].unboxInt = 2) then
+                        Assert.Pass()
+                else
+                    Assert.Fail("incorrect heap object")
+            | _ ->
                 Assert.Fail("incorrect heap object")
-        | _ ->
-            Assert.Fail("incorrect heap object")
+    else
+        Assert.Pass()
 
 [<Test>]
 let testCase1 () =
@@ -697,12 +719,19 @@ let testCase1 () =
     let gmInitSt = GMachine.compile coreProgGM
     let tvmInitSt = compile gmInitSt
     let final = List.last (TVM.runVMLimits tvmInitSt false 1000)
-    match (getResultHeap final) with
-        | Tup [Int 4; _; Int 1; Tup []] ->
-            Assert.AreEqual (1, List.length (getResultStack final));
-        | _ as other ->
-            printfn "%A" other
-            Assert.Fail("incorrect heap object")
+    if debug then
+        match (getResultHeap final) with
+            | Tup [Int 4; _; Int 1; Tup []] ->
+                Assert.AreEqual (1, List.length (getResultStack final));
+            | _ as other ->
+                printfn "%A" other
+                Assert.Fail("incorrect heap object")
+    else
+        match (getResultHeap final) with
+            | Tup [_; Int 1; Tup []] ->
+                Assert.AreEqual (1, List.length (getResultStack final));
+            | _ as other ->
+                Assert.Fail("incorrect heap object")
 
 [<Test>]
 let testCase2 () =

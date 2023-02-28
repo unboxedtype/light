@@ -87,6 +87,7 @@ type Instruction =
     | SetNumArgs of n:int
     | RollRev of n:int
     | RollRevX
+    | Roll of n:int
     | Repeat
     | Depth
     | Dec
@@ -719,10 +720,10 @@ let setnumargs n st =
 
 // rollrev 1:
 // s0 :: s1 :: s2 :: ... ->
-    // s1 :: s0 :: s2 ...
+// s1 :: s0 :: s2 ...
 // rollrev n:
 // s0 :: s1 :: s2 :: ... :: sn :: sn+1 ->
-    // s1 :: s2 :: sn-1 :: s0 :: sn :: sn+1
+// s1 :: s2 :: sn-1 :: s0 :: sn :: sn+1
 let rollrev n (st:TVMState) =
     if n > 0 then
         if n >= List.length st.stack then
@@ -731,6 +732,23 @@ let rollrev n (st:TVMState) =
             let (a0 :: stack) = st.stack
             let (l, r) = (List.take n stack, List.skip n stack)
             st.put_stack (l @ [a0] @ r)
+            st
+    else
+        st
+
+// 1 2 3   -> 1 3 2  (roll 1)
+// 1 2 3   -> 2 3 1  (roll 2)
+// 1 2 3 4 -> 2 3 4 1   (roll 3)
+// ... an ... a0  -->  ... an-1 .. a1 a0 an
+let roll n (st:TVMState) =
+    if n > 0 then
+        if n >= List.length st.stack then
+            raise (TVMError "stack underflow")
+        else
+            let spine = List.take (n+1) st.stack // a1 .. an
+            let rest = List.skip (n+1) st.stack  // an+1 ...
+            let spine' = (List.singleton spine.[n]) @ (List.take n spine) // a2 .. an a1
+            st.put_stack (spine' @ rest) // an-1
             st
     else
         st
@@ -928,8 +946,6 @@ let printstr s trace st =
 let dumpheap trace st =
     if trace then
         printfn "%A" (st.cr.c7.unboxTup.[1])
-    else
-        ()
     st
 
 let condsel st =
@@ -1087,6 +1103,8 @@ let dispatch (i:Instruction) (trace:bool) =
             rollrev n
         | RollRevX ->
             rollrevx
+        | Roll n ->
+            roll n
         | DropX ->
             dropx
         | DivMod ->
@@ -1117,14 +1135,10 @@ let step (st:TVMState) trace : TVMState =
         | [] ->
             if trace then
                 printfn "Implicit RET"
-            else
-                ()
             ret st
         | i :: code' ->
             if trace then
                 printfn "Executing %A" i
-            else
-                ()
             st.code <- code'
             try
                dispatch i trace st
@@ -1222,6 +1236,7 @@ let rec instrToFift (i:Instruction) : string =
         | Xchg2 (i,j) -> "s" + (string i) + " " + "s" + (string j) + " XCHG"
         | Swap2 -> "SWAP2"
         | RollRev n -> (string n) + " ROLLREV"
+        | Roll n -> (string n) + " ROLL"
         | Dup2 -> "DUP2"
         | Rot -> "ROT"
         | Rot2 -> "ROT2"

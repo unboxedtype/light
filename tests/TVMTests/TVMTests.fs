@@ -607,6 +607,69 @@ let testRollRev4 () =
         | TVMError s ->
             Assert.Fail(s)
 
+[<Test>]
+let testRoll0 () =
+    let st = initialState [Roll 0]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual([Int 0], finalSt.stack)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testRoll1 () =
+    let st = initialState [PushInt 1; PushInt 2; Roll 1]
+    try
+        let finalSt = List.last (runVM st false)
+        let stk = List.tail finalSt.stack
+        Assert.AreEqual([Int 1; Int 2], stk)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testRoll2 () =
+    let st = initialState [PushInt 1; PushInt 2; PushInt 3; Roll 2]
+    try
+        let finalSt = List.last (runVM st false)
+        let stk = List.tail finalSt.stack
+        Assert.AreEqual([Int 1; Int 3; Int 2], stk)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testRoll3 () =
+    let st = initialState [PushInt 1; PushInt 2; PushInt 3; PushInt 4; Roll 2]
+    try
+        let finalSt = List.last (runVM st false)
+        let stk = List.tail finalSt.stack
+        Assert.AreEqual([Int 2; Int 4; Int 3; Int 1], stk)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testRollRev5 () =
+    let st = initialState [PushInt 1; PushInt 2; PushInt 3; PushInt 4; RollRev 2]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual([Int 0; Int 3; Int 2; Int 4; Int 1], finalSt.stack)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
+[<Test>]
+let testRollRev6 () =
+    let st = initialState [PushInt 1; PushInt 2; PushInt 3; PushInt 4; RollRev 3]
+    try
+        let finalSt = List.last (runVM st false)
+        Assert.AreEqual([Int 0; Int 3; Int 2; Int 1; Int 4], finalSt.stack)
+    with
+        | TVMError s ->
+            Assert.Fail(s)
+
 // a0 : a1 : a2 : ... an : sn
 // -->
 // a1' : a2' : .. an' :  an : sn
