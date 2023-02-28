@@ -42,7 +42,7 @@ let testAdd0 () =
 [<Test>]
 let testPushglobal0 () =
     let globals = Map [("add", 1)]
-    let c7 = prepareC7 (prepareHeap (Map [])) (Int -1) (prepareGlobals globals) Null Null
+    let c7 = prepareC7 (prepareHeap (Map [])) (Int -1) (prepareGlobals globals) Null
     let code = compileCode [GMachine.Pushglobal "add"]
     let st = TVM.initialState code
     st.put_c7 c7
@@ -53,7 +53,7 @@ let testPushglobal0 () =
 [<Ignore("The exception mechanism was changed")>]
 let testPushglobal1 () =
     let globals = Map [("fact", 1); ("main", 0)]
-    let c7 = prepareC7 (prepareHeap (Map [])) (Int -1) (prepareGlobals globals) Null Null
+    let c7 = prepareC7 (prepareHeap (Map [])) (Int -1) (prepareGlobals globals) Null
     let code = compileCode [GMachine.Pushglobal "fib"]
     let st = TVM.initialState code
     st.put_c7 c7
@@ -433,7 +433,7 @@ let testUnwindNGlobal () =
                                           GMachine.Pop 1; // @add
                                           GMachine.Unwind])
     let heap = prepareHeap (Map [(66, addGlobal)])
-    let c7 = prepareC7 heap (Int -1) globals unwindCont unwindSelectorCell
+    let c7 = prepareC7 heap (Int -1) globals unwindCont
     let code = compileCode [GMachine.Pushglobal "add";
                             GMachine.Eval]
     let st = TVM.initialState code
@@ -452,7 +452,7 @@ let testUnwindNAp0 () =
                                           GMachine.Pop 0;
                                           GMachine.Unwind])
     let heap = prepareHeap (Map [(66, incGlobal)])
-    let c7 = prepareC7 heap (Int -1) globals unwindCont unwindSelectorCell
+    let c7 = prepareC7 heap (Int -1) globals unwindCont
     let code = compileCode [GMachine.Pushint 10;
                             GMachine.Pushglobal "inc";
                             GMachine.Mkap;
@@ -475,7 +475,7 @@ let testUnwindNAp2 () =
                                           GMachine.Pop 1;  // f'
                                           GMachine.Unwind])
     let heap = prepareHeap (Map [(66, incGlobal)])
-    let c7 = prepareC7 heap (Int -1) globals unwindCont unwindSelectorCell
+    let c7 = prepareC7 heap (Int -1) globals unwindCont
     let code = compileCode [GMachine.Pushint 10;
                             GMachine.Pushglobal "inc";
                             GMachine.Mkap;
@@ -500,7 +500,7 @@ let testUnwindNAp3 () =
                                           GMachine.Pop 2;  // f'
                                           GMachine.Unwind])
     let heap = prepareHeap (Map [(66, addGlobal)])
-    let c7 = prepareC7 heap (Int -1) globals unwindCont unwindSelectorCell
+    let c7 = prepareC7 heap (Int -1) globals unwindCont
     let code = compileCode [GMachine.Pushint 10;
                             GMachine.Pushint 20;
                             GMachine.Pushglobal "add";
@@ -546,7 +546,7 @@ let testUnwindNAp4 () =
                               GMachine.Unwind])
 
     let heap = prepareHeap (Map [(66, incGlobal); (67, decGlobal); (68, mixGlobal)])
-    let c7 = prepareC7 heap (Int -1) globals unwindCont unwindSelectorCell
+    let c7 = prepareC7 heap (Int -1) globals unwindCont
     let code = compileCode [GMachine.Pushint 10;
                             GMachine.Pushglobal "mix";
                             GMachine.Mkap;
@@ -591,7 +591,7 @@ let testUnwindNAp5 () =
                               GMachine.Pop 1;      // @f'
                               GMachine.Unwind])
     let heap = prepareHeap (Map [(66, incGlobal); (68, funcGlobal)])
-    let c7 = prepareC7 heap (Int -1) globals unwindCont unwindSelectorCell
+    let c7 = prepareC7 heap (Int -1) globals unwindCont
     let code = compileCode [GMachine.Pushint 1;
                             GMachine.Pushglobal "func";
                             GMachine.Mkap;

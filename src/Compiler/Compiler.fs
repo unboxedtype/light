@@ -1,6 +1,7 @@
 module Compiler
 
 // Debug switch turns on excessive logging
+// Turn it off to produce gas-optimal executables
 let debug = true
 
 // Incomplete pattern matches on this expression.
@@ -559,17 +560,14 @@ let prepareHeap (heap:GMachine.GmHeap): TVM.Value =
         List.fold (fun h (k,v) -> put h k (encodeNode v)) emptyHeap kv
     Tup (l |> List.map Tup)
 
-let prepareC7 heap heapCounter globals unwindCont unwindSelector =
-    Tup [Null; heap; heapCounter; globals; unwindCont; unwindSelector]
+let prepareC7 heap heapCounter globals unwindCont =
+    Tup [Null; heap; heapCounter; globals; unwindCont]
 
 let selectorMap = Map [(0, [SCode mapUnwindNNum] );
                        (1, [SCode mapUnwindNAp] );
                        (2, [SCode mapUnwindNGlobal] );
                        (3, [SCode mapUnwindNInd] );
                        (4, [SCode mapUnwindNConstr] )]
-
-let unwindSelectorCell =
-    Cell ([SDict selectorMap])
 
 let unwindCont =
     TVM.Cont { TVM.Continuation.Default with code = mapUnwind () }
@@ -578,9 +576,7 @@ let initC7 =
     TVM.arrayNew @ [SetGlob (int RuntimeGlobalVars.Heap)] @
     [PushInt -1; SetGlob (int RuntimeGlobalVars.HeapCounter)] @
     [PushNull; SetGlob (int RuntimeGlobalVars.Globals)] @
-    [PushCont (mapUnwind ()); SetGlob (int RuntimeGlobalVars.UnwindCont)] @
-    [PushRef [SDict selectorMap]] @
-    [SetGlob (int RuntimeGlobalVars.UnwindSelector)]
+    [PushCont (mapUnwind ()); SetGlob (int RuntimeGlobalVars.UnwindCont)]
 
 let compileInt (n:int) : TVM.Code =
     [PushInt n]
