@@ -840,7 +840,7 @@ let rotrev st =
     let (c :: b :: a :: stack') = st.stack
     st.put_stack (b :: a :: c :: stack')
     st
-
+// ROT2 (a b c d e f -> c d e f a b)
 let rot2 st =
     let (f :: e :: d :: c :: b :: a :: stack') = st.stack
     st.put_stack (b :: a :: f :: e :: d :: c :: stack')

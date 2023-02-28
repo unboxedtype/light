@@ -269,12 +269,11 @@ let mapLess () : TVM.Code =
 // a1 f -> a2 , where heap[a3] = NAp (f, a1)
 let mapMkap () : TVM.Code =
     (printStack "mapMkap") @
-    [PushInt (int GMachine.NodeTags.NAp);  // a1 f 1
-     RollRev 2;  // 1 a1 f
-     Swap;       // 1 f a1
-     PushCont mapUnwindNAp; // 1 f a1 c
-     RollRev 2; // 1 c f a1
-     Tuple 4] @ // (1, f, a1)
+    [PushInt (int GMachine.NodeTags.NAp);  // a1 f tag
+     PushCont mapUnwindNAp; // a1 f tag cont
+     Swap2; // tag cont a1 f
+     Swap;  // tag cont f a1
+     Tuple 4] @ // (tag, cont, f, a1)
     heapAlloc   // a2
 
 // Change the node pointed by the n-th + 1 element of the stack
@@ -285,14 +284,14 @@ let mapUpdate (n:int) : TVM.Code =
     (printStack (sprintf "mapUpdate %d" n)) @
     [PushInt (int GMachine.NodeTags.NInd); // an ..a1 a 3   (note: 3 = NInd tag)
      PushCont mapUnwindNInd; // an .. a1 a 3 c
-     Rot; // an .. a1 3 c a
-     Tuple 3;     // an .. a1 (3,c,a)
-     ] @    // an .. a1 (3,c,a)
-    [Push (n+1)] @    // an .. a1 (3,c,a) an
-    getHeap @ // an .. a1 (3,c,a) an heap
-    [RotRev] @ // an .. a1 heap (3,c,a) an
-    TVM.arrayPut @ // .. an .. a1 heap'
-    putHeap       // an .. a1
+     Rot;           // an .. a1 3 c a
+     Tuple 3;       // an .. a1 (3,c,a)
+     ] @            // an .. a1 (3,c,a)
+    [Push (n+1)] @  // an .. a1 (3,c,a) an
+    getHeap @       // an .. a1 (3,c,a) an heap
+    [RotRev] @      // an .. a1 heap (3,c,a) an
+    TVM.arrayPut @  // .. an .. a1 heap'
+    putHeap         // an .. a1
 
 // -> a1 a2 .. an
 // Allocate n dummy nodes on the heap and return put
