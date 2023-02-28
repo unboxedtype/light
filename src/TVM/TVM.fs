@@ -97,7 +97,9 @@ type Instruction =
     | IsNull
     | IsZero
     | Dup2
+    | Rot
     | Rot2
+    | RotRev
     | Bless
 and Code =
     Instruction list
@@ -824,6 +826,18 @@ let xchgx st =
     st.put_stack stack'
     xchg n st
 
+// ROT (a b c -> b c a)
+let rot st =
+    let (c :: b :: a :: stack') = st.stack
+    st.put_stack (a :: c :: b :: stack')
+    st
+
+// ROTREV (a b c -> c a b)
+let rotrev st =
+    let (c :: b :: a :: stack') = st.stack
+    st.put_stack (b :: a :: c :: stack')
+    st
+
 let rot2 st =
     let (f :: e :: d :: c :: b :: a :: stack') = st.stack
     st.put_stack (b :: a :: f :: e :: d :: c :: stack')
@@ -956,8 +970,12 @@ let dispatch (i:Instruction) (trace:bool) =
             push 0
         | Dup2 ->
             fun st -> push 1 (push 1 st)
+        | Rot ->
+            rot
         | Rot2 ->
             rot2
+        | RotRev ->
+            rotrev
         | PushCtr n ->
             pushctr n
         | PushCont c ->
@@ -1201,7 +1219,9 @@ let rec instrToFift (i:Instruction) : string =
         | Swap2 -> "SWAP2"
         | RollRev n -> (string n) + " ROLLREV"
         | Dup2 -> "DUP2"
+        | Rot -> "ROT"
         | Rot2 -> "ROT2"
+        | RotRev -> "ROTREV"
         | Execute -> "EXECUTE"
         | SetGlob n -> (string n) + " SETGLOB"
         | GetGlob n -> (string n) + " GETGLOB"

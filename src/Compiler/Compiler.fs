@@ -209,9 +209,9 @@ let mapPushglobal (n:int) : TVM.Code =
     [PushInt n] @
     getGlobals @
     [PushInt 128;       // n D 128
-     DictIGet;        // D[n] -1 | 0
-     ThrowIfNot (int RuntimeErrors.GlobalNotFound);
-     Ldi 128; // n s'
+     DictIGet] @        // D[n] -1 | 0
+    (if debug then [ThrowIfNot (int RuntimeErrors.GlobalNotFound)] else [Drop]) @
+    [Ldi 128; // n s'
      Ends] // n
 
 // Allocate a node for the given integer on the heap and put the
@@ -229,17 +229,18 @@ let mapPushint (n:int) : TVM.Code =
 // n2 n1 -> n3, where heap[n3] = heap[n1] OP heap[n2]
 let binaryOperation (op:TVM.Code) : TVM.Code =
     (printStack (sprintf "binaryOperation %A" op)) @
-    heapLookup @ // n2 (0, NNum1)
+    heapLookup @ // n2 (tag,_NNum1))
     checkTag (int GMachine.NodeTags.NNum) @
-    [Third] @   // n2 NNum1  // (tag,_,NNum1)
+    [Third] @   // n2 NNum1
     [Swap] @     // NNum1 n2
     heapLookup @ // NNum1 heap[n2]
     checkTag (int GMachine.NodeTags.NNum) @
     [Third] @   // NNum1 NNum2
     op @  // op(n1,n2)
-    [PushInt (int GMachine.NodeTags.NNum); Swap] @ // nnum op(n1,n2)
-    [PushCont mapUnwindNNum; Swap] @ // nnum cont op(n1,n2)
-    [Tuple 3] @  // (nnum, cont, op(heap[n1], heap[n2])), NNum tag = 0
+    [PushInt (int GMachine.NodeTags.NNum)] @ // op(n1,n2) tag
+    [PushCont mapUnwindNNum] @ // op(n1,n2) tag c
+    [Rot] @ // tag c op(n1,n2)
+    [Tuple 3] @  // (tag, c, op(heap[n1], heap[n2])), NNum tag = 0
     heapAlloc    // n3
 
 let mapAdd () : TVM.Code =
