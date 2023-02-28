@@ -1261,10 +1261,9 @@ let arrayNew =
      PushInt bucketSize; TupleVar; PushInt (bucketSize-1);
      PushCont [Dup]; Repeat; PushInt bucketSize; TupleVar]
 
-// a k v -> a'
+// a v k -> a'
 let arrayPut =
-    [Swap;  // a v k
-     PushInt bucketSize; // a v k bs
+    [PushInt bucketSize; // a v k bs
      DivMod;  // a v i j
      Xchg2 (1,2) // a i v j
      Swap2; // v j a i

@@ -79,7 +79,7 @@ let heapAlloc =
     getHeap @ // node k' a
     [Xchg 2] @ // a k' node
     [Push 1] @ // a k' node k'
-    [RollRev 3] @ // k' a k' node
+    [Xchg2 (2,3)] @ // k' a node k'
     TVM.arrayPut @ // k' a'
     putHeap // k'
 
@@ -280,13 +280,14 @@ let mapMkap () : TVM.Code =
 // .. an .. a1 a -> .. an .. a1 , heap[an] := NInd a
 let mapUpdate (n:int) : TVM.Code =
     (printStack (sprintf "mapUpdate %d" n)) @
-    [PushInt (int GMachine.NodeTags.NInd); // a1 a 3   (note: 3 = NInd tag)
-     Swap; // an .. a1 3 a
+    [Push (n+1); Swap] @ // an .. a1 an a
+    [PushInt (int GMachine.NodeTags.NInd); // a1 an a 3   (note: 3 = NInd tag)
+     Swap; // an .. a1 an 3 a
      PushCont mapUnwindNInd; Swap; // an .. a1 3 c a
-     Tuple 3;     // an .. a1 (3,c,a)
-     Push (n+1)] @    // an .. a1 (3,c,a) an
-    getHeap @     // an .. a1 (3,c,a) an heap
-    [Xchg 2] @    // an .. a1 heap an (3,c,a)
+     Tuple 3;     // an .. a1 an (3,c,a)
+     ] @    // an .. a1 an (3,c,a)
+    getHeap @     // an .. a1 an (3,c,a) heap
+    [Xchg 2] @    // an .. a1 heap (3,c,a) an
     TVM.arrayPut @ // .. an .. a1 heap'
     putHeap       // an .. a1
 
@@ -585,7 +586,7 @@ let compileInt (n:int) : TVM.Code =
 let compileHeap heapKV : TVM.Code =
     List.fold (fun h (k,v) ->
                let v' = compileTuple (encodeNode v)
-               h @ (compileInt k) @ v' @ TVM.arrayPut) TVM.arrayNew heapKV
+               h @ v' @ (compileInt k) @ TVM.arrayPut) TVM.arrayNew heapKV
 
 let compileIntBuilder (n:int) : TVM.Code =
     [PushInt n; Newc; Sti 128]

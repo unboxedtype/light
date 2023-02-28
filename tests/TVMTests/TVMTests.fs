@@ -830,7 +830,7 @@ let testRepeat2 () =
 
 [<Test>]
 let testArrayGetPut1 () =
-    let code = arrayNew @ [PushInt 1; PushInt 600] @ arrayPut @ [PushInt 1] @ arrayGet
+    let code = arrayNew @ [PushInt 600; PushInt 1] @ arrayPut @ [PushInt 1] @ arrayGet
     let st = initialState code
     dumpFiftScript "testArrayGetPut1.fif" (outputFift st)
     try
