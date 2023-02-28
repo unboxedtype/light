@@ -576,8 +576,8 @@ let compileInt (n:int) : TVM.Code =
 
 let compileHeap heapKV : TVM.Code =
     List.fold (fun h (k,v) ->
-                 let v' = compileTuple (encodeNode v)
-                 h @ (compileInt k) @ v' @ TVM.arrayPut) TVM.arrayNew heapKV
+               let v' = compileTuple (encodeNode v)
+               h @ (compileInt k) @ v' @ TVM.arrayPut) TVM.arrayNew heapKV
 
 let compileIntBuilder (n:int) : TVM.Code =
     [PushInt n; Newc; Sti 128]

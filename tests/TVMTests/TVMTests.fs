@@ -373,7 +373,7 @@ let testEndC () =
 
 [<Test>]
 let testStu0 () =
-    let st = initialState [PushInt 100; Newc; Stu 255]
+    let st = initialState [PushInt 100; Newc; Sti 255]
     try
         let finalSt = List.last (runVM st false)
         Assert.AreEqual (Some (Builder [SInt 100]), getResult finalSt)
@@ -384,7 +384,7 @@ let testStu0 () =
 [<Test>]
 let testStu1 () =
     let st = initialState [PushInt 200; PushInt 100; Newc;
-                           Stu 255; Stu 255]
+                           Sti 255; Sti 255]
     try
         let finalSt = List.last (runVM st false)
         Assert.AreEqual (
@@ -399,11 +399,11 @@ let testStu1 () =
 let testDict0 () =
     let st = initialState [PushInt 10; // 10
                            Newc; // 10 b
-                           Stu 128; // b'
+                           Sti 128; // b'
                            PushInt 200; // b' 200(key)
                            NewDict; // b' 200 D
                            PushInt 10; // b' 200 D 10
-                           DictUSetB] // D'
+                           DictISetB] // D'
     try
         let finalSt = List.last (runVM st false)
         Assert.AreEqual (
@@ -416,7 +416,7 @@ let testDict0 () =
 
 [<Test>]
 let testDict1 () =
-    let st = initialState [DictUGet] // k D' i -> v
+    let st = initialState [DictIGet] // k D' i -> v
     st.stack <- [Int 128;
                  Cell [SDict (Map [(200, [SInt 10])])]; Int 200]
     try
@@ -491,15 +491,15 @@ let testCalldict1 () =
     )
     // input = k, output = heap[k]
     let (heapLookup, heapLookupCode) =
-        (3, heapGetCode @ [PushInt 128; DictUGet; ThrowIfNot 1])
+        (3, heapGetCode @ [PushInt 128; DictIGet; ThrowIfNot 1])
 
     // input = (k:int) (v:Builder); output = heap'[k := v]
     let (heapUpdateAt, heapUpdateAtCode) =
-        (4, heapGetCode @ [PushInt 128; DictUSetB] )
+        (4, heapGetCode @ [PushInt 128; DictISetB] )
 
     // intput = n , output = builder (contains n as uint)
     let (intToBuilder, intToBuilderCode) =
-        (5, [Newc; Stu 128])
+        (5, [Newc; Sti 128])
 
     // the structure of C7 is as follows:
     // C7[0] = heap (dict)
@@ -584,7 +584,7 @@ let testRollRev2 () =
         let finalSt = List.last (runVM st false)
         Assert.Fail("must not reach this point")
     with
-        | TVMError s ->
+        | _ ->
             Assert.Pass() // Stack underflow
 
 [<Test>]
