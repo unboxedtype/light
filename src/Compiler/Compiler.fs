@@ -283,14 +283,14 @@ let mapMkap () : TVM.Code =
 // .. an .. a1 a -> .. an .. a1 , heap[an] := NInd a
 let mapUpdate (n:int) : TVM.Code =
     (printStack (sprintf "mapUpdate %d" n)) @
-    [Push (n+1); Swap] @ // an .. a1 an a
-    [PushInt (int GMachine.NodeTags.NInd); // a1 an a 3   (note: 3 = NInd tag)
-     PushCont mapUnwindNInd; // an .. a1 an a 3 c
-     Rot; // an .. a1 an 3 c a
-     Tuple 3;     // an .. a1 an (3,c,a)
-     ] @    // an .. a1 an (3,c,a)
-    getHeap @     // an .. a1 an (3,c,a) heap
-    [Xchg 2] @    // an .. a1 heap (3,c,a) an
+    [PushInt (int GMachine.NodeTags.NInd); // an ..a1 a 3   (note: 3 = NInd tag)
+     PushCont mapUnwindNInd; // an .. a1 a 3 c
+     Rot; // an .. a1 3 c a
+     Tuple 3;     // an .. a1 (3,c,a)
+     ] @    // an .. a1 (3,c,a)
+    [Push (n+1)] @    // an .. a1 (3,c,a) an
+    getHeap @ // an .. a1 (3,c,a) an heap
+    [RotRev] @ // an .. a1 heap (3,c,a) an
     TVM.arrayPut @ // .. an .. a1 heap'
     putHeap       // an .. a1
 
