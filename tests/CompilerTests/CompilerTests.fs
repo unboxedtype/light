@@ -826,3 +826,25 @@ let testFactorial5 () =
     let final = List.last (TVM.runVMLimits tvmInitSt false 5000)
     Assert.AreEqual (nnum 120, getResultHeap final);
     Assert.AreEqual (1, List.length (getResultStack final));
+
+[<Test>]
+let testFactorial10 () =
+    // fact n = if n == 0 then 1 else n * fact(n-1)
+    // main = fact 10
+    let coreProgGM =
+        [("fact", ["n"],
+          GMachine.EIf (
+            GMachine.EEq (GMachine.EVar "n", GMachine.ENum 0),
+            GMachine.ENum 1, // true branch
+            GMachine.EMul (GMachine.EVar "n",
+                           GMachine.EAp (GMachine.EVar "fact",
+                                         GMachine.ESub (GMachine.EVar "n",
+                                                        GMachine.ENum 1)))) // else branch
+          )
+         ("main", [], GMachine.EAp (GMachine.EVar "fact", GMachine.ENum 10))]
+    let gmInitSt = GMachine.compile coreProgGM
+    let tvmInitSt = compile gmInitSt
+    TVM.dumpFiftScript "testFactorial10.fif" (TVM.outputFift tvmInitSt)
+    let final = List.last (TVM.runVMLimits tvmInitSt false 5000)
+    Assert.AreEqual (nnum 3628800, getResultHeap final);
+    Assert.AreEqual (1, List.length (getResultStack final));

@@ -456,11 +456,12 @@ let getResultStack (st:TVM.TVMState) : TVM.Stack =
 
 // get node with address n from the heap
 let getHeapAt (n:int) (st:TVM.TVMState) : TVM.Value =
-    let (Tup (Null :: Tup heap :: _))  = st.cr.c7
-    let i = n / TVM.bucketSize
-    let j = n % TVM.bucketSize
-    let (Tup h1) = List.item i heap
-    List.item j h1
+    let (Tup (Null :: t :: _))  = st.cr.c7
+    match t with
+        | Tup heap ->
+            List.item n heap
+        | Null ->
+            Null
 
 // extract heap node with the address given on the stack top
 let getResultHeap (st:TVM.TVMState) : TVM.Value =
@@ -569,19 +570,12 @@ let prepareHeap (heap:GMachine.GmHeap): TVM.Value =
 // We need to construct it by the given GmHeap.
 // GmHeap = Map<Addr, Node>
     let kv = Map.toList heap
-    let emptyHeap =
-        let emptyBucket =
-            List.init TVM.bucketSize (fun _ -> TVM.arrayDefaultVal)
-        List.init TVM.bucketSize (fun _ -> emptyBucket)
+    let emptyHeap = List.init TVM.bucketSize (fun _ -> TVM.arrayDefaultVal)
     let put h k v =
-        let i = k / TVM.bucketSize
-        let j = k % TVM.bucketSize
-        let ai = List.item i h
-        let aij = List.updateAt j v ai
-        List.updateAt i aij h
+        List.updateAt k v h
     let l =
         List.fold (fun h (k,v) -> put h k (encodeNode v)) emptyHeap kv
-    Tup (l |> List.map Tup)
+    Tup l
 
 let prepareC7 heap heapCounter globals unwindCont =
     Tup [Null; heap; heapCounter; globals; unwindCont]

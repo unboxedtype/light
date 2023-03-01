@@ -63,6 +63,7 @@ type Instruction =
     | Third
     | Index of k:int
     | IndexVar
+    | IndexVarQ
     | Untuple of n:int
     | SetIndex of k:int
     | SetIndexVar
@@ -805,7 +806,8 @@ let setindexvarq st =
     failIf (List.length st.stack < 3) "SETINDEXVARQ: stack underflow"
     let (k :: x :: t :: stack') = st.stack
     failIfNot (t.isTuple || t.isNull) "SETINDEXVARQ: type check error"
-    failIf (x.isInt && (x.unboxInt < 0 || x.unboxInt >= 255)) "SETINDEXVARQ: range check error"
+    failIfNot (k.isInt) "SETINDEXVARQ: type check error"
+    failIf (k.unboxInt < 0 || k.unboxInt >= 255) "SETINDEXVARQ: range check error"
     if (x.isNull && (t.isNull || List.length t.unboxTup <= k.unboxInt)) then
         st.put_stack (t :: stack')
     else
@@ -833,6 +835,22 @@ let indexvar st =
     failIf (k >= l.Length) "range check error"
     st.put_stack (l.Item k :: stack')
     st
+
+// INDEXVARQ (t k – x)
+// If k ≥ n, or if t is Null, returns a Null instead of x.
+let indexvarq st =
+    let (ki :: t :: stack') = st.stack
+    failIfNot (ki.isInt) "INDEXVARQ: type check error"
+    failIfNot (t.isTuple || t.isNull) "INDEXVARQ: type check error"
+    let k = ki.unboxInt
+    let l = if t.isTuple then t.unboxTup else []
+    failIf (k < 0 || k > 254) "range check error"
+    if (k >= List.length l) then
+        st.put_stack (Null :: stack')
+    else
+        st.put_stack (l.Item k :: stack')
+    st
+
 
 let tuplevar st =
     let ((Int n) :: stack') = st.stack
@@ -1091,6 +1109,8 @@ let dispatch (i:Instruction) (trace:bool) =
             index k
         | IndexVar ->
             indexvar
+        | IndexVarQ ->
+            indexvarq
         | Untuple n ->
             untuple n
         | SetIndex k ->
@@ -1263,6 +1283,7 @@ let rec instrToFift (i:Instruction) : string =
         | XchgX -> "XCHGX"
         | DivMod -> "DIVMOD"
         | IndexVar -> "INDEXVAR"
+        | IndexVarQ -> "INDEXVARQ"
         | SetIndexVar -> "SETINDEXVAR"
         | SetIndexVarQ -> "SETINDEXVARQ"
         | DumpStk -> "DUMPSTK"
@@ -1328,37 +1349,17 @@ let dumpFiftScript (fname:string) (str:string)  =
     use f = System.IO.File.CreateText(fname)
     f.WriteLine(str)
 
-let bucketSize = 10;
+let bucketSize = 254;
 let arrayDefaultVal = Null
-let arrayNew =
-    [PushInt bucketSize; PushCont [PushNull]; Repeat;
-     PushInt bucketSize; TupleVar; PushInt (bucketSize-1);
-     PushCont [Dup]; Repeat; PushInt bucketSize; TupleVar]
+let arrayNew = [PushNull]
 
 // a v k -> a'
 let arrayPut =
-    [PushInt bucketSize; // a v k bs
-     DivMod;  // a v i j
-     Xchg2 (1,2) // a i v j
-     Swap2; // v j a i
-     Dup2;  // v j a i a i
-     Rot2;  // a i a i v j
-     Swap2; // a i v j a i
-     IndexVar; // a i v j a[i]
-     Xchg 2; // a i a[i] j v
-     Swap;   // a i a[i] v j
-     SetIndexVar; // a i a[i][j -> v]
-     Swap;
-     SetIndexVar] // a[i -> a[i][j -> v]]
+    [SetIndexVarQ]
 
 // a k -> a[k]
 let arrayGet =
-    [PushInt bucketSize; // a k bs
-     DivMod; // a i j
-     RollRev 2; // j a i
-     IndexVar; // j a[i]
-     Swap; // a[i] j
-     IndexVar] // a[i][j]
+    [IndexVarQ]
 
 // a k -> a[k] -1 | null 0
 let arrayGetWithCode =
