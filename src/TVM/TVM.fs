@@ -66,6 +66,7 @@ type Instruction =
     | Untuple of n:int
     | SetIndex of k:int
     | SetIndexVar
+    | SetIndexVarQ
     | TPush
     | Newc
     | Endc
@@ -793,6 +794,37 @@ let setindexvar st =
     st.put_stack (Tup (List.updateAt k x t) :: stack')
     st
 
+// SETINDEXVARQ (t x k – t')
+// sets the k-th component of Tuple t to x, where 0 ≤ k < 255, and returns
+// the resulting Tuple t 0 . If |t| ≤ k, first extends the original Tuple
+// to length k+1  by setting all new components to  Null. If the original
+// value of t is Null, treats it as an empty Tuple. If t is not Null or Tuple,
+// throws an exception. If x is Null and either |t| ≤ k or t is Null, then
+// always returns t' = t (and does not consume tuple creation gas).
+let setindexvarq st =
+    failIf (List.length st.stack < 3) "SETINDEXVARQ: stack underflow"
+    let (k :: x :: t :: stack') = st.stack
+    failIfNot (t.isTuple || t.isNull) "SETINDEXVARQ: type check error"
+    failIf (x.isInt && (x.unboxInt < 0 || x.unboxInt >= 255)) "SETINDEXVARQ: range check error"
+    if (x.isNull && (t.isNull || List.length t.unboxTup <= k.unboxInt)) then
+        st.put_stack (t :: stack')
+    else
+        let t' = if t.isNull then [] else t.unboxTup
+        let k' = k.unboxInt
+        let tlen = List.length t'
+        if  tlen <= k' then
+            let ext = List.init (k' + 1 - tlen) (fun _ -> Null)
+            let t'' = t' @ ext
+            let res = List.updateAt k' x t''
+            st.put_stack (Tup res :: stack')
+        else
+            let k' = k.unboxInt
+            let res = List.updateAt k' x t'
+            st.put_stack (Tup res :: stack')
+    st
+
+
+
 // INDEXVAR (t k – x)
 let indexvar st =
     let ((Int k) :: (Tup l) :: stack') = st.stack
@@ -1065,6 +1097,8 @@ let dispatch (i:Instruction) (trace:bool) =
             setindex k
         | SetIndexVar ->
             setindexvar
+        | SetIndexVarQ ->
+            setindexvarq
         | TPush ->
             tpush
         | Newc ->
@@ -1230,6 +1264,7 @@ let rec instrToFift (i:Instruction) : string =
         | DivMod -> "DIVMOD"
         | IndexVar -> "INDEXVAR"
         | SetIndexVar -> "SETINDEXVAR"
+        | SetIndexVarQ -> "SETINDEXVARQ"
         | DumpStk -> "DUMPSTK"
         | Tuple n -> (string n) + " TUPLE"
         | BlkDrop n -> (string n) + " BLKDROP"

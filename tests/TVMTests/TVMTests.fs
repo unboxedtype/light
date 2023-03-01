@@ -1181,3 +1181,51 @@ let testExecuteDupCont () =
     with
         | TVMError s ->
             Assert.Fail(s)
+
+[<Test>]
+let testSetIndexVarQ0 () =
+    let st = initialState [SetIndexVarQ]
+    try
+        let finalSt = List.last (runVM st false)
+        let stk = List.tail finalSt.stack
+        Assert.Fail("shall not reach this point")
+    with
+        | _ -> // stack underflow
+            Assert.Pass()
+
+[<Test>]
+let testSetIndexVarQ1 () =
+    let st = initialState [PushNull; PushInt 1; PushInt 0; SetIndexVarQ]
+    let finalSt = List.last (runVM st false)
+    let stk = List.tail finalSt.stack
+    Assert.AreEqual([Tup [Int 1]], stk)
+
+[<Test>]
+let testSetIndexVarQ2 () =
+    let st = initialState [PushNull; PushInt 1; PushInt 3; SetIndexVarQ]
+    let finalSt = List.last (runVM st false)
+    let stk = List.tail finalSt.stack
+    Assert.AreEqual([Tup [Null; Null; Null; Int 1]], stk)
+
+[<Test>]
+let testSetIndexVarQ3 () =
+    let st = initialState [PushNull; PushInt 1; PushInt 3; SetIndexVarQ;
+                           PushInt 0; PushInt 2; SetIndexVarQ]
+    let finalSt = List.last (runVM st false)
+    let stk = List.tail finalSt.stack
+    Assert.AreEqual([Tup [Null; Null; Int 0; Int 1]], stk)
+
+[<Test>]
+let testSetIndexVarQ4 () =
+    let st = initialState [PushNull; PushNull; PushInt 10; SetIndexVarQ]
+    let finalSt = List.last (runVM st false)
+    let stk = List.tail finalSt.stack
+    Assert.AreEqual([Null], stk)
+
+[<Test>]
+let testSetIndexVarQ5 () =
+    let st = initialState [PushNull; PushInt 1; PushInt 3; SetIndexVarQ;
+                           PushNull; PushInt 4; SetIndexVarQ]
+    let finalSt = List.last (runVM st false)
+    let stk = List.tail finalSt.stack
+    Assert.AreEqual([Tup [Null; Null; Null; Int 1]], stk)
