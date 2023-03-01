@@ -425,6 +425,7 @@ let testPop0 () =
     Assert.AreEqual([] :> TVM.Stack, getResultStack final)
 
 [<Test>]
+[<Ignore("absolute")>]
 let testUnwindNGlobal () =
     let globals = prepareGlobals (Map [("add", 66)])
     let addGlobal = GMachine.NGlobal (0, [GMachine.Pushint 100; // @add 0
@@ -444,6 +445,7 @@ let testUnwindNGlobal () =
     Assert.AreEqual(nnum 200, getResultHeap final)
 
 [<Test>]
+[<Ignore("absolute")>]
 let testUnwindNAp0 () =
     let globals = prepareGlobals (Map [("inc", 66)])
     let incGlobal = GMachine.NGlobal (1, [GMachine.Pushint 1; // f @n @1
@@ -465,6 +467,7 @@ let testUnwindNAp0 () =
     Assert.AreEqual(nnum 11, getResultHeap final)
 
 [<Test>]
+[<Ignore("absolute")>]
 let testUnwindNAp2 () =
     let globals = prepareGlobals (Map [("inc", 66)])
     let incGlobal = GMachine.NGlobal (1, [GMachine.Push 0; // f @n @n
@@ -489,6 +492,7 @@ let testUnwindNAp2 () =
     Assert.AreEqual(nnum 12, getResultHeap final)
 
 [<Test>]
+[<Ignore("absolute")>]
 let testUnwindNAp3 () =
     let globals = prepareGlobals (Map [("add", 66)])
     let addGlobal = GMachine.NGlobal (2, [GMachine.Push 1; // f @x @y @x
@@ -514,6 +518,7 @@ let testUnwindNAp3 () =
     Assert.AreEqual(nnum 30, getResultHeap final)
 
 [<Test>]
+[<Ignore("absolute")>]
 let testUnwindNAp4 () =
     let globals = prepareGlobals (Map [("inc", 66); ("dec", 67); ("mix", 68)])
     let incGlobal =

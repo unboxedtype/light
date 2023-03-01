@@ -73,15 +73,12 @@ let printStack (s:string) =
 // node -> a , where heap[a] := n
 let heapAlloc =
     (printStack "heapAlloc") @
-    getHeapCounter @ // node k
-    [Inc; Dup] @ // node k' k'
-    putHeapCounter @ // node k'
-    getHeap @ // node k' a
-    [Xchg 2] @ // a k' node
-    [Push 1] @ // a k' node k'
-    [Xchg2 (2,3)] @ // k' a node k'
-    TVM.arrayPut @ // k' a'
-    putHeap // k'
+    getHeap @ // node h
+    [Swap] @ // h node
+    TVM.arrayAppend @ // h'
+    [Dup] @ // h' h'
+    putHeap @ // h'
+    [TLen; Dec] // |h'| - 1
 
 // k -> heap[k] or exception
 let heapLookup =
@@ -138,13 +135,13 @@ let mapUnwindNConstr : TVM.Code =
 // Please note that in case of n = 0 the result will be 'a0'
 // so we keep the root node at stack at all times
 let unwindRearrange () : TVM.Code =
-    [GetGlob 9; // an .. a0 n
-     Pick;  // an .. a0 an
+    [GetGlob 9;     // an .. a0 n
+     Pick;          // an .. a0 an
      (* DumpStk; *)
-     GetGlob 9; // an ... a0 an n
-     RollRevX; // an an .. a1 a0
+     GetGlob 9;     // an ... a0 an n
+     RollRevX;      // an an .. a1 a0
      Drop;
-     GetGlob 9; // an an .. a1 n  (note: n = args count )
+     GetGlob 9;     // an an .. a1 n  (note: n = args count )
      PushCont (heapLookup @  // an an .. (NAp _ a0 a1')
                checkTag (int GMachine.NodeTags.NAp) @
                [Index (if debug then 3 else 2);   // an an .. a1'
@@ -157,15 +154,15 @@ let unwindRearrange () : TVM.Code =
 // an .. a1 a0 heap[n]  (heap[n] = (NGlobal _ n c)
 let mapUnwindNGlobal : TVM.Code =
     (printStack "unwind NGlobal") @
-    [Dup;        // an .. a1 a0 heap[n] heap[n]
+    [Dup;                             // an .. a1 a0 heap[n] heap[n]
      Index (if debug then 2 else 1);  // an .. a0 heap[n] NGlobal.n
-     Depth; Dec; Dec; Dec; // ... a0 heap[a0] NGlobal.n k   (k = number of passed arguments)
+     Depth; Dec; Dec; Dec;            // ... a0 heap[a0] NGlobal.n k   (k = number of passed arguments)
      Swap;
-     Less;        // an .. a0 heap[a0] k<NGlobal.n?
+     Less;                            // an .. a0 heap[a0] k<NGlobal.n?
      ThrowIf (int RuntimeErrors.PartialApplication); // ... a0 heap[a0]
-     Dup; // an ... a0 heap[a0] heap[a0]
-     Index (if debug then 2 else 1); SetGlob 9; // an ... a0 heap[a0]  (c7[9] = nglobal.a0)
-     Index (if debug then 3 else 2); SetGlob 10] @ // an ... a0       (c7[10] = nglobal.c)
+     Dup;                             // an ... a0 heap[a0] heap[a0]
+     Index (if debug then 2 else 1); SetGlob 9;    // an ... a0 heap[a0]  (c7[9] = nglobal.a0)
+     Index (if debug then 3 else 2); SetGlob 10] @ // an ... a0           (c7[10] = nglobal.c)
      (unwindRearrange ()) @ // an ... a0
      [GetGlob 10; Execute]
 
@@ -372,7 +369,7 @@ let mapUnwind () : TVM.Code =
     (printStack "Unwind") @
     [Dup] @ // n n
     heapLookup @
-    [Dup; Index (if debug then 1 else 0); JmpX] // at the 1st position we have a continuation we need to jump to
+    [DumpStk; Dup; Index (if debug then 1 else 0); JmpX] // at the 1st position we have a continuation we need to jump to
 
 let mapEval () : TVM.Code =
     (printStack "Eval") @
@@ -579,12 +576,6 @@ let prepareHeap (heap:GMachine.GmHeap): TVM.Value =
 
 let prepareC7 heap heapCounter globals unwindCont =
     Tup [Null; heap; heapCounter; globals; unwindCont]
-
-let selectorMap = Map [(0, [SCode mapUnwindNNum] );
-                       (1, [SCode mapUnwindNAp] );
-                       (2, [SCode mapUnwindNGlobal] );
-                       (3, [SCode mapUnwindNInd] );
-                       (4, [SCode mapUnwindNConstr] )]
 
 let unwindCont =
     TVM.Cont { TVM.Continuation.Default with code = mapUnwind () }

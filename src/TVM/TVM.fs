@@ -587,9 +587,13 @@ let nil st =
 
 // TPUSH (t x – t')
 let tpush st =
-    let (x :: (Tup ut) :: stack) = st.stack
-    failIf (List.length ut = 255) "TPUSH: Type check exception"
-    st.stack <- Tup (x :: ut) :: stack
+    let (x :: t :: stack) = st.stack
+    match t with
+        | Null ->
+            st.stack <- (Tup [x] :: stack)
+        | Tup l ->
+            failIf (List.length l >= 255) "TPUSH: Type check exception"
+            st.stack <- (Tup (l @ List.singleton x) :: stack)
     st
 
 // INDEX k (t - t[k]), 0 <= k <= 15
@@ -1349,11 +1353,15 @@ let dumpFiftScript (fname:string) (str:string)  =
     use f = System.IO.File.CreateText(fname)
     f.WriteLine(str)
 
-let bucketSize = 254;
+let bucketSize = 255;
 let arrayDefaultVal = Null
 let arrayNew = [PushNull]
 
-// a v k -> a'
+// a v -> a'
+let arrayAppend =
+    [TPush]
+
+// a v -> a'
 let arrayPut =
     [SetIndexVarQ]
 
