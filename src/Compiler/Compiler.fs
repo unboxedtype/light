@@ -2,7 +2,7 @@ module Compiler
 
 // Debug switch turns on excessive logging
 // Turn it off to produce gas-optimal executables
-let debug = false
+let debug = true
 
 // Incomplete pattern matches on this expression.
 #nowarn "25"
@@ -85,12 +85,11 @@ let heapLookup =
     (printStack "heapLookup") @
     getHeap @ // k h
     [Swap] @ // h k
-    if debug then (
+    (if debug then (
         TVM.arrayGetWithCode @
         [ThrowIfNot (int RuntimeErrors.HeapNodeNotFound)])
     else
-        TVM.arrayGet
-
+        TVM.arrayGet)
 // (T, ...) -> (T, ...) if T = tag,
 // or throws otherwise
 let checkTag tag =
@@ -154,6 +153,7 @@ let unwindRearrange () : TVM.Code =
 // an .. a1 a0 heap[n]  (heap[n] = (NGlobal _ n c)
 let mapUnwindNGlobal : TVM.Code =
     (printStack "unwind NGlobal") @
+    [GasLeft] @
     [Dup;                             // an .. a1 a0 heap[n] heap[n]
      Index (if debug then 2 else 1);  // an .. a0 heap[n] NGlobal.n
      Depth; Dec; Dec; Dec;            // ... a0 heap[a0] NGlobal.n k   (k = number of passed arguments)
@@ -164,6 +164,7 @@ let mapUnwindNGlobal : TVM.Code =
      Index (if debug then 2 else 1); SetGlob 9;    // an ... a0 heap[a0]  (c7[9] = nglobal.a0)
      Index (if debug then 3 else 2); SetGlob 10] @ // an ... a0           (c7[10] = nglobal.c)
      (unwindRearrange ()) @ // an ... a0
+     [GasLeft] @
      [GetGlob 10; Execute]
 
 // If the current top stack element is:
@@ -628,4 +629,7 @@ let compile (gms: GMachine.GmState) : TVM.TVMState =
         |> List.map ( fun x -> (hash (fst x), snd x) ) // [(hash "main", [SInt 10]), ...]
     let heap' = GMachine.getHeap gms
     let initC7Code = initC7with heap' globalsInts (globalsCnt - 1) unwindCont
-    { code = initC7Code @ code; stack = stack; cr = { TVM.ControlRegs.Default with c0 = Some c0 } }
+    { code = initC7Code @ code;
+      stack = stack;
+      cr = { TVM.ControlRegs.Default with c0 = Some c0 }
+      gas = TVM.GasLimits.Default }

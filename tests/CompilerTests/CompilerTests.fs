@@ -787,6 +787,9 @@ let testIfThenElseFalse () =
     let final = List.last (TVM.runVMLimits tvmInitSt false 1000)
     Assert.AreEqual (nnum 1, getResultHeap final);
     Assert.AreEqual (1, List.length (getResultStack final));
+    printfn "%A: Gas consumed: %d"
+            NUnit.Framework.TestContext.CurrentContext.Test.Name
+            (final.gas.gas_limit - final.gas.gas_remaining)
 
 [<Test>]
 let testMaxFunction0 () =
@@ -798,6 +801,9 @@ let testMaxFunction0 () =
     let final = List.last (TVM.runVMLimits tvmInitSt false 1000)
     Assert.AreEqual (nnum 10, getResultHeap final);
     Assert.AreEqual (1, List.length (getResultStack final));
+    printfn "%A: Gas consumed: %d"
+            NUnit.Framework.TestContext.CurrentContext.Test.Name
+            (final.gas.gas_limit - final.gas.gas_remaining)
 
 [<Test>]
 let testMaxFunction1 () =
@@ -809,6 +815,9 @@ let testMaxFunction1 () =
     let final = List.last (TVM.runVMLimits tvmInitSt false 1000)
     Assert.AreEqual (nnum 10, getResultHeap final);
     Assert.AreEqual (1, List.length (getResultStack final));
+    printfn "%A: Gas consumed: %d"
+            NUnit.Framework.TestContext.CurrentContext.Test.Name
+            (final.gas.gas_limit - final.gas.gas_remaining)
 
 [<Test>]
 let testFactorial5 () =
@@ -828,9 +837,12 @@ let testFactorial5 () =
     let gmInitSt = GMachine.compile coreProgGM
     let tvmInitSt = compile gmInitSt
     TVM.dumpFiftScript "testFactorial5.fif" (TVM.outputFift tvmInitSt)
-    let final = List.last (TVM.runVMLimits tvmInitSt false 5000)
+    let final = List.last (TVM.runVMLimits tvmInitSt true 5000)
     Assert.AreEqual (nnum 120, getResultHeap final);
     Assert.AreEqual (1, List.length (getResultStack final));
+    printfn "%A: Gas consumed: %d"
+            NUnit.Framework.TestContext.CurrentContext.Test.Name
+            (final.gas.gas_limit - final.gas.gas_remaining)
 
 [<Test>]
 let testFactorial10 () =
@@ -853,3 +865,6 @@ let testFactorial10 () =
     let final = List.last (TVM.runVMLimits tvmInitSt false 5000)
     Assert.AreEqual (nnum 3628800, getResultHeap final);
     Assert.AreEqual (1, List.length (getResultStack final));
+    printfn "%A: Gas consumed: %d"
+            NUnit.Framework.TestContext.CurrentContext.Test.Name
+            (final.gas.gas_limit - final.gas.gas_remaining)

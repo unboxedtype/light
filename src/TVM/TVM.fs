@@ -18,7 +18,8 @@ type Action =
 
 type Instruction =
     | CondSel
-    | DumpHeap          // this is artificial instruction.
+    | DumpHeap          // this is artificial instruction introduced for debugging.
+    | GasLeft           // this is artificial instruction introduced for debugging.
     | PrintStr of s:string
     | Push of n:int
     | PushRef of c:SValue list
@@ -202,12 +203,22 @@ let failIf b str =
 let emptyTuple = []
 let emptyContinuation = Continuation.Default
 
+type GasLimits =
+    { gas_max: int;
+      gas_limit:int;
+      gas_credit:int;
+      gas_remaining:int }
+    static member Default = { gas_max = 1000000;
+                              gas_limit = 1000000;
+                              gas_remaining = 1000000;
+                              gas_credit = 0; }
 type TVMState =
     { mutable code:Code;
       mutable stack:Stack;
-      mutable cr:ControlRegs; }
+      mutable cr:ControlRegs;
+      mutable gas:GasLimits; }
     static member Default = {
-        code = []; stack = []; cr = ControlRegs.Default }
+        code = []; stack = []; cr = ControlRegs.Default; gas = GasLimits.Default; }
     member this.preclear_cr (save:ControlRegs) =
         if save.c0.IsSome then this.cr.c0 <- None else ()
         if save.c3.IsSome then this.cr.c3 <- None else ()
@@ -329,7 +340,11 @@ let ret st =
             st
 
 let initialState (code:Code) : TVMState =
-    let st = { code = code; stack = []; cr = {ControlRegs.Default with c0 = Some Continuation.ContQuit } }
+    let st = { code = code;
+               stack = [];
+               cr = {ControlRegs.Default with c0 = Some Continuation.ContQuit };
+               gas = GasLimits.Default
+           }
     st
 
 let mkBuilder (vs:SValue list) =
@@ -1011,8 +1026,15 @@ let condsel st =
         st.put_stack (y :: stack')
     st
 
+let gasleft trace st =
+    if trace then
+        printfn "GASLEFT: %d" st.gas.gas_remaining
+    st
+
 let dispatch (i:Instruction) (trace:bool) =
     match i with
+        | GasLeft ->
+            gasleft trace
         | CondSel ->
             condsel
         | DumpHeap ->
@@ -1188,18 +1210,114 @@ let dispatch (i:Instruction) (trace:bool) =
         | _ ->
             failwith ("unsupported instruction: " + (string i))
 
+let gasCost (i: Instruction) =
+    match i with
+        | PrintStr _ -> 26
+        | GasLeft -> 0
+        | DumpHeap -> 0
+        | GetGlob n -> 26
+        | SetGlob n -> 26 + n + 1
+        | PushInt n -> 18     // not precise
+        | PushNull -> 18
+        | PushCont c -> 26
+        | PushRef c -> 18 + 25
+        | Tuple n -> 26 + n
+        | Swap -> 18
+        | TPush -> 26 + 10    // 26 + n, where n is a tuple length
+        | Dup -> 18
+        | TLen -> 26
+        | Push n -> 18
+        | RotRev -> 18
+        | Rot -> 18
+        | IsZero -> 18
+        | SetIndexVarQ -> 26 + 10 // 26 + i, where i is a tuple length
+        | BlkDrop n ->  26
+        | IndexVarQ -> 26
+        | DumpStk -> 26
+        | Index n -> 26
+        | Execute -> 18
+        | JmpX -> 18
+        | Drop -> 18
+        | Ends -> 18
+        | Newc -> 18
+        | Ldi n -> 26
+        | Equal -> 18
+        | Dec -> 18
+        | Repeat -> 18
+        | Ret -> 5
+        | Pick -> 18
+        | DictISetB -> 1650    // overapprox.
+        | XchgX -> 18
+        | Xchg _ -> 18
+        | TupleVar -> 26 + 5   // overapprox. actually: 26 + s0
+        | Nil -> 26
+        | Sub -> 18
+        | Add -> 18
+        | Mul -> 18
+        | Div -> 26
+        | DivMod -> 26
+        | Rot2 -> 26
+        | RollRev n -> 26
+        | RollRevX -> 26
+        | Roll _ -> 26
+        | Untuple n -> 26 + n
+        | Swap2 -> 26
+        | Sti n -> 26
+        | SetIndexVar -> 26   // 26 + s0 ?
+        | SetIndex n -> 26 + n
+        | PushCtr _ -> 26
+        | PopCtr _ -> 26
+        | Pop n -> 18
+        | IsNull -> 18
+        | IndexVar -> 26
+        | Greater -> 18
+        | Less -> 18
+        | SetNumArgs _ -> 26
+        | PushSlice c -> 22
+        | IfElse -> 18
+        | Inc -> 18
+        | Bless -> 26
+        | Depth -> 18
+        | DictIGet -> 26
+        | Endc -> 500
+        | CallDict _ -> 26
+        | NewDict -> 18
+        | IfJmp -> 18
+        | Xchg2 _ -> 18
+        | Second -> 26
+        | Third -> 26
+        | ThrowIf _ -> 26
+        | ThrowIfNot _ -> 26
+        | UntupleVar -> 26 + 5  // approx. actually, 26 + s0
+        | CondSel -> 26
+        | _ ->
+            failwith (sprintf "not implemented: %A" i)
+
+let consumeGas (i:Instruction) st : TVMState =
+    if (st.gas.gas_remaining - (gasCost i) < 0) then
+        raise (TVMError "out of gas exception")
+    let cost = gasCost i
+    st.gas <- { st.gas with gas_remaining = st.gas.gas_remaining - cost }
+    st
+
+let consumeGasVal (cost:int) st : TVMState =
+    if (st.gas.gas_remaining - cost < 0) then
+        raise (TVMError "out of gas exception")
+    st.gas <- { st.gas with gas_remaining = st.gas.gas_remaining - cost }
+    st
+
 let step (st:TVMState) trace : TVMState =
     match (st.code) with
         | [] ->
             if trace then
                 printfn "Implicit RET"
-            ret st
+            ret (consumeGasVal 5 st)    // 5 = implicit ret cost
         | i :: code' ->
             if trace then
                 printfn "Executing %A" i
             st.code <- code'
             try
-               dispatch i trace st
+                dispatch i trace (consumeGas i st)
             with
                 | TVMError s ->
                     failwith ("Execution aborted with TVM exception: " + s)
@@ -1234,6 +1352,8 @@ let cellToSliceFift v = v + " <s "
 
 let rec instrToFift (i:Instruction) : string =
     match i with
+        | GasLeft -> ""
+        | DumpHeap -> ""
         | PrintStr s -> "\"" + s + "\" PRINTSTR"
         | Push n -> "s" + (string n) + " PUSH"
         | PushSlice v ->
