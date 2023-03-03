@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="GMachine2.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../GMachine/GMachine.fsproj" />
+  </ItemGroup>
+
+</Project>

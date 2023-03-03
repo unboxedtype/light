@@ -11,8 +11,14 @@ test: test_gm test_tvm test_comp
 test_gm:
 	@dotnet test /m:1 ./tests/GMachineTests
 
+test_gm2:
+	@dotnet test /m:1 ./tests/GMachine2Tests
+
 test_tvm:
 	@dotnet test /m:1 ./tests/TVMTests
 
 test_comp:
 	@dotnet test /m:1 ./tests/CompilerTests
+
+test_comp2:
+	@dotnet test /m:1 ./tests/Compiler2Tests
