@@ -356,7 +356,7 @@ let testNewC () =
     let st = initialState [Newc]
     try
         let finalSt = List.last (runVM st false)
-        Assert.AreEqual (Some (Builder []), getResult finalSt)
+        Assert.AreEqual (Some (Builder (CellData ([], []))), getResult finalSt)
     with
         | TVMError s ->
             Assert.Fail(s)
@@ -366,7 +366,7 @@ let testEndC () =
     let st = initialState [Newc; Endc]
     try
         let finalSt = List.last (runVM st false)
-        Assert.AreEqual (Some (Cell []), getResult finalSt)
+        Assert.AreEqual (Some (Cell (CellData ([], []))), getResult finalSt)
     with
         | TVMError s ->
             Assert.Fail(s)
@@ -376,7 +376,7 @@ let testStu0 () =
     let st = initialState [PushInt 100; Newc; Sti 255]
     try
         let finalSt = List.last (runVM st false)
-        Assert.AreEqual (Some (Builder [SInt 100]), getResult finalSt)
+        Assert.AreEqual (Some (Builder (CellData ([SInt 100], []))), getResult finalSt)
     with
         | TVMError s ->
             Assert.Fail(s)
@@ -388,7 +388,7 @@ let testStu1 () =
     try
         let finalSt = List.last (runVM st false)
         Assert.AreEqual (
-            Some (Builder [SInt 100; SInt 200]),
+            Some (Builder (CellData ([SInt 100; SInt 200], []))),
             getResult finalSt
         )
     with
@@ -407,7 +407,7 @@ let testDict0 () =
     try
         let finalSt = List.last (runVM st false)
         Assert.AreEqual (
-            Some (Cell [SDict (Map [(200, [SInt 10])])]),
+            Some (Cell (CellData ([SDict (Map [(200, [SInt 10])])], []))),
             getResult finalSt
         )
     with
@@ -418,12 +418,12 @@ let testDict0 () =
 let testDict1 () =
     let st = initialState [DictIGet] // k D' i -> v
     st.stack <- [Int 128;
-                 Cell [SDict (Map [(200, [SInt 10])])]; Int 200]
+                 Cell (CellData ([SDict (Map [(200, [SInt 10])])], [])); Int 200]
     try
         let finalSt = List.last (runVM st false)
         let ((Int 0) :: (Int -1) :: s1 :: t) = finalSt.stack
         Assert.AreEqual (
-            (Int 0) :: (Int -1) :: [Slice [SInt 10]],
+            (Int 0) :: (Int -1) :: [Slice (CellData ([SInt 10], []))],
             List.take 3 finalSt.stack)
     with
         | TVMError s ->

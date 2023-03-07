@@ -8,6 +8,15 @@ open System.Collections.Generic
 
 exception TVMError of string
 
+let failIfNot b str =
+    if (not b) then
+        failwith str
+    else
+        ()
+
+let failIf b str =
+    failIfNot (not b) str
+
 // codepage number is an unsigned integer
 type CodePage =
     int
@@ -107,14 +116,27 @@ type Instruction =
     | Bless
 and Code =
     Instruction list
+and CellData =
+    CellData of data:SValue list *   // data has to fit into 1023 bits
+                refs:Value list   // up to 4 cell references
+        static member Default =
+            CellData ([], [])
+        member this.addVal (v:SValue) =
+            let (CellData (d,r)) = this
+            CellData (d @ [v], r)
+        member this.addRef (c:Value) =
+            failIfNot (c.isCell) "Cell value expected"
+            let (CellData (d,r)) = this
+            failIfNot (List.length r <= 3) "Cell overflow"
+            CellData (d, r @ [c])
 and Value =  // stack value types
     | Int of v:int
     | Tup of vs:Value list
     | Null
     | Cont of v:Continuation
-    | Builder of vs:SValue list
-    | Cell of vs:SValue list
-    | Slice of vs:SValue list
+    | Builder of vs:CellData  // vs : already added (built) items
+    | Cell of cd:CellData     // cd : a content of the cell
+    | Slice of vs:CellData    // vs : items still available for consumption
     member this.unboxCont =
         match this with | Cont x -> x | _ -> failwith "Cont expected"
     member this.unboxTup : Value list =
@@ -123,7 +145,6 @@ and Value =  // stack value types
         match this with
         | Int n -> SInt n
         | Cont c -> SCode (c.code)
-        | Cell s -> SCell s
         | _ -> failwith "not serializable"
     member this.unboxInt =
         match this with | Int x -> x | _ -> failwith "Int expected"
@@ -140,21 +161,12 @@ and Value =  // stack value types
         match this with
             | Builder _ -> true
             | _ -> false
-    member this.packCell =
-        match this with
-            | Builder vs -> Cell vs
-            | _ -> failwith "packCell expects Builder"
-    member this.unpackCell =
-        match this with
-            | Cell vs -> vs
-            | _ -> failwith "unpackCell expects Cell"
 and SValue =  // Serializable Value
 // Dictionary value type is Cell because there may be several SValues
 // chained together. SValue would have been not adequate enough.
     | SDict of v:Map<int,SValue list>  // dictionary is able to store only SValue
     | SCode of c:Code
     | SInt of n:int
-    | SCell of c:SValue list   // c is a cell
     static member isSDict = function | SDict _ -> true | _ -> false
     static member isSCode = function | SCode _ -> true | _ -> false
 
@@ -190,15 +202,6 @@ let TVM_False = (Int 0)
 let isOverflow n =
     // skip the test for now
     false
-
-let failIfNot b str =
-    if (not b) then
-        failwith str
-    else
-        ()
-
-let failIf b str =
-    failIfNot (not b) str
 
 let emptyTuple = []
 let emptyContinuation = Continuation.Default
@@ -347,7 +350,7 @@ let initialState (code:Code) : TVMState =
            }
     st
 
-let mkBuilder (vs:SValue list) =
+let mkBuilder (vs:CellData) =
     Builder vs
 
 let mkCell (b:Value) : Value =
@@ -358,30 +361,30 @@ let sti cc st =
     let (b :: x :: stack') = st.stack
     failIfNot (b.isBuilder) "STI: not a builder"
     failIfNot (x.isInt) "STI: not an integer"
-    let vs = b.unboxBuilder
+    let vs = b.unboxBuilder.addVal x.asSV
     // failIf (x > float 2 ** cc) "STU: Range check exception"
-    st.put_stack (mkBuilder (vs @ [x.asSV]) :: stack')
+    st.put_stack ((mkBuilder vs) :: stack')
     st
 
 let ldi cc st =
     let (s :: stack') = st.stack
     failIfNot (s.isSlice) "LDI: slice expected"
-    let (Slice (SInt n :: t)) = s
+    let (Slice (CellData (SInt n :: t, refs))) = s
     let logBase b v = (log v) / (log b)
     failIf (logBase 2.0 (float n) > cc) "not enough bits for the integer"
     // check n-th size against cc
-    st.put_stack (Slice t :: Int n :: stack')
+    st.put_stack (Slice (CellData (t,refs)) :: Int n :: stack')
     st
 
 let ends st =
-    let (Slice t :: stack') = st.stack
+    let (Slice (CellData (t,_)) :: stack') = st.stack
     failIfNot (t = []) "ENDS: slice not empty"
     st.put_stack stack'
     st
 
 let newc st =
     let stack = st.stack
-    st.put_stack (mkBuilder [] :: stack)
+    st.put_stack ( (mkBuilder CellData.Default) :: stack)
     st
 
 let endc st =
@@ -413,14 +416,22 @@ let pushnull st =
     st
 
 let pushslice (c:SValue list) st =
-    st.stack <- (Slice c) :: st.stack
+    let c1 = CellData (c, [])
+    st.stack <- (Slice c1) :: st.stack
     st
 
 let stslice st =
     let (b :: s :: stack') = st.stack
     failIfNot (b.isBuilder) "STSLICE: builder expected"
     failIfNot (s.isSlice) "STSLICE: slice expected"
-    st.stack <- Builder (s.unboxSlice @ b.unboxBuilder) :: stack'
+    let (CellData (d1,r1)) = b.unboxBuilder
+    let (CellData (d2,r2)) = s.unboxSlice
+    let d = d1 @ d2
+    let r = r1 @ r2
+    // failIf (dataLength d1 >= 1023 bits) "Cell overflow"
+    failIf (List.length r1 > 4) "Cell overflow"
+    let c1 = CellData (d, r)
+    st.stack <- Builder c1 :: stack'
     st
 
 let isnull st =
@@ -642,30 +653,30 @@ let dictiget st =
         match cD with
             | Null ->
                 Map []
-            | Cell (SDict sd :: _) ->
+            | Cell (CellData ([SDict sd], [])) ->
                 sd
     match D.TryFind i.unboxInt with
         | None ->
             st.stack <- (Int 0) :: stack'
         | Some v -> // any SValue
-            st.stack <- ((Int -1) :: (Slice v) :: stack')
+        let c1 = CellData (v, [])
+        st.stack <- (Int -1) :: (Slice c1 :: stack')
     st
 
 // b i D n --> D'
 let dictisetb st =
     let (n :: sD :: i :: b :: stack') = st.stack
     failIfNot (sD.isCell || sD.isNull) "DICTUSETB: Cell or Null expected"
-    let D =
-        match sD with
-            | Cell (SDict sd :: _) ->
-                sd
-            | Null ->
-                Map []
     failIfNot (i.isInt) "DICTUSETB: Integer expected"
     failIfNot (b.isBuilder) "DICTUSETB: Cell expected"
-    let sv = b.unboxBuilder  // serialize builder into a cell
-    let D' = D.Add (i.unboxInt, sv)
-    st.stack <- Cell ([SDict D']) :: stack'
+    match sD with
+    | Cell (CellData ([SDict sd], refs)) ->
+        let (CellData (d,refs)) = b.unboxBuilder
+        let D' = sd.Add (i.unboxInt, d)
+        st.stack <- Cell (CellData ([SDict D'], refs)) :: stack'
+    | Null ->
+        let d = Map []
+        st.stack <- Cell (CellData ([SDict d], [])) :: stack'
     st
 
 let calldict n st =
@@ -974,7 +985,7 @@ let dictugetjmp st =
     failIfNot n.isInt "DICTUGETJMP: integer expected"
     failIfNot k.isInt "DICTUGETJMP: integer expected"
     failIfNot cD.isCell "DICTUGETJMP: cell expected"
-    let (Cell [SDict kv]) = cD
+    let (Cell (CellData ([SDict kv], _))) = cD
     st.put_stack stack'
     match Map.tryFind k.unboxInt kv with
         | Some (SCode code :: _) ->
@@ -986,24 +997,29 @@ let bless st =
     let (s :: stack') = st.stack
     failIfNot (s.isSlice) "BLESS: Slice expected"
     match s with
-        | Slice (SCode c :: []) ->
+        | Slice (CellData ([SCode c], [])) ->
             st.put_stack (Cont {Continuation.Default with code = c} :: stack')
         | _ ->
             failwith "BLESS: Slice has to carry an ordinary continuation"
     st
 
+// LDDICT or LDOPTREF (s – D s'), loads (parses) a dictionary D
+// from Slice s, and returns the remainder of s as s'
 let lddict st =
     let (sD :: stack') = st.stack
     failIfNot (sD.isSlice) "LDDICT: Slice expected"
     match sD with
-        | Slice (SDict d :: []) ->
-            st.put_stack ( Slice [] :: (Cell [SDict d]) :: stack' )
+        | Slice (CellData (SDict d :: t, refs)) ->
+            let cd = CellData (t,refs)
+            let cd1 = CellData ([SDict d], [])
+            st.put_stack ((Slice cd) :: (Cell cd1) :: stack')
         | _ ->
             failwith "LDDICT: Dictionary within slice expected"
     st
 
 let pushref (c:SValue list) (st:TVMState) =
-    st.put_stack ((Cell c) :: st.stack)
+    let c1 = CellData (c, [])
+    st.put_stack ( (Cell c1) :: st.stack )
     st
 
 // log of the mere instruction is enough to see the dbg message
