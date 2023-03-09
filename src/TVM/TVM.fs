@@ -35,7 +35,8 @@ type Instruction =
     | GasLeft           // this is artificial instruction introduced for debugging.
     | PrintStr of s:string
     | Push of n:int
-    | PushRef of c:SValue list
+    | PushRef of c:CellData
+    | PushSlice of s:CellData
     | Dup               // Push 0 alias
     | Pop of n:int
     | Drop              // Pop 0 alias
@@ -109,7 +110,6 @@ type Instruction =
     | Dec
     | Pick   // PushX
     | XchgX
-    | PushSlice of s:SValue list
     | StSlice
     | IsNull
     | IsZero
@@ -122,17 +122,12 @@ and Code =
     Instruction list
 and CellData =
     CellData of data:SValue list *   // data has to fit into 1023 bits
-                refs:Value list   // up to 4 cell references
-        static member Default =
-            CellData ([], [])
-        member this.addVal (v:SValue) =
-            let (CellData (d,r)) = this
-            CellData (d @ [v], r)
-        member this.addRef (c:Value) =
-            failIfNot (c.isCell) "Cell value expected"
-            let (CellData (d,r)) = this
-            failIfNot (List.length r <= 3) "Cell overflow"
-            CellData (d, r @ [c])
+                refs:CellData list   // up to 4 cell references
+        static member Default = CellData ([], [])
+    member this.addVal x =
+        let (CellData (d,r)) = this
+        CellData (d @ List.singleton x, r)
+
 and Value =  // stack value types
     | Int of v:int
     | Tup of vs:Value list
@@ -419,9 +414,8 @@ let pushnull st =
     st.stack <- Null :: stack'
     st
 
-let pushslice (c:SValue list) st =
-    let c1 = CellData (c, [])
-    st.stack <- (Slice c1) :: st.stack
+let pushslice (c:CellData) st =
+    st.stack <- (Slice c) :: st.stack
     st
 
 let stslice st =
@@ -1022,9 +1016,9 @@ let lddict st =
             failwith "LDDICT: Dictionary within slice expected"
     st
 
-let pushref (c:SValue list) (st:TVMState) =
-    let c1 = CellData (c, [])
-    st.put_stack ( (Cell c1) :: st.stack )
+let pushref (c:CellData) (st:TVMState) =
+    // validation checks ?
+    st.put_stack ( (Cell c) :: st.stack )
     st
 
 // log of the mere instruction is enough to see the dbg message
@@ -1061,7 +1055,7 @@ let stref st =
     failIfNot (b.isBuilder) "STREF: builder expected"
     let (CellData (vals,refs)) = b.unboxBuilder
     failIf (List.length refs > 3) "STREF: cell overflow"
-    let b' = mkBuilder (CellData (vals, refs @ [c]))
+    let b' = mkBuilder (CellData (vals, refs @ [c.unboxCell]))
     st.put_stack (b' :: stack')
     st
 
@@ -1093,19 +1087,19 @@ let srefs st =
 let ctos st =
     let (c :: stack') = st.stack
     failIfNot (c.isCell) "CTOS: cell expected"
-    let (CellData (d,r)) = c.unboxCell
-    st.put_stack ((Slice (CellData (d,r))) :: stack')
+    let cd = c.unboxCell
+    st.put_stack ((Slice cd) :: stack')
     st
 
 // LDREF (s – c s'), loads a cell reference c from s.
 let ldref st =
     let (s :: stack') = st.stack
     failIfNot s.isSlice "LDREF: slice expected"
-    let (CellData (d, r)) = s.unboxSlice
-    failIf (List.length r < 1) "LDREF: cell underflow"
-    let (c :: t) = r
-    let s' = Slice (CellData (d, t))
-    st.put_stack (s' :: c :: stack')
+    let (CellData (d, refs)) = s.unboxSlice
+    failIf (List.length refs < 1) "LDREF: cell underflow"
+    let (r0 :: rs) = refs
+    let s' = Slice (CellData (d, rs))
+    st.put_stack (s' :: (Cell r0) :: stack')
     st
 
 let dispatch (i:Instruction) (trace:bool) =
@@ -1299,6 +1293,7 @@ let dispatch (i:Instruction) (trace:bool) =
 
 let gasCost (i: Instruction) =
     match i with
+        | LdRef -> 18
         | SRefs -> 26
         | Ctos -> 100  // 500 ?
         | BRefs -> 26
@@ -1452,9 +1447,9 @@ let rec instrToFift (i:Instruction) : string =
         | PrintStr s -> "\"" + s + "\" PRINTSTR"
         | Push n -> "s" + (string n) + " PUSH"
         | PushSlice v ->
-            (cellToSliceFift (encodeCellIntoFift v)) + " PUSHSLICE"
+            (celldataIntoSlice v) + " PUSHSLICE"
         | PushRef v ->
-            (encodeCellIntoFift v) + " PUSHREF"
+            (celldataIntoCell v) + " PUSHREF"
         | IsNull -> "ISNULL"
         | IsZero -> "ISZERO"
         | Add -> "ADD"
@@ -1533,24 +1528,44 @@ let rec instrToFift (i:Instruction) : string =
         | CondSel -> "CONDSEL"
         | _ ->
             failwith (sprintf "unsupported instruction: %A" i)
-// by the given abstract slice, produce TVM assembly code that
-// build TVM representation of that slice
-and encodeCellIntoFift (s:SValue list) : string =
-    match s with
-        | (SCode c) :: [] ->
-            "<{ " + (codeToFift c |> String.concat " ") + " }>c "
-        | (SDict d) :: [] ->  // d = Map<int, SValue list>
-            let kv = Map.toList d
-            // udict!+ (v k D n - D')
-            // k = key : n-bit int
-            // v = val : slice
-            let dictnew = "dictnew"
-            let udictadd (k,v,D,n) =
-                [" "; cellToSliceFift (encodeCellIntoFift v); string k; D; string n; "udict!+"; "drop"]
-                |> String.concat " "
-            (List.fold (fun D (k,v) -> udictadd(k, v, D, 8)) dictnew kv) + " "
-        | _ ->
-            failwith "not implemented"
+
+and celldataIntoSlice (cd:CellData) : string =
+    (celldataIntoCell cd) + " <s "
+and celldataIntoCell (cd:CellData) : string =
+    let (CellData (vs,refs)) = cd
+    "<b " + (addDataValuesToBuilder vs) + (addRefsToBuilder refs) + " b> "
+and addDataValuesToBuilder (vs:SValue list) : string =
+    match vs with
+    | h :: t ->
+        (addDataToBuilder h) + (addDataValuesToBuilder t)
+    | [] ->
+        ""
+and addDataToBuilder (v:SValue) : string =
+    match v with
+    | SInt n ->
+        " " + (string n) + " 255 i, "  // b x y - b'
+    | SCode c ->
+        "<{ " + (codeToFift c |> String.concat " ") + " }>c ref, "   // b c - b'
+    | SDict d ->
+        (addDictToBuilder d)
+    | _ ->
+        failwith "not implemented"
+and addDictToBuilder (d:Map<int,SValue list>) : string =
+    let kv = Map.toList d
+    // udict!+ (v k D n - D')
+    // k = key : n-bit int
+    // v = val : slice
+    let dictnew = "dictnew"
+    let udictadd (k,v,D,n) =
+        [" "; "<b"; addDataValuesToBuilder v; "b>"; "<s"; string k; D; string n; "udict!+"; "drop"]
+        |> String.concat " "
+    (List.fold (fun D (k,v) -> udictadd(k, v, D, 8)) dictnew kv) + " "
+and addRefsToBuilder (refs: CellData list) : string =
+    failIf (List.length refs > 4) "Cell overflow"
+    match refs with
+    | [] -> ""
+    | cd :: t ->
+        (celldataIntoCell cd) + " ref, " + (addRefsToBuilder t)
 and codeToFift c : string list =
     c |> List.map instrToFift
 

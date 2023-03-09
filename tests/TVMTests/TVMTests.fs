@@ -1129,7 +1129,8 @@ let testExecuteJmpJmp () =
 
 [<Test>]
 let testExecutePushSlice0 () =
-    let st = initialState [PushSlice [SCode [PushInt 1; PushInt 2; Add]]; Bless; Execute]
+    let cd = CellData ([SCode [PushInt 1; PushInt 2; Add]], [])
+    let st = initialState [PushSlice cd; Bless; Execute]
     try
         dumpFiftScript "testExecutePushSlice0.fif" (outputFift st)
         let finalSt = List.last (runVM st false)
@@ -1141,8 +1142,9 @@ let testExecutePushSlice0 () =
 
 [<Test>]
 let testExecuteCtr0 () =
+    let cd = CellData ([SCode [PushCtr 7; Index 1]], [])
     let st = initialState [PushInt 1; PushInt 2; Tuple 2; PopCtr 7;
-                           PushSlice [SCode [PushCtr 7; Index 1]]; Bless; Execute]
+                           PushSlice cd; Bless; Execute]
     try
         dumpFiftScript "testExecuteCtr0.fif" (outputFift st)
         let finalSt = List.last (runVM st false)
@@ -1154,8 +1156,9 @@ let testExecuteCtr0 () =
 
 [<Test>]
 let testExecuteCtr1 () =
+    let cd = CellData ([SCode [PushCtr 7; Index 1]], [])
     let st = initialState [PushInt 1; PushInt 2; Tuple 2; PopCtr 7;
-                           PushSlice [SCode [PushCtr 7; Index 1]];
+                           PushSlice cd;
                            Bless; Execute; Drop; PushCtr 7; Index 0]
     try
         dumpFiftScript "testExecuteCtr0.fif" (outputFift st)
@@ -1250,8 +1253,17 @@ let testBuildCell1 () =
 
 [<Test>]
 let testReadCell0 () =
-    let cd = CellData ([SInt 5; SInt 5234234], [Cell (CellData ([SInt -1], []))])
-    let st = initialState [PushSlice cd; Ldu 255; Ldu 255; LdRef; Drop; Ldu 255; Ends]
+    let cd = CellData ([SInt 5; SInt 5234234], [CellData ([SInt -1], [])])
+    let st = initialState [PushSlice cd; Ldi 255; Ldi 255; LdRef; Drop; Ctos; Ldi 255; Ends]
+    dumpFiftScript "testReadCell0.fif" (outputFift st)
+    let finalSt = List.last (runVM st false)
+    let stk = List.tail finalSt.stack
+    Assert.AreEqual([Int -1; Int 5234234; Int 5], stk)
+
+[<Test>]
+let testReadCell0 () =
+    let cd = CellData ([SInt 5; SInt 5234234], [CellData ([SInt -1], [])])
+    let st = initialState [PushSlice cd; Ldi 255; Ldi 255; LdRef; Drop; Ctos; Ldi 255; Ends]
     dumpFiftScript "testReadCell0.fif" (outputFift st)
     let finalSt = List.last (runVM st false)
     let stk = List.tail finalSt.stack

@@ -500,9 +500,12 @@ let nind (v:int) =
 
 let nconstr (n:int) (a: int list) =
     if debug then
-      Tup ([Int (int GMachine.NodeTags.NConstr); mkCont mapUnwindNConstr; (Int n); Tup (a |> List.map TVM.Int)])
+        Tup ([Int (int GMachine.NodeTags.NConstr);
+              mkCont mapUnwindNConstr; (Int n);
+              Tup (a |> List.map TVM.Int)])
     else
-      Tup ([mkCont mapUnwindNConstr; (Int n); Tup (a |> List.map TVM.Int)])
+        Tup ([mkCont mapUnwindNConstr; (Int n);
+              Tup (a |> List.map TVM.Int)])
 
 // GMachine stack consists of addresses only; there are
 // no data values there.
@@ -549,8 +552,8 @@ and compileSlice s : TVM.Code =
             [PushNull]
         else
             failwith "not implemented"
-    | Slice (CellData (vs, _)) ->
-        [PushSlice vs]
+    | Slice cd ->
+        [PushSlice cd]
     | _ ->
         failwith "not implemented"
 and compileElem e : TVM.Code =
