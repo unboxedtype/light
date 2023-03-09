@@ -11,6 +11,7 @@ open System
 open System.Collections.Generic
 
 open type TVM.Instruction
+open type TVM.CellData
 open type TVM.Value
 open type TVM.SValue
 
@@ -522,6 +523,7 @@ let prepareGlobals (globals:GMachine.GmGlobals): TVM.Value =
     |> Map.ofList  // Map<int,SValue list>
     |> SDict
     |> List.singleton
+    |> (fun i -> CellData (i, []))
     |> Cell
 
 let encodeNode (v:GMachine.Node) : TVM.Value =
@@ -542,12 +544,12 @@ let rec compileTuple t : TVM.Code =
         | _ -> failwith "not a tuple"
 and compileSlice s : TVM.Code =
     match s with
-    | Slice (SDict d :: []) ->
+    | Slice (CellData ([SDict d], _)) ->
         if Map.isEmpty d then
             [PushNull]
         else
             failwith "not implemented"
-    | Slice vs ->
+    | Slice (CellData (vs, _)) ->
         [PushSlice vs]
     | _ ->
         failwith "not implemented"

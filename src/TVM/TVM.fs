@@ -669,14 +669,15 @@ let dictisetb st =
     failIfNot (sD.isCell || sD.isNull) "DICTUSETB: Cell or Null expected"
     failIfNot (i.isInt) "DICTUSETB: Integer expected"
     failIfNot (b.isBuilder) "DICTUSETB: Cell expected"
-    match sD with
-    | Cell (CellData ([SDict sd], refs)) ->
-        let (CellData (d,refs)) = b.unboxBuilder
-        let D' = sd.Add (i.unboxInt, d)
-        st.stack <- Cell (CellData ([SDict D'], refs)) :: stack'
-    | Null ->
-        let d = Map []
-        st.stack <- Cell (CellData ([SDict d], [])) :: stack'
+    let (d, refs) =
+        match sD with
+        | Cell (CellData ([SDict sd], refs)) ->
+            (sd, refs)
+        | Null ->
+            (Map [], [])
+    let (CellData (v, _)) = b.unboxBuilder
+    let D' = d.Add (i.unboxInt, v)
+    st.stack <- Cell (CellData ([SDict D'], refs)) :: stack'
     st
 
 let calldict n st =
