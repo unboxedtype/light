@@ -8,12 +8,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="GMachine2Tests.fs"/>
+    <Compile Include="GMachineTests.fs"/>
     <Compile Include="Program.fs"/>
   </ItemGroup>
 
 <ItemGroup>
-    <ProjectReference Include="../../src/GMachine2/GMachine2.fsproj" />
+    <ProjectReference Include="../../src/GMachine/GMachine.fsproj" />
   </ItemGroup>
 
   <ItemGroup>

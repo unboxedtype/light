@@ -3,7 +3,6 @@
 module GMachine2Tests
 
 open NUnit.Framework
-
 open GMachine
 
 [<SetUp>]

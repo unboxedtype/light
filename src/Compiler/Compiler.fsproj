@@ -6,7 +6,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="GMachine2.fs" />
+    <Compile Include="Compiler.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/TVM/TVM.fsproj" />
+    <ProjectReference Include="../../src/GMachine/GMachine.fsproj" />
   </ItemGroup>
 
 </Project>
