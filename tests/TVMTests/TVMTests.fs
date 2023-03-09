@@ -1259,3 +1259,17 @@ let testReadCell0 () =
     let finalSt = List.last (runVM st false)
     let stk = List.tail finalSt.stack
     Assert.AreEqual([Int -1; Int 5234234; Int 5], stk)
+
+[<Test>]
+let testReadVar0 () =
+    let vars = [("x", SInt (100, 8)); ("y", SInt (-1, 8))]
+    let c4 =
+        vars
+        |> List.map snd
+        |> (fun i -> CellData (i, []))
+    let c4str = celldataIntoCell c4
+    let st = initialState [PushCtr 4; Ctos; Ldi 8; Ldi 8; Ends]
+    dumpFiftScript "testReadVar0.fif" (outputFiftWithC4 st c4str)
+    let finalSt = List.last (runVMWithC4 st c4 false)
+    let stk = List.tail finalSt.stack
+    Assert.AreEqual([Int -1; Int 100], stk)

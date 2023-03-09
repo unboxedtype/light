@@ -180,9 +180,10 @@ and ControlData =
 and ControlRegs =
     { mutable c0:Continuation option;
       mutable c3:Continuation option;
+      mutable c4:CellData;
       mutable c7:Value } // it should be tuple all the time
     static member Default = {
-        c0 = None; c3 = None; c7 = Tup []
+        c0 = None; c3 = None; c4 = CellData.Default; c7 = Tup []
     }
 and Continuation =
     { mutable code:Code;
@@ -225,15 +226,21 @@ type TVMState =
     member this.preclear_cr (save:ControlRegs) =
         if save.c0.IsSome then this.cr.c0 <- None else ()
         if save.c3.IsSome then this.cr.c3 <- None else ()
+        // what about c4 and c7?
     member this.adjust_cr regs =
         this.cr.c0 <- if regs.c0.IsSome then regs.c0 else this.cr.c0
         this.cr.c3 <- if regs.c3.IsSome then regs.c3 else this.cr.c0
+        // what about c4 and c7?
     member this.put_code code =
         this.code <- code
     member this.put_stack stk =
         this.stack <- stk
     member this.put_c7 c7 =
         this.cr.c7 <- c7
+    member this.put_c4 c4 =
+        this.cr.c4 <- c4
+    member this.put_c3 c3 =
+        this.cr.c3 <- c3
 
 // do the ordinary jump into continuation cont
 let switch_to_cont cont (st:TVMState) =
@@ -369,11 +376,15 @@ let sti cc st =
 let ldi cc st =
     let (s :: stack') = st.stack
     failIfNot (s.isSlice) "LDI: slice expected"
-    let (Slice (CellData (x :: t, refs))) = s
-    let (SInt (i, w)) = x   
-    failIf (w <> cc) "not enough bits for the integer"
-    // check n-th size against cc
-    st.put_stack (Slice (CellData (t, refs)) :: Int i :: stack')
+    match s with
+    | Slice (CellData (x :: t, refs)) ->
+        let (SInt (i, w)) = x
+        failIf (cc > w) "LDI: cell underflow"
+        failIf (cc < w) "LDI: cell overflow"
+        // check n-th size against cc
+        st.put_stack (Slice (CellData (t, refs)) :: Int i :: stack')
+    | Slice (CellData ([], refs)) ->
+        failwith "LDI: cell underflow"
     st
 
 let ends st =
@@ -462,6 +473,8 @@ let pushctr n st =
         if n = 7 then
             failIfNot (st.cr.c7.isTuple) "PUSHCTR: C7 is a tuple"
             st.cr.c7 :: st.stack
+        elif n = 4 then
+            (Cell st.cr.c4) :: st.stack
         elif n = 3 then
             if st.cr.c3.IsSome then
                 (Cont st.cr.c3.Value) :: st.stack
@@ -473,22 +486,27 @@ let pushctr n st =
             else
                 failwith "C0 is not initialized (but should be?)"
         else
-            raise (TVMError "PUSHCTR: only c0,c3,c7 are supported")
+            raise (TVMError "PUSHCTR: only c0,c3,c4,c7 are supported")
     st.stack <- stack
     st
 
 let popctr n st =
-    failIf (n <> 7 && n <> 3) "POPCTR: only c3 and c7 are supported"
+    failIf (n <> 7 && n <> 3 && n <> 4) "POPCTR: only c3, c4, c7 are supported"
     if n = 7 then
         let (c7 :: stack) = st.stack
         failIfNot (c7.isTuple) "POPCTR: c7 is a tuple"
-        st.stack <- stack
-        st.cr.c7 <- c7
+        st.put_stack stack
+        st.put_c7 c7
+    elif n = 4 then
+        let (c4 :: stack) = st.stack
+        failIfNot (c4.isCell) "POPSTR: c4 is a cell"
+        st.put_c4 (c4.unboxCell)
+        st.put_stack stack
     else
         let (c3 :: stack) = st.stack
         failIfNot (c3.isCont) "POPCTR: c3 is a continuation"
-        st.stack <- stack
-        st.cr.c3 <- Some c3.unboxCont
+        st.put_stack stack
+        st.put_c3 (Some c3.unboxCont)
     st
 
 let pop n st =
@@ -1424,6 +1442,10 @@ let rec runVMLimits st trace maxSteps =
 let rec runVM st (trace:bool) =
     runVMLimits st trace 10000
 
+let runVMWithC4 (st:TVMState) c4 (trace:bool) =
+    st.put_c4 c4
+    runVM st trace
+
 let getResult st : Value option =
     match st.stack with
         | (Int 0) :: s ->
@@ -1580,6 +1602,19 @@ let outputFift (st:TVMState) : string =
         (codeToFift st.code |> String.concat "\n")
         "}>s";
         "1000000 gasrunvmcode";  // 1000000 = TVM gas limit
+        "swap drop"; // omit VM exit code
+        ".s"
+    ]
+
+let outputFiftWithC4 (st:TVMState) (c4:string) : string =
+    String.concat "\n" [
+        "\"Asm.fif\" include";
+        "<{";
+        (codeToFift st.code |> String.concat "\n")
+        "}>s";
+        c4;
+        "1000000";
+        "gasrunvm";  // 1000000 = TVM gas limit
         "swap drop"; // omit VM exit code
         ".s"
     ]
