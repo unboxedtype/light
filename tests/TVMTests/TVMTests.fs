@@ -1229,3 +1229,30 @@ let testSetIndexVarQ5 () =
     let finalSt = List.last (runVM st false)
     let stk = List.tail finalSt.stack
     Assert.AreEqual([Tup [Null; Null; Null; Int 1]], stk)
+
+[<Test>]
+let testBuildCell0 () =
+    let st = initialState [PushInt 30; Newc; Sti 255; Endc; Dup; Dup; Dup;
+                           Newc; StRef; StRef; StRef; StRef; BRefs]
+    dumpFiftScript "testBuildCell0.fif" (outputFift st)
+    let finalSt = List.last (runVM st false)
+    let stk = List.tail finalSt.stack
+    Assert.AreEqual([Int 4], stk)
+
+[<Test>]
+let testBuildCell1 () =
+    let st = initialState [PushInt 30; Newc; Sti 255; Endc; Dup; Dup; Dup;
+                           Newc; StRef; StRef; StRef; StRef; Endc; Ctos; SRefs]
+    dumpFiftScript "testBuildCell1.fif" (outputFift st)
+    let finalSt = List.last (runVM st false)
+    let stk = List.tail finalSt.stack
+    Assert.AreEqual([Int 4], stk)
+
+[<Test>]
+let testReadCell0 () =
+    let cd = CellData ([SInt 5; SInt 5234234], [Cell (CellData ([SInt -1], []))])
+    let st = initialState [PushSlice cd; Ldu 255; Ldu 255; LdRef; Drop; Ldu 255; Ends]
+    dumpFiftScript "testReadCell0.fif" (outputFift st)
+    let finalSt = List.last (runVM st false)
+    let stk = List.tail finalSt.stack
+    Assert.AreEqual([Int -1; Int 5234234; Int 5], stk)

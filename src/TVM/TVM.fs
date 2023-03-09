@@ -26,6 +26,10 @@ type Action =
     | Reserve
 
 type Instruction =
+    | LdRef
+    | Ctos
+    | BRefs
+    | SRefs
     | CondSel
     | DumpHeap          // this is artificial instruction introduced for debugging.
     | GasLeft           // this is artificial instruction introduced for debugging.
@@ -1043,13 +1047,79 @@ let condsel st =
         st.put_stack (y :: stack')
     st
 
+// An artificial instruction for debugging purposes
 let gasleft trace st =
     if trace then
         printfn "GASLEFT: %d" st.gas.gas_remaining
     st
 
+// STREF (c b -> b')
+// stores a reference to Cell c into Builder b.
+let stref st =
+    let (b :: c :: stack') = st.stack
+    failIfNot (c.isCell) "STREF: cell expected"
+    failIfNot (b.isBuilder) "STREF: builder expected"
+    let (CellData (vals,refs)) = b.unboxBuilder
+    failIf (List.length refs > 3) "STREF: cell overflow"
+    let b' = mkBuilder (CellData (vals, refs @ [c]))
+    st.put_stack (b' :: stack')
+    st
+
+// BREFS (b - y)
+// returns the number of cell references already stored in b
+let brefs st =
+    let (b :: stack') = st.stack
+    failIfNot (b.isBuilder) "BREFS: builder expected"
+    let (CellData (vals,refs)) = b.unboxBuilder
+    let y = List.length refs
+    st.put_stack ((Int y) :: stack')
+    st
+
+// SREFS (s - y)
+// returns the number of references available in the slice s
+let srefs st =
+    let (s :: stack') = st.stack
+    failIfNot (s.isSlice) "SREFS: slice expected"
+    let (CellData (vals,refs)) = s.unboxSlice
+    let y = List.length refs
+    st.put_stack ((Int y) :: stack')
+    st
+
+// CTOS (c - s)
+// converts a Cell into a Slice. Notice that c must
+// be either an ordinary cell, or an exotic cell (cf. 3.1.2) which is
+// automatically loaded to yield an ordinary cell c' , converted into a
+// Slice afterwards.
+let ctos st =
+    let (c :: stack') = st.stack
+    failIfNot (c.isCell) "CTOS: cell expected"
+    let (CellData (d,r)) = c.unboxCell
+    st.put_stack ((Slice (CellData (d,r))) :: stack')
+    st
+
+// LDREF (s – c s'), loads a cell reference c from s.
+let ldref st =
+    let (s :: stack') = st.stack
+    failIfNot s.isSlice "LDREF: slice expected"
+    let (CellData (d, r)) = s.unboxSlice
+    failIf (List.length r < 1) "LDREF: cell underflow"
+    let (c :: t) = r
+    let s' = Slice (CellData (d, t))
+    st.put_stack (s' :: c :: stack')
+    st
+
 let dispatch (i:Instruction) (trace:bool) =
     match i with
+        | LdRef ->
+            ldref
+        | Ctos ->
+            ctos
+        | SRefs ->
+            srefs
+        | BRefs ->
+            brefs
+        | StRef ->
+            stref
         | GasLeft ->
             gasleft trace
         | CondSel ->
@@ -1229,6 +1299,10 @@ let dispatch (i:Instruction) (trace:bool) =
 
 let gasCost (i: Instruction) =
     match i with
+        | SRefs -> 26
+        | Ctos -> 100  // 500 ?
+        | BRefs -> 26
+        | StRef -> 18
         | PrintStr _ -> 26
         | GasLeft -> 0
         | DumpHeap -> 0
@@ -1369,6 +1443,10 @@ let cellToSliceFift v = v + " <s "
 
 let rec instrToFift (i:Instruction) : string =
     match i with
+        | Ctos -> " CTOS"
+        | SRefs -> " SREFS"
+        | StRef -> " STREF"
+        | BRefs -> " BREFS"
         | GasLeft -> ""
         | DumpHeap -> ""
         | PrintStr s -> "\"" + s + "\" PRINTSTR"
@@ -1398,6 +1476,7 @@ let rec instrToFift (i:Instruction) : string =
         | Drop -> "DROP"
         | DictISetB -> "DICTISETB"
         | Sti n -> (string n) + " STI"
+        | LdRef -> " LDREF"
         | Ldi n -> (string n) + " LDI"
         | PushCtr n -> "c" + (string n) + " PUSHCTR"
         | PopCtr n -> "c" + (string n) + " POPCTR"
