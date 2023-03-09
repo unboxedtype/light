@@ -25,10 +25,8 @@ type RuntimeErrors =
 
 type RuntimeGlobalVars =
     | Heap = 1
-    | HeapCounter = 2
     | Globals = 3
     | UnwindCont = 4
-    | UnwindSelector = 5
 
 // v:builder k:uint D:cell -> D'
 let dictSet =
@@ -38,10 +36,6 @@ let dictSet =
 let dictGet =
     [PushInt 128; DictIGet]
 
-// _ -> hc
-let getHeapCounter =
-    [GetGlob (int RuntimeGlobalVars.HeapCounter)]
-
 // _ -> g
 let getGlobals =
     [GetGlob (int RuntimeGlobalVars.Globals)]
@@ -49,10 +43,6 @@ let getGlobals =
 // _ -> h
 let getHeap =
     [GetGlob (int RuntimeGlobalVars.Heap)]
-
-// n -> _
-let putHeapCounter =
-    [SetGlob (int RuntimeGlobalVars.HeapCounter)]
 
 // n -> _
 let putHeap =
@@ -640,7 +630,6 @@ let unwindCont =
 
 let initC7 =
     TVM.arrayNew @ [SetGlob (int RuntimeGlobalVars.Heap)] @
-    [PushInt -1; SetGlob (int RuntimeGlobalVars.HeapCounter)] @
     [PushNull; SetGlob (int RuntimeGlobalVars.Globals)] @
     [PushCont (mapUnwind ()); SetGlob (int RuntimeGlobalVars.UnwindCont)]
 
@@ -663,12 +652,11 @@ let compileGlobals globals : TVM.Code =
                d @
                dictSet) [PushNull] globals
 
-let initC7with heap globals globalsCnt (unwindCont:TVM.Value) : TVM.Code =
+let initC7with heap globals (unwindCont:TVM.Value) : TVM.Code =
     // we need to compile each object and put everything into C7
     // the order of putting items in C7 matters here: greater indexes
     // become accessible only after the lesser ones were added.
     (compileHeap (Map.toList heap)) @ [SetGlob (int RuntimeGlobalVars.Heap)] @
-    [PushInt globalsCnt; SetGlob (int RuntimeGlobalVars.HeapCounter)] @
     (compileGlobals globals) @ [SetGlob (int RuntimeGlobalVars.Globals)] @
     [PushCont unwindCont.unboxCont.code; SetGlob (int RuntimeGlobalVars.UnwindCont)]
 
@@ -679,13 +667,12 @@ let compile (gms: GMachine.GmState) : TVM.TVMState =
     // let us know how many addresses were already allocated for globals
     // this is to provide monotonic increase of the address counter.
     // Otherwise heap may become corrupted.
-    let globalsCnt = Map.count (GMachine.getGlobals gms)
     let globalsInts =
-        (GMachine.getGlobals gms)
+        (GMachine.getGlobals gms) // [(id,addr)]
         |> Map.toList  // [("main",10); ("f", 51); ... ]
         |> List.map ( fun x -> (hash (fst x), snd x) ) // [(hash "main", [SInt 10]), ...]
     let heap' = GMachine.getHeap gms
-    let initC7Code = initC7with heap' globalsInts (globalsCnt - 1) unwindCont
+    let initC7Code = initC7with heap' globalsInts unwindCont
     { code = initC7Code @ code;
       stack = stack;
       cr = { TVM.ControlRegs.Default with c0 = Some c0 }
