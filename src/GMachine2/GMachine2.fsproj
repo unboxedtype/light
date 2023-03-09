@@ -9,8 +9,4 @@
     <Compile Include="GMachine2.fs" />
   </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="../GMachine/GMachine.fsproj" />
-  </ItemGroup>
-
 </Project>

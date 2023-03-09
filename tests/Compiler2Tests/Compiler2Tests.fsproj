@@ -14,6 +14,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/Compiler2/Compiler2.fsproj" />
+    <ProjectReference Include="../../src/GMachine2/GMachine2.fsproj" />
   </ItemGroup>
 
   <ItemGroup>

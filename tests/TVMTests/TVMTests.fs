@@ -373,10 +373,10 @@ let testEndC () =
 
 [<Test>]
 let testStu0 () =
-    let st = initialState [PushInt 100; Newc; Sti 255]
+    let st = initialState [PushInt 100; Newc; Sti 8]
     try
         let finalSt = List.last (runVM st false)
-        Assert.AreEqual (Some (Builder (CellData ([SInt 100], []))), getResult finalSt)
+        Assert.AreEqual (Some (Builder (CellData ([SInt (100, 8)], []))), getResult finalSt)
     with
         | TVMError s ->
             Assert.Fail(s)
@@ -384,11 +384,11 @@ let testStu0 () =
 [<Test>]
 let testStu1 () =
     let st = initialState [PushInt 200; PushInt 100; Newc;
-                           Sti 255; Sti 255]
+                           Sti 256; Sti 256]
     try
         let finalSt = List.last (runVM st false)
         Assert.AreEqual (
-            Some (Builder (CellData ([SInt 100; SInt 200], []))),
+            Some (Builder (CellData ([SInt (100,256); SInt (200,256)], []))),
             getResult finalSt
         )
     with
@@ -407,7 +407,7 @@ let testDict0 () =
     try
         let finalSt = List.last (runVM st false)
         Assert.AreEqual (
-            Some (Cell (CellData ([SDict (Map [(200, [SInt 10])])], []))),
+            Some (Cell (CellData ([SDict (Map [(200, [SInt (10, 128)])])], []))),
             getResult finalSt
         )
     with
@@ -418,12 +418,12 @@ let testDict0 () =
 let testDict1 () =
     let st = initialState [DictIGet] // k D' i -> v
     st.stack <- [Int 128;
-                 Cell (CellData ([SDict (Map [(200, [SInt 10])])], [])); Int 200]
+                 Cell (CellData ([SDict (Map [(200, [SInt (10, 128)])])], [])); Int 200]
     try
         let finalSt = List.last (runVM st false)
         let ((Int 0) :: (Int -1) :: s1 :: t) = finalSt.stack
         Assert.AreEqual (
-            (Int 0) :: (Int -1) :: [Slice (CellData ([SInt 10], []))],
+            (Int 0) :: (Int -1) :: [Slice (CellData ([SInt (10, 128)], []))],
             List.take 3 finalSt.stack)
     with
         | TVMError s ->
@@ -1253,17 +1253,8 @@ let testBuildCell1 () =
 
 [<Test>]
 let testReadCell0 () =
-    let cd = CellData ([SInt 5; SInt 5234234], [CellData ([SInt -1], [])])
-    let st = initialState [PushSlice cd; Ldi 255; Ldi 255; LdRef; Drop; Ctos; Ldi 255; Ends]
-    dumpFiftScript "testReadCell0.fif" (outputFift st)
-    let finalSt = List.last (runVM st false)
-    let stk = List.tail finalSt.stack
-    Assert.AreEqual([Int -1; Int 5234234; Int 5], stk)
-
-[<Test>]
-let testReadCell0 () =
-    let cd = CellData ([SInt 5; SInt 5234234], [CellData ([SInt -1], [])])
-    let st = initialState [PushSlice cd; Ldi 255; Ldi 255; LdRef; Drop; Ctos; Ldi 255; Ends]
+    let cd = CellData ([SInt (5, 8); SInt (5234234, 32)], [CellData ([SInt (-1,8)], [])])
+    let st = initialState [PushSlice cd; Ldi 8; Ldi 32; LdRef; Drop; Ctos; Ldi 8; Ends]
     dumpFiftScript "testReadCell0.fif" (outputFift st)
     let finalSt = List.last (runVM st false)
     let stk = List.tail finalSt.stack

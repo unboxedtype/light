@@ -1,3 +1,4 @@
+// For emacs: -*- fsharp -*-
 module Compiler
 
 // Debug switch turns on excessive logging

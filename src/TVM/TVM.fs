@@ -1,3 +1,4 @@
+// For emacs: -*- fsharp -*-
 module TVM
 
 // Incomplete pattern matches on this expression.
@@ -142,7 +143,7 @@ and Value =  // stack value types
         match this with | Tup x -> x | _ -> failwith "Tup expected"
     member this.asSV : SValue =
         match this with
-        | Int n -> SInt n
+        | Int n -> SInt (n, 256)
         | Cont c -> SCode (c.code)
         | _ -> failwith "not serializable"
     member this.unboxInt =
@@ -165,7 +166,7 @@ and SValue =  // Serializable Value
 // chained together. SValue would have been not adequate enough.
     | SDict of v:Map<int,SValue list>  // dictionary is able to store only SValue
     | SCode of c:Code
-    | SInt of n:int
+    | SInt of n:int * width:int    // width = bit width, up to 256
     static member isSDict = function | SDict _ -> true | _ -> false
     static member isSCode = function | SCode _ -> true | _ -> false
 
@@ -360,7 +361,7 @@ let sti cc st =
     let (b :: x :: stack') = st.stack
     failIfNot (b.isBuilder) "STI: not a builder"
     failIfNot (x.isInt) "STI: not an integer"
-    let vs = b.unboxBuilder.addVal x.asSV
+    let vs = b.unboxBuilder.addVal (SInt (x.unboxInt, cc))
     // failIf (x > float 2 ** cc) "STU: Range check exception"
     st.put_stack ((mkBuilder vs) :: stack')
     st
@@ -368,11 +369,11 @@ let sti cc st =
 let ldi cc st =
     let (s :: stack') = st.stack
     failIfNot (s.isSlice) "LDI: slice expected"
-    let (Slice (CellData (SInt n :: t, refs))) = s
-    let logBase b v = (log v) / (log b)
-    failIf (logBase 2.0 (float n) > cc) "not enough bits for the integer"
+    let (Slice (CellData (x :: t, refs))) = s
+    let (SInt (i, w)) = x   
+    failIf (w <> cc) "not enough bits for the integer"
     // check n-th size against cc
-    st.put_stack (Slice (CellData (t,refs)) :: Int n :: stack')
+    st.put_stack (Slice (CellData (t, refs)) :: Int i :: stack')
     st
 
 let ends st =
@@ -1534,6 +1535,9 @@ and celldataIntoSlice (cd:CellData) : string =
 and celldataIntoCell (cd:CellData) : string =
     let (CellData (vs,refs)) = cd
     "<b " + (addDataValuesToBuilder vs) + (addRefsToBuilder refs) + " b> "
+// This function is able to add only up to 1023 bits worth of items.
+// In larger cases, you have to pack it into cells on your own and call
+// celldataIntoCell
 and addDataValuesToBuilder (vs:SValue list) : string =
     match vs with
     | h :: t ->
@@ -1542,8 +1546,8 @@ and addDataValuesToBuilder (vs:SValue list) : string =
         ""
 and addDataToBuilder (v:SValue) : string =
     match v with
-    | SInt n ->
-        " " + (string n) + " 255 i, "  // b x y - b'
+    | SInt (n, w) ->
+        " " + (string n) + " " + (string w) + " i, "  // b x y - b'
     | SCode c ->
         "<{ " + (codeToFift c |> String.concat " ") + " }>c ref, "   // b c - b'
     | SDict d ->

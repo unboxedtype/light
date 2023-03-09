@@ -1,4 +1,5 @@
-module GMachine2
+// For emacs: -*- fsharp -*-
+module GMachine
 
 open System
 open System.Collections.Generic
