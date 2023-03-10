@@ -1624,11 +1624,11 @@ let outputFift (st:TVMState) : string =
         ".s"
     ]
 
-let outputFiftWithC4 (st:TVMState) (c4:string) : string =
+let outputFiftCodeWithC4 code c4 =
     String.concat "\n" [
         "\"Asm.fif\" include";
         "<{";
-        (codeToFift st.code |> String.concat "\n")
+        (code |> String.concat "\n")
         "}>s";
         c4;
         "1000000";
@@ -1636,6 +1636,9 @@ let outputFiftWithC4 (st:TVMState) (c4:string) : string =
         "swap drop"; // omit VM exit code
         ".s"
     ]
+
+let outputFiftWithC4 (st:TVMState) (c4:string) : string =
+    outputFiftCodeWithC4 (codeToFift st.code) c4
 
 let dumpFiftScript (fname:string) (str:string)  =
     use f = System.IO.File.CreateText(fname)

@@ -1310,3 +1310,36 @@ let testValsIntoCelldata3 () =
         CellData ([SInt (100, 256u); SInt (-1, 256u); SInt (123456789, 256u)],
                   [CellData ([SInt (1, 256u); SInt (2, 256u); SInt (3, 256u); SInt (4, 255u)],
                              [], 1023u)], 256u * 3u), cd)
+
+[<Test>]
+let testCellDataIntoCell4 () =
+    let vars = [SInt (100, 256u); SInt (-1, 256u);
+                SInt (123456789, 256u); SInt (1, 256u)]
+    let c4 = valsIntoCelldata vars
+    let c4str = celldataIntoCell c4
+    let st = initialState [PushCtr 4u; Ctos; Ldi 256u; Ldi 256u; Ldi 256u;
+                           LdRef; Ends; Ctos; Ldi 256u; Ends]
+    dumpFiftScript "testCellDataIntoCell4.fif" (outputFiftWithC4 st c4str)
+    let finalSt = List.last (runVMWithC4 st c4 false)
+    let stk = List.tail finalSt.stack
+    Assert.AreEqual([Int 1; Int 123456789; Int -1; Int 100], stk)
+
+[<Test>]
+let testCellDataIntoCell5 () =
+    let vars = [SInt (100, 256u);
+                SInt (-1, 256u);
+                SInt (123456789, 256u);
+                SInt (1, 256u);
+                SInt (2, 256u);
+                SInt (3, 256u);
+                SInt (4, 255u)]
+    let c4 = valsIntoCelldata vars
+    let c4str = celldataIntoCell c4
+    let st = initialState [PushCtr 4u; Ctos; Ldi 256u; Ldi 256u; Ldi 256u;
+                           LdRef; Ends; Ctos; Ldi 256u; Ldi 256u; Ldi 256u;
+                           Ldi 255u; Ends]
+    dumpFiftScript "testCellDataIntoCell5.fif" (outputFiftWithC4 st c4str)
+    let finalSt = List.last (runVMWithC4 st c4 false)
+    let stk = List.tail finalSt.stack
+    Assert.AreEqual([Int 4; Int 3; Int 2; Int 1; Int 123456789;
+                     Int -1; Int 100], stk)
