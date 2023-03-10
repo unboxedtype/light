@@ -378,21 +378,21 @@ let sti cc st =
     failIfNot (b.isBuilder) "STI: not a builder"
     failIfNot (x.isInt) "STI: not an integer"
     failIfNot (cc - 1 <= 255) "STI: type check error"
-    let vs = b.unboxBuilder.appendVal (SInt (x.unboxInt, cc))
+    let vs = b.unboxBuilder.appendVal (SInt (x.unboxInt, (uint cc))) // this will throw if the uint doesn't fit
     // failIf (x > float 2 ** cc) "STU: Range check exception"
     st.put_stack ((mkBuilder vs) :: stack')
     st
 
-let ldi (cc:uint) st =
+let ldi cc st =
     let (s :: stack') = st.stack
     failIfNot (s.isSlice) "LDI: slice expected"
-    failIfNot (cc >= 1u) "LDI: range check error"
+    failIfNot (cc >= 1) "LDI: range check error"
     match s with
     | Slice (CellData (x :: t, refs, databits)) ->
         let (SInt (i, w)) = x
-        failIf (cc > w) "LDI: cell underflow"
-        failIf (databits < cc) "LDI: cell underflow"
-        failIf (cc < w) "LDI: cell overflow"
+        failIf (cc > int w) "LDI: cell underflow"
+        failIf (int databits < cc) "LDI: cell underflow"
+        failIf (cc < int w) "LDI: cell overflow"
         // check n-th size against cc
         st.put_stack (Slice (CellData (t, refs, databits - w)) :: Int i :: stack')
     | Slice (CellData ([], _, _)) ->
@@ -690,8 +690,13 @@ let dictiget st =
         | None ->
             st.stack <- (Int 0) :: stack'
         | Some v -> // any SValue
-        let c1 = CellData (v, [], 0u)
-        st.stack <- (Int -1) :: (Slice c1 :: stack')
+        match v with
+            | [SInt (n, w)] ->
+                let c1 = CellData (v, [], w)
+                st.stack <- (Int -1) :: (Slice c1 :: stack')
+            | _ ->
+                let c1 = CellData (v, [], 0u)
+                st.stack <- (Int -1) :: (Slice c1 :: stack')
     st
 
 // b i D n --> D'
@@ -1265,9 +1270,9 @@ let dispatch (i:Instruction) (trace:bool) =
         | Endc ->
             endc
         | Sti cc ->
-            sti cc
+            sti (int cc)
         | Ldi cc ->
-            ldi cc
+            ldi (int cc)
         | LdDict ->
             lddict
         | Ends ->

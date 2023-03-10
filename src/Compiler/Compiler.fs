@@ -242,6 +242,7 @@ let mapPushglobal (n:int) : TVM.Code =
     [PushInt 128;       // n D 128
      DictIGet] @      // D[n] -1 | 0
     (if debug then [ThrowIfNot (int RuntimeErrors.GlobalNotFound)] else [Drop]) @
+    [DumpStk] @
     [Ldi 128u; // n s'
      Ends] // n
 
