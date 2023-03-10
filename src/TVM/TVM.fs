@@ -35,26 +35,26 @@ type Instruction =
     | DumpHeap          // this is artificial instruction introduced for debugging.
     | GasLeft           // this is artificial instruction introduced for debugging.
     | PrintStr of s:string
-    | Push of n:int
+    | Push of n:uint
     | PushRef of c:CellData
     | PushSlice of s:CellData
     | Dup               // Push 0 alias
-    | Pop of n:int
+    | Pop of n:uint
     | Drop              // Pop 0 alias
-    | BlkDrop of n:int
+    | BlkDrop of n:uint
     | DropX
-    | Xchg of i:int      // Xchg s0, s(i)
-    | Xchg2 of int * int // Xchg s(i),s(j)
+    | Xchg of i:uint      // Xchg s0, s(i)
+    | Xchg2 of uint * uint // Xchg s(i),s(j)
     | Swap               // Xchg 0 alias
     | Swap2              // a b c d -> c d a b
     | Greater
     | Less
-    | GetGlob of k:int   // 1 <= k <= 31
-    | SetGlob of k:int   // 1 <= k <= 31
+    | GetGlob of k:uint   // 1 <= k <= 31
+    | SetGlob of k:uint   // 1 <= k <= 31
     | PushInt of n:int
     | PushCont of c:Code // this should also be int8 list, but for now..
-    | PushCtr of n:int
-    | PopCtr of n:int
+    | PushCtr of n:uint
+    | PopCtr of n:uint
     | IfElse
     | IfRet
     | Inc
@@ -64,12 +64,12 @@ type Instruction =
     | Div
     | DivMod
     | Execute
-    | CallDict of n:int
+    | CallDict of n:uint
     | JmpX
     | DictUGetJmp
     | DumpStk
     | Nop
-    | Tuple of n:int
+    | Tuple of n:uint
     | TLen
     | TupleVar
     | UntupleVar
@@ -77,18 +77,18 @@ type Instruction =
     | PushNull
     | Second
     | Third
-    | Index of k:int
+    | Index of k:uint
     | IndexVar
     | IndexVarQ
-    | Untuple of n:int
-    | SetIndex of k:int
+    | Untuple of n:uint
+    | SetIndex of k:uint
     | SetIndexVar
     | SetIndexVarQ
     | TPush
     | Newc
     | Endc
-    | Sti of cc:int
-    | Ldi of cc:int
+    | Sti of cc:uint
+    | Ldi of cc:uint
     | LdDict
     | Ends
     | StRef
@@ -103,9 +103,9 @@ type Instruction =
     | IfJmp
     | Ret
     | SetNumArgs of n:int
-    | RollRev of n:int
+    | RollRev of n:uint
     | RollRevX
-    | Roll of n:int
+    | Roll of n:uint
     | Repeat
     | Depth
     | Dec
@@ -123,11 +123,17 @@ and Code =
     Instruction list
 and CellData =
     CellData of data:SValue list *   // data has to fit into 1023 bits
-                refs:CellData list   // up to 4 cell references
-        static member Default = CellData ([], [])
-    member this.addVal x =
-        let (CellData (d,r)) = this
-        CellData (d @ List.singleton x, r)
+                refs:CellData list * // up to 4 cell references
+                databits:uint
+         static member Default = CellData ([], [], 0u)
+    member this.appendVal (SInt (n, w)) =
+        let (CellData (d, r, databits)) = this
+        failIf (databits + w > 1023u) "cell overflow"
+        CellData (d @ List.singleton (SInt (n, w)), r, databits + w)
+    member this.appendRef (x:CellData) =
+        let (CellData (d, r, databits)) = this
+        failIf (List.length r > 3) "cell overflow"
+        CellData (d, r @ List.singleton x, databits)
 
 and Value =  // stack value types
     | Int of v:int
@@ -143,7 +149,7 @@ and Value =  // stack value types
         match this with | Tup x -> x | _ -> failwith "Tup expected"
     member this.asSV : SValue =
         match this with
-        | Int n -> SInt (n, 256)
+        | Int n -> SInt (n, 256u)
         | Cont c -> SCode (c.code)
         | _ -> failwith "not serializable"
     member this.unboxInt =
@@ -166,7 +172,7 @@ and SValue =  // Serializable Value
 // chained together. SValue would have been not adequate enough.
     | SDict of v:Map<int,SValue list>  // dictionary is able to store only SValue
     | SCode of c:Code
-    | SInt of n:int * width:int    // width = bit width, up to 256
+    | SInt of n:int * width:uint    // width = bit width, up to 256
     static member isSDict = function | SDict _ -> true | _ -> false
     static member isSCode = function | SCode _ -> true | _ -> false
 
@@ -364,32 +370,40 @@ let mkCell (b:Value) : Value =
     failIfNot (b.isBuilder) "not a builder"
     Cell b.unboxBuilder
 
+// STI cc + 1 (x b – b'), stores a signed cc + 1-bit integer x into
+// Builder b for 0 ≤ cc ≤ 255, throws a range check exception if x does
+// not fit into cc + 1 bits.
 let sti cc st =
     let (b :: x :: stack') = st.stack
     failIfNot (b.isBuilder) "STI: not a builder"
     failIfNot (x.isInt) "STI: not an integer"
-    let vs = b.unboxBuilder.addVal (SInt (x.unboxInt, cc))
+    failIfNot (cc - 1 <= 255) "STI: type check error"
+    let vs = b.unboxBuilder.appendVal (SInt (x.unboxInt, cc))
     // failIf (x > float 2 ** cc) "STU: Range check exception"
     st.put_stack ((mkBuilder vs) :: stack')
     st
 
-let ldi cc st =
+let ldi (cc:uint) st =
     let (s :: stack') = st.stack
     failIfNot (s.isSlice) "LDI: slice expected"
+    failIfNot (cc >= 1u) "LDI: range check error"
     match s with
-    | Slice (CellData (x :: t, refs)) ->
+    | Slice (CellData (x :: t, refs, databits)) ->
         let (SInt (i, w)) = x
         failIf (cc > w) "LDI: cell underflow"
+        failIf (databits < cc) "LDI: cell underflow"
         failIf (cc < w) "LDI: cell overflow"
         // check n-th size against cc
-        st.put_stack (Slice (CellData (t, refs)) :: Int i :: stack')
-    | Slice (CellData ([], refs)) ->
+        st.put_stack (Slice (CellData (t, refs, databits - w)) :: Int i :: stack')
+    | Slice (CellData ([], _, _)) ->
         failwith "LDI: cell underflow"
     st
 
 let ends st =
-    let (Slice (CellData (t,_)) :: stack') = st.stack
+    let (Slice (CellData (t, refs, databits)) :: stack') = st.stack
     failIfNot (t = []) "ENDS: slice not empty"
+    // failIfNot (databits = 0u) "ENDS: slice not empty"
+    failIfNot (List.length refs = 0) "ENDS: slice not empty"
     st.put_stack stack'
     st
 
@@ -434,13 +448,13 @@ let stslice st =
     let (b :: s :: stack') = st.stack
     failIfNot (b.isBuilder) "STSLICE: builder expected"
     failIfNot (s.isSlice) "STSLICE: slice expected"
-    let (CellData (d1,r1)) = b.unboxBuilder
-    let (CellData (d2,r2)) = s.unboxSlice
+    let (CellData (d1, r1, dw1)) = b.unboxBuilder
+    let (CellData (d2, r2, dw2)) = s.unboxSlice
+    failIf (dw1 + dw2 > 1023u) "STSLICE: cell overflow"
+    failIf (List.length (r1 @ r2) > 4) "STSLICE: cell overflow"
     let d = d1 @ d2
     let r = r1 @ r2
-    // failIf (dataLength d1 >= 1023 bits) "Cell overflow"
-    failIf (List.length r1 > 4) "Cell overflow"
-    let c1 = CellData (d, r)
+    let c1 = CellData (d, r, dw1 + dw2)
     st.stack <- Builder c1 :: stack'
     st
 
@@ -512,7 +526,7 @@ let popctr n st =
 let pop n st =
     let (a :: stack') = st.stack
     if n > 0 then
-        st.put_stack (List.updateAt (n-1) a stack')
+        st.put_stack (List.updateAt (n - 1) a stack')
     else
         st.put_stack stack'
     st
@@ -670,13 +684,13 @@ let dictiget st =
         match cD with
             | Null ->
                 Map []
-            | Cell (CellData ([SDict sd], [])) ->
+            | Cell (CellData ([SDict sd], [], _)) ->
                 sd
     match D.TryFind i.unboxInt with
         | None ->
             st.stack <- (Int 0) :: stack'
         | Some v -> // any SValue
-        let c1 = CellData (v, [])
+        let c1 = CellData (v, [], 0u)
         st.stack <- (Int -1) :: (Slice c1 :: stack')
     st
 
@@ -688,13 +702,13 @@ let dictisetb st =
     failIfNot (b.isBuilder) "DICTUSETB: Cell expected"
     let (d, refs) =
         match sD with
-        | Cell (CellData ([SDict sd], refs)) ->
+        | Cell (CellData ([SDict sd], refs, _)) ->
             (sd, refs)
         | Null ->
             (Map [], [])
-    let (CellData (v, _)) = b.unboxBuilder
+    let (CellData (v, _, dw)) = b.unboxBuilder
     let D' = d.Add (i.unboxInt, v)
-    st.stack <- Cell (CellData ([SDict D'], refs)) :: stack'
+    st.stack <- Cell (CellData ([SDict D'], refs, 0u)) :: stack'
     st
 
 let calldict n st =
@@ -1003,7 +1017,7 @@ let dictugetjmp st =
     failIfNot n.isInt "DICTUGETJMP: integer expected"
     failIfNot k.isInt "DICTUGETJMP: integer expected"
     failIfNot cD.isCell "DICTUGETJMP: cell expected"
-    let (Cell (CellData ([SDict kv], _))) = cD
+    let (Cell (CellData ([SDict kv], _, _))) = cD
     st.put_stack stack'
     match Map.tryFind k.unboxInt kv with
         | Some (SCode code :: _) ->
@@ -1015,7 +1029,7 @@ let bless st =
     let (s :: stack') = st.stack
     failIfNot (s.isSlice) "BLESS: Slice expected"
     match s with
-        | Slice (CellData ([SCode c], [])) ->
+        | Slice (CellData ([SCode c], [], _)) ->
             st.put_stack (Cont {Continuation.Default with code = c} :: stack')
         | _ ->
             failwith "BLESS: Slice has to carry an ordinary continuation"
@@ -1027,9 +1041,9 @@ let lddict st =
     let (sD :: stack') = st.stack
     failIfNot (sD.isSlice) "LDDICT: Slice expected"
     match sD with
-        | Slice (CellData (SDict d :: t, refs)) ->
-            let cd = CellData (t,refs)
-            let cd1 = CellData ([SDict d], [])
+        | Slice (CellData (SDict d :: t, refs, databits)) ->
+            let cd = CellData (t, refs, databits)
+            let cd1 = CellData ([SDict d], [], 0u)
             st.put_stack ((Slice cd) :: (Cell cd1) :: stack')
         | _ ->
             failwith "LDDICT: Dictionary within slice expected"
@@ -1072,9 +1086,8 @@ let stref st =
     let (b :: c :: stack') = st.stack
     failIfNot (c.isCell) "STREF: cell expected"
     failIfNot (b.isBuilder) "STREF: builder expected"
-    let (CellData (vals,refs)) = b.unboxBuilder
-    failIf (List.length refs > 3) "STREF: cell overflow"
-    let b' = mkBuilder (CellData (vals, refs @ [c.unboxCell]))
+    let cd = b.unboxBuilder
+    let b' = mkBuilder (cd.appendRef c.unboxCell)
     st.put_stack (b' :: stack')
     st
 
@@ -1083,7 +1096,7 @@ let stref st =
 let brefs st =
     let (b :: stack') = st.stack
     failIfNot (b.isBuilder) "BREFS: builder expected"
-    let (CellData (vals,refs)) = b.unboxBuilder
+    let (CellData (vals, refs, _)) = b.unboxBuilder
     let y = List.length refs
     st.put_stack ((Int y) :: stack')
     st
@@ -1093,7 +1106,7 @@ let brefs st =
 let srefs st =
     let (s :: stack') = st.stack
     failIfNot (s.isSlice) "SREFS: slice expected"
-    let (CellData (vals,refs)) = s.unboxSlice
+    let (CellData (vals, refs, _)) = s.unboxSlice
     let y = List.length refs
     st.put_stack ((Int y) :: stack')
     st
@@ -1114,10 +1127,10 @@ let ctos st =
 let ldref st =
     let (s :: stack') = st.stack
     failIfNot s.isSlice "LDREF: slice expected"
-    let (CellData (d, refs)) = s.unboxSlice
+    let (CellData (d, refs, databits)) = s.unboxSlice
     failIf (List.length refs < 1) "LDREF: cell underflow"
     let (r0 :: rs) = refs
-    let s' = Slice (CellData (d, rs))
+    let s' = Slice (CellData (d, rs, databits))
     st.put_stack (s' :: (Cell r0) :: stack')
     st
 
@@ -1148,9 +1161,9 @@ let dispatch (i:Instruction) (trace:bool) =
         | DictUGetJmp ->
             dictugetjmp
         | GetGlob k ->
-            getglob k
+            getglob (int k)
         | SetGlob k ->
-            setglob k
+            setglob (int k)
         | IfRet ->
             ifret
         | Ret ->
@@ -1160,7 +1173,7 @@ let dispatch (i:Instruction) (trace:bool) =
         | PushInt n ->
             pushint n
         | Push n ->
-            push n
+            push (int n)
         | Dup ->
             push 0
         | Dup2 ->
@@ -1172,19 +1185,19 @@ let dispatch (i:Instruction) (trace:bool) =
         | RotRev ->
             rotrev
         | PushCtr n ->
-            pushctr n
+            pushctr (int n)
         | PushCont c ->
             pushcont c
         | Pop n ->
-            pop n
+            pop (int n)
         | Drop ->
             drop
         | PopCtr n ->
-            popctr n
+            popctr (int n)
         | Xchg n ->
-            xchg n
-        | Xchg2 (i,j) ->
-            xchg2 i j
+            xchg (int n)
+        | Xchg2 (i, j) ->
+            xchg2 (int i) (int j)
         | Swap ->
             xchg 1
         | Swap2 ->
@@ -1208,7 +1221,7 @@ let dispatch (i:Instruction) (trace:bool) =
         | Execute ->
             execute
         | CallDict n ->
-            calldict n
+            calldict (int n)
         | JmpX ->
             jmpx
         | IfElse ->
@@ -1218,7 +1231,7 @@ let dispatch (i:Instruction) (trace:bool) =
         | Nop ->
             nop
         | Tuple n ->
-            tuple n false
+            tuple (int n) false
         | TupleVar ->
             tuplevar
         | UntupleVar ->
@@ -1232,15 +1245,15 @@ let dispatch (i:Instruction) (trace:bool) =
         | Nil ->
             nil
         | Index k ->
-            index k
+            index (int k)
         | IndexVar ->
             indexvar
         | IndexVarQ ->
             indexvarq
         | Untuple n ->
-            untuple n
+            untuple (int n)
         | SetIndex k ->
-            setindex k
+            setindex (int k)
         | SetIndexVar ->
             setindexvar
         | SetIndexVarQ ->
@@ -1280,11 +1293,11 @@ let dispatch (i:Instruction) (trace:bool) =
         | SetNumArgs n ->
             setnumargs n
         | RollRev n ->
-            rollrev n
+            rollrev (int n)
         | RollRevX ->
             rollrevx
         | Roll n ->
-            roll n
+            roll (int n)
         | DropX ->
             dropx
         | DivMod ->
@@ -1298,7 +1311,7 @@ let dispatch (i:Instruction) (trace:bool) =
         | XchgX ->
             xchgx
         | BlkDrop n ->
-            blkdrop n
+            blkdrop (int n)
         | IsNull ->
             isnull
         | IsZero ->
@@ -1310,98 +1323,98 @@ let dispatch (i:Instruction) (trace:bool) =
         | _ ->
             failwith ("unsupported instruction: " + (string i))
 
-let gasCost (i: Instruction) =
+let gasCost (i: Instruction) : uint =
     match i with
-        | LdRef -> 18
-        | SRefs -> 26
-        | Ctos -> 100  // 500 ?
-        | BRefs -> 26
-        | StRef -> 18
-        | PrintStr _ -> 26
-        | GasLeft -> 0
-        | DumpHeap -> 0
-        | GetGlob n -> 26
-        | SetGlob n -> 26 + n + 1
-        | PushInt n -> 18     // not precise
-        | PushNull -> 18
-        | PushCont c -> 26
-        | PushRef c -> 18 + 25
-        | Tuple n -> 26 + n
-        | Swap -> 18
-        | TPush -> 26 + 10    // 26 + n, where n is a tuple length
-        | Dup -> 18
-        | TLen -> 26
-        | Push n -> 18
-        | RotRev -> 18
-        | Rot -> 18
-        | IsZero -> 18
-        | SetIndexVarQ -> 26 + 10 // 26 + i, where i is a tuple length
-        | BlkDrop n ->  26
-        | IndexVarQ -> 26
-        | DumpStk -> 26
-        | Index n -> 26
-        | Execute -> 18
-        | JmpX -> 18
-        | Drop -> 18
-        | Ends -> 18
-        | Newc -> 18
-        | Ldi n -> 26
-        | Equal -> 18
-        | Dec -> 18
-        | Repeat -> 18
-        | Ret -> 5
-        | Pick -> 18
-        | DictISetB -> 1650    // overapprox.
-        | XchgX -> 18
-        | Xchg _ -> 18
-        | TupleVar -> 26 + 5   // overapprox. actually: 26 + s0
-        | Nil -> 26
-        | Sub -> 18
-        | Add -> 18
-        | Mul -> 18
-        | Div -> 26
-        | DivMod -> 26
-        | Rot2 -> 26
-        | RollRev n -> 26
-        | RollRevX -> 26
-        | Roll _ -> 26
-        | Untuple n -> 26 + n
-        | Swap2 -> 26
-        | Sti n -> 26
-        | SetIndexVar -> 26   // 26 + s0 ?
-        | SetIndex n -> 26 + n
-        | PushCtr _ -> 26
-        | PopCtr _ -> 26
-        | Pop n -> 18
-        | IsNull -> 18
-        | IndexVar -> 26
-        | Greater -> 18
-        | Less -> 18
-        | SetNumArgs _ -> 26
-        | PushSlice c -> 22
-        | IfElse -> 18
-        | Inc -> 18
-        | Bless -> 26
-        | Depth -> 18
-        | DictIGet -> 26
-        | Endc -> 500
-        | CallDict _ -> 26
-        | NewDict -> 18
-        | IfJmp -> 18
-        | Xchg2 _ -> 18
-        | Second -> 26
-        | Third -> 26
-        | ThrowIf _ -> 26
-        | ThrowIfNot _ -> 26
-        | UntupleVar -> 26 + 5  // approx. actually, 26 + s0
-        | CondSel -> 26
+        | LdRef -> 18u
+        | SRefs -> 26u
+        | Ctos -> 100u  // 500 ?
+        | BRefs -> 26u
+        | StRef -> 18u
+        | PrintStr _ -> 26u
+        | GasLeft -> 0u
+        | DumpHeap -> 0u
+        | GetGlob n -> 26u
+        | SetGlob n -> 26u + n + 1u
+        | PushInt n -> 18u     // not precise
+        | PushNull -> 18u
+        | PushCont c -> 26u
+        | PushRef c -> 18u + 25u
+        | Tuple n -> 26u + n
+        | Swap -> 18u
+        | TPush -> 26u + 10u    // 26 + n, where n is a tuple length
+        | Dup -> 18u
+        | TLen -> 26u
+        | Push n -> 18u
+        | RotRev -> 18u
+        | Rot -> 18u
+        | IsZero -> 18u
+        | SetIndexVarQ -> 26u + 10u // 26 + i, where i is a tuple length
+        | BlkDrop n ->  26u
+        | IndexVarQ -> 26u
+        | DumpStk -> 26u
+        | Index n -> 26u
+        | Execute -> 18u
+        | JmpX -> 18u
+        | Drop -> 18u
+        | Ends -> 18u
+        | Newc -> 18u
+        | Ldi n -> 26u
+        | Equal -> 18u
+        | Dec -> 18u
+        | Repeat -> 18u
+        | Ret -> 5u
+        | Pick -> 18u
+        | DictISetB -> 1650u    // overapprox.
+        | XchgX -> 18u
+        | Xchg _ -> 18u
+        | TupleVar -> 26u + 5u   // overapprox. actually: 26 + s0
+        | Nil -> 26u
+        | Sub -> 18u
+        | Add -> 18u
+        | Mul -> 18u
+        | Div -> 26u
+        | DivMod -> 26u
+        | Rot2 -> 26u
+        | RollRev n -> 26u
+        | RollRevX -> 26u
+        | Roll _ -> 26u
+        | Untuple n -> 26u + n
+        | Swap2 -> 26u
+        | Sti n -> 26u
+        | SetIndexVar -> 26u   // 26 + s0 ?
+        | SetIndex n -> 26u + n
+        | PushCtr _ -> 26u
+        | PopCtr _ -> 26u
+        | Pop n -> 18u
+        | IsNull -> 18u
+        | IndexVar -> 26u
+        | Greater -> 18u
+        | Less -> 18u
+        | SetNumArgs _ -> 26u
+        | PushSlice c -> 22u
+        | IfElse -> 18u
+        | Inc -> 18u
+        | Bless -> 26u
+        | Depth -> 18u
+        | DictIGet -> 26u
+        | Endc -> 500u
+        | CallDict _ -> 26u
+        | NewDict -> 18u
+        | IfJmp -> 18u
+        | Xchg2 _ -> 18u
+        | Second -> 26u
+        | Third -> 26u
+        | ThrowIf _ -> 26u
+        | ThrowIfNot _ -> 26u
+        | UntupleVar -> 26u + 5u  // approx. actually, 26 + s0
+        | CondSel -> 26u
         | _ ->
             failwith (sprintf "not implemented: %A" i)
 
 let consumeGas (i:Instruction) st : TVMState =
-    if (st.gas.gas_remaining - (gasCost i) < 0) then
+    let cost = int (gasCost i)
+    if st.gas.gas_remaining - cost < 0 then
         raise (TVMError "out of gas exception")
-    let cost = gasCost i
     st.gas <- { st.gas with gas_remaining = st.gas.gas_remaining - cost }
     st
 
@@ -1555,7 +1568,7 @@ let rec instrToFift (i:Instruction) : string =
 and celldataIntoSlice (cd:CellData) : string =
     (celldataIntoCell cd) + " <s "
 and celldataIntoCell (cd:CellData) : string =
-    let (CellData (vs,refs)) = cd
+    let (CellData (vs, refs, _)) = cd
     "<b " + (addDataValuesToBuilder vs) + (addRefsToBuilder refs) + " b> "
 // This function is able to add only up to 1023 bits worth of items.
 // In larger cases, you have to pack it into cells on your own and call
@@ -1642,3 +1655,28 @@ let arrayGet =
 // a k -> a[k] -1 | null 0
 let arrayGetWithCode =
     arrayGet @ [Dup; IsNull; IsZero]
+
+
+// encode a list of serialized items into CellData according to
+// the following rule:
+// Each time there is insufficient data bits available in the current cell,
+// we insert a reference to a new cell and continue storing data there.
+let rec valsIntoCelldataRec (v: SValue list) (res:CellData) : CellData =
+    match v with
+        | SInt (n, w) :: t ->
+            let (CellData (_, _, databits)) = res
+            if (databits + w > 1023u) then (
+                let c1 = valsIntoCelldataRec v CellData.Default
+                res.appendRef c1
+            )
+            else (
+                let n = List.head v
+                valsIntoCelldataRec t (res.appendVal n)
+            )
+        | _ :: t ->
+            failwith "not implemented"
+        | [] ->
+            res
+
+let valsIntoCelldata (v: SValue list) : CellData =
+    valsIntoCelldataRec v CellData.Default

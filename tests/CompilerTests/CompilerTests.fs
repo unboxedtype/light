@@ -724,7 +724,7 @@ let testCase1 () =
          ]
     let gmInitSt = GMachine.compile coreProgGM
     let tvmInitSt = compile gmInitSt
-    let final = List.last (TVM.runVMLimits tvmInitSt false 1000)
+    let final = List.last (TVM.runVMLimits tvmInitSt true 1000)
     if debug then
         match (getResultHeap final) with
             | Tup [Int 4; _; Int 1; Tup []] ->

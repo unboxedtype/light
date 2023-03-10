@@ -23,10 +23,9 @@ type RuntimeErrors =
     | CaseNotFound = 13
     | PartialApplication = 14
 
-type RuntimeGlobalVars =
-    | Heap = 1
-    | Globals = 3
-    | UnwindCont = 4
+let RuntimeGlobalVarsHeap = 1u
+let RuntimeGlobalVarsGlobals = 3u
+let RuntimeGlobalVarsUnwindCont = 4u
 
 // v:builder k:uint D:cell -> D'
 let dictSet =
@@ -38,19 +37,18 @@ let dictGet =
 
 // _ -> g
 let getGlobals =
-    [GetGlob (int RuntimeGlobalVars.Globals)]
+    [GetGlob RuntimeGlobalVarsGlobals]
+// g -> _
+let putGlobals =
+    [SetGlob RuntimeGlobalVarsGlobals]
 
 // _ -> h
 let getHeap =
-    [GetGlob (int RuntimeGlobalVars.Heap)]
-
+    [GetGlob RuntimeGlobalVarsHeap]
 // n -> _
 let putHeap =
-    [SetGlob (int RuntimeGlobalVars.Heap)]
+    [SetGlob RuntimeGlobalVarsHeap]
 
-// g -> _
-let putGlobals =
-    [SetGlob (int RuntimeGlobalVars.Globals)]
 
 
 let printStack (s:string) =
@@ -84,7 +82,7 @@ let heapLookup =
 let checkTag tag =
     if debug then
         [Dup;     // node node
-         Index 0; // node tag'
+         Index 0u; // node tag'
          PushInt tag; // node tag' tag
          Equal;   // node (tag'==tag?)
          ThrowIfNot (int RuntimeErrors.HeapNodeWrongTag)]
@@ -92,7 +90,7 @@ let checkTag tag =
         []
 
 let doUnwind =
-    [GetGlob (int RuntimeGlobalVars.UnwindCont); Execute]
+    [GetGlob RuntimeGlobalVarsUnwindCont; Execute]
 
 // n heap[n]  (heap[n] = (NNum _ n)
 let mapUnwindNNum : TVM.Code =
@@ -102,14 +100,14 @@ let mapUnwindNNum : TVM.Code =
 // n heap[n]  (heap[n] = (NAp, _, f, arg) )
 let mapUnwindNAp : TVM.Code =
     (printStack "unwNAp") @
-    [Index (if debug then 2 else 1)] @ // n f
+    [Index (if debug then 2u else 1u)] @ // n f
     doUnwind
 
 // n heap[n]  (heap[n] = (NInd _ m)
 let mapUnwindNInd : TVM.Code =
     (printStack "unwNInd") @
-    [Index (if debug then 2 else 1); // n m
-     Pop 1] @ // m
+    [Index (if debug then 2u else 1u); // n m
+     Pop 1u] @ // m
      doUnwind
 
 // n heap[n]  (heap[n] = (NConstr _ tag [a1,...,an])
@@ -123,17 +121,17 @@ let mapUnwindNConstr : TVM.Code =
 // Please note that in case of n = 0 the result will be 'a0'
 // so we keep the root node at stack at all times
 let unwindRearrange () : TVM.Code =
-    [GetGlob 9;     // an .. a0 n
+    [GetGlob 9u;     // an .. a0 n
      Pick;          // an .. a0 an
      (* DumpStk; *)
-     GetGlob 9;     // an ... a0 an n
+     GetGlob 9u;     // an ... a0 an n
      RollRevX;      // an an .. a1 a0
      Drop;
-     GetGlob 9;     // an an .. a1 n  (note: n = args count )
+     GetGlob 9u;     // an an .. a1 n  (note: n = args count )
      PushCont (heapLookup @  // an an .. (NAp _ a0 a1')
                checkTag (int GMachine.NodeTags.NAp) @
-               [Index (if debug then 3 else 2);   // an an .. a1'
-                GetGlob 9; // an an .. a1' n
+               [Index (if debug then 3u else 2u);   // an an .. a1'
+                GetGlob 9u; // an an .. a1' n
                 Dec;       // an an .. a1' (n-1)
                 RollRevX]);// an a1' an .. a2
      // an an .. a1 n c
@@ -143,16 +141,16 @@ let unwindRearrange () : TVM.Code =
 let mapUnwindNGlobal : TVM.Code =
     (printStack "unwNGlobal") @
     [Dup;                             // an .. a1 a0 heap[n] heap[n]
-     Index (if debug then 2 else 1);  // an .. a0 heap[n] NGlobal.n
+     Index (if debug then 2u else 1u);  // an .. a0 heap[n] NGlobal.n
      Depth; Dec; Dec; Dec;            // ... a0 heap[a0] NGlobal.n k   (k = number of passed arguments)
      Swap;
      Less;                            // an .. a0 heap[a0] k<NGlobal.n?
      ThrowIf (int RuntimeErrors.PartialApplication); // ... a0 heap[a0]
      Dup;                             // an ... a0 heap[a0] heap[a0]
-     Index (if debug then 2 else 1); SetGlob 9;    // an ... a0 heap[a0]  (c7[9] = nglobal.a0)
-     Index (if debug then 3 else 2); SetGlob 10] @ // an ... a0           (c7[10] = nglobal.c)
+     Index (if debug then 2u else 1u); SetGlob 9u;    // an ... a0 heap[a0]  (c7[9] = nglobal.a0)
+     Index (if debug then 3u else 2u); SetGlob 10u] @ // an ... a0           (c7[10] = nglobal.c)
      (unwindRearrange ()) @ // an ... a0
-     [GetGlob 10; Execute]
+     [GetGlob 10u; Execute]
 
 // If the current top stack element is:
 //  - a value, i.e. a number or a saturated constructor,
@@ -166,7 +164,7 @@ let mapUnwindNGlobal : TVM.Code =
 //  - an application node, then put the function address (i.e. first element
 //    of the application) on the stack and Unwind further
 // n
-     
+
 // n -> n'   h[n] = NNum i   h[n'] = NNum (i+1)  (aka NNum2)
 let mapInc () : TVM.Code =
     (printStack ("mapInc")) @
@@ -177,9 +175,9 @@ let mapInc () : TVM.Code =
     (if debug then [PushInt (int GMachine.NodeTags.NNum)] else []) @ // NNum2 tag
     [PushCont mapUnwindNNum] @ // NNum2 tag c
     (if debug then [Rot] else [Swap]) @ // tag c NNum2
-    [Tuple (if debug then 3 else 2)] @  // (tag, c, NNum2)
+    [Tuple (if debug then 3u else 2u)] @  // (tag, c, NNum2)
     heapAlloc
-    
+
 let mapDec () : TVM.Code =
     (printStack ("mapDec")) @
     heapLookup @ // (tag,NNum1))
@@ -189,7 +187,7 @@ let mapDec () : TVM.Code =
     (if debug then [PushInt (int GMachine.NodeTags.NNum)] else []) @ // NNum2 tag
     [PushCont mapUnwindNNum] @ // NNum2 tag c
     (if debug then [Rot] else [Swap]) @ // tag c NNum2
-    [Tuple (if debug then 3 else 2)] @  // (tag, c, NNum2)
+    [Tuple (if debug then 3u else 2u)] @  // (tag, c, NNum2)
     heapAlloc
 
 let mapIsZero () : TVM.Code =
@@ -201,7 +199,7 @@ let mapIsZero () : TVM.Code =
     (if debug then [PushInt (int GMachine.NodeTags.NNum)] else []) @ // NNum2 tag
     [PushCont mapUnwindNNum] @ // NNum2 tag c
     (if debug then [Rot] else [Swap]) @ // tag c NNum2
-    [Tuple (if debug then 3 else 2)] @  // (tag, c, NNum2)
+    [Tuple (if debug then 3u else 2u)] @  // (tag, c, NNum2)
     heapAlloc
 
 let mapIsOne () : TVM.Code =
@@ -213,26 +211,26 @@ let mapIsOne () : TVM.Code =
     (if debug then [PushInt (int GMachine.NodeTags.NNum)] else []) @ // NNum2 tag
     [PushCont mapUnwindNNum] @ // NNum2 tag c
     (if debug then [Rot] else [Swap]) @ // tag c NNum2
-    [Tuple (if debug then 3 else 2)] @  // (tag, c, NNum2)
+    [Tuple (if debug then 3u else 2u)] @  // (tag, c, NNum2)
     heapAlloc
-    
+
 // Put the n-th element of the stack on top of the stack;
 // 0 denotes the current top value of the stack.
 let mapPush (n:int) : TVM.Code =
     (printStack (sprintf "mapPush %d" n)) @
-    [Push n]
+    [Push (uint n)]
 
 // Remove n consecutive elements from the stack
 let mapPop (n:int) : TVM.Code =
     (printStack (sprintf "mapPop %d" n)) @
-    [BlkDrop n]
+    [BlkDrop (uint n)]
 
 // Remove n elements from the stack, starting from the second
 // element of the stack, i.e. leaving the top stack element inplace.
 // ... sn .. s2 s1 s -> ...  s
 let mapSlide (n:int) : TVM.Code =
     (printStack (sprintf "mapSlide %d" n)) @
-    [RollRev n; BlkDrop n]
+    [RollRev (uint n); BlkDrop (uint n)]
 
 // Extract the address of a function with id = n from the globals
 // and put it on the stack; if the function with the given
@@ -244,7 +242,7 @@ let mapPushglobal (n:int) : TVM.Code =
     [PushInt 128;       // n D 128
      DictIGet] @      // D[n] -1 | 0
     (if debug then [ThrowIfNot (int RuntimeErrors.GlobalNotFound)] else [Drop]) @
-    [Ldi 128; // n s'
+    [Ldi 128u; // n s'
      Ends] // n
 
 // Allocate a node for the given integer on the heap and put the
@@ -254,7 +252,7 @@ let mapPushint (n:int) : TVM.Code =
     (if debug then [PushInt (int GMachine.NodeTags.NNum)] else []) @
     [PushCont mapUnwindNNum;
      PushInt n;
-     Tuple (if debug then 3 else 2)] @
+     Tuple (if debug then 3u else 2u)] @
     heapAlloc
 
 // Lookup arguments on the heap and do the corresponding arithmetic
@@ -274,7 +272,7 @@ let binaryOperation (op:TVM.Code) : TVM.Code =
     (if debug then [PushInt (int GMachine.NodeTags.NNum)] else []) @ // op(n1,n2) tag
     [PushCont mapUnwindNNum] @ // op(n1,n2) tag c
     (if debug then [Rot] else [Swap]) @ // tag c op(n1,n2)
-    [Tuple (if debug then 3 else 2)] @  // (tag, c, op(heap[n1], heap[n2])), NNum tag = 0
+    [Tuple (if debug then 3u else 2u)] @  // (tag, c, op(heap[n1], heap[n2])), NNum tag = 0
     heapAlloc @    // n3
     [GasLeft]
 
@@ -307,9 +305,9 @@ let mapMkap () : TVM.Code =
     (printStack "mapMkap") @
     (if debug then [PushInt (int GMachine.NodeTags.NAp)] else []) @  // a1 f tag
     [PushCont mapUnwindNAp] @ // a1 f tag cont   or a1 f cont
-    (if debug then [Swap2] else [RollRev 2]) @ // tag cont a1 f  or cont a1 f
+    (if debug then [Swap2] else [RollRev 2u]) @ // tag cont a1 f  or cont a1 f
     [Swap;  // tag cont f a1   OR cont f a1
-     Tuple (if debug then 4 else 3)] @ // (tag, cont, f, a1)  OR (cont, f, a1)
+     Tuple (if debug then 4u else 3u)] @ // (tag, cont, f, a1)  OR (cont, f, a1)
     heapAlloc   // a2
 
 // Change the node pointed by the n-th + 1 element of the stack
@@ -321,8 +319,8 @@ let mapUpdate (n:int) : TVM.Code =
     (if debug then [PushInt (int GMachine.NodeTags.NInd)] else []) @ // an ..a1 a 3  OR ..a1 a
     [PushCont mapUnwindNInd] @ // an .. a1 a 3 c  OR ...a1 a c
     (if debug then [Rot] else [Swap]) @           // an .. a1 3 c a  or ..a1 c a
-    [Tuple (if debug then 3 else 2)] @       // an .. a1 (3,c,a)   OR .. a1 (c,a)
-    [Push (n+1)] @  // an .. a1 (3,c,a) an
+    [Tuple (if debug then 3u else 2u)] @       // an .. a1 (3,c,a)   OR .. a1 (c,a)
+    [Push (uint (n+1))] @  // an .. a1 (3,c,a) an
     getHeap @       // an .. a1 (3,c,a) an heap
     [RotRev] @      // an .. a1 heap (3,c,a) an
     TVM.arrayPut @  // .. an .. a1 heap'
@@ -349,13 +347,13 @@ let rec xchgs l acc =
 let mapPack (tag:int) (n:int) : TVM.Code =
     (printStack (sprintf "pack %d,%d" tag n)) @
     (let pairs = xchgs [0..(n-1)] []
-    [for (i,j) in pairs -> Xchg2 (i,j)]) @
+    [for (i,j) in pairs -> Xchg2 (uint i, uint j)]) @
     [PushInt n; TupleVar] @ // (a1,...,an)
     (if debug then [PushInt (int GMachine.NodeTags.NConstr)] else []) @ // (a1, ..., an) nconstr
     [PushCont mapUnwindNConstr; // (a1..an) nconstr cont
      PushInt tag; // a1..an nconstr cont tag
-     Roll (if debug then 3 else 2);  // nconstr cont tag a1..an
-     Tuple (if debug then 4 else 3)] @ // (nconstr, cont, tag, (a1,...,an))
+     Roll (if debug then 3u else 2u);  // nconstr cont tag a1..an
+     Tuple (if debug then 4u else 3u)] @ // (nconstr, cont, tag, (a1,...,an))
     heapAlloc
 
 // Deconstruct the constructor object located on the stack,
@@ -366,11 +364,11 @@ let mapSplit (n:int) : TVM.Code =
     heapLookup @    // heap[n]
     checkTag (int GMachine.NodeTags.NConstr) @
     // (cont, tag, [a1..am]) or (4, cont, tag, [a1..am])
-    [Index (if debug then 3 else 2); Dup] @  // (a1am) (a1am)
+    [Index (if debug then 3u else 2u); Dup] @  // (a1am) (a1am)
     [TLen] @        // (a1am) m
     [UntupleVar] @   // a1 .. am
     (let pairs = xchgs [0..(n-1)] []
-     [for (i,j) in pairs -> Xchg2 (i,j)])
+     [for (i, j) in pairs -> Xchg2 (uint i, uint j)])
 
 
 // Extract the constructor object's tag and transfer
@@ -385,7 +383,7 @@ let mapCasejump (cs:TVM.Code) : TVM.Code =
     [Dup] @             // n n
     heapLookup @        // n heap[n]
     checkTag (int GMachine.NodeTags.NConstr) @ // (NConstr,cont,tag,[args])
-    [Index (if debug then 2 else 1)] @         // n tag : this is the tag we should find in cs
+    [Index (if debug then 2u else 1u)] @         // n tag : this is the tag we should find in cs
     [PushCont cs; Execute] // n
 
 // If the top stack element evaluates to True, transfer control
@@ -395,7 +393,7 @@ let mapCond (t:TVM.Code) (f:TVM.Code) : TVM.Code =
     (printStack "mapCond") @
     heapLookup @    // heap[n] ( heap[n] = (NNum,_,num) )
     checkTag (int GMachine.NodeTags.NNum) @
-    [Index (if debug then 2 else 1)] @     // num
+    [Index (if debug then 2u else 1u)] @     // num
     [PushCont t] @  // num t
     [PushCont f] @  // num t f
     [CondSel] @     // t or f
@@ -408,11 +406,11 @@ let mapUnwind () : TVM.Code =
     (printStack "Unwind") @
     [Dup] @ // n n
     heapLookup @
-    [DumpStk; Dup; Index (if debug then 1 else 0); JmpX] // at the 1st position we have a continuation we need to jump to
+    [DumpStk; Dup; Index (if debug then 1u else 0u); JmpX] // at the 1st position we have a continuation we need to jump to
 
 let mapEval () : TVM.Code =
     (printStack "Eval") @
-    [GetGlob (int RuntimeGlobalVars.UnwindCont)] @
+    [GetGlob RuntimeGlobalVarsUnwindCont] @
 //  [SetNumArgs 1] @
     [Execute]
 
@@ -426,11 +424,11 @@ let rec compileInstr (i:GMachine.Instruction): TVM.Code =
         | GMachine.Inc ->
             mapInc ()
         | GMachine.Dec ->
-            mapDec ()         
+            mapDec ()
         | GMachine.IsZero ->
-            mapIsZero ()     
+            mapIsZero ()
         | GMachine.IsOne ->
-            mapIsOne ()    
+            mapIsOne ()
         | GMachine.Push n ->
             mapPush n
         | GMachine.Pop n ->
@@ -567,11 +565,11 @@ let prepareGlobals (globals:GMachine.GmGlobals): TVM.Value =
     // Instead of symbolic name, we just use the hash of its name
     globals
     |> Map.toList  // [("main",10); ("f", 51); ... ]
-    |> List.map ( fun x -> (hash (fst x), [SInt (snd x, 128)]) ) // [(hash "main", [SInt (10, 128)]), ...]
+    |> List.map ( fun x -> (hash (fst x), [SInt (snd x, 128u)]) ) // [(hash "main", [SInt (10, 128)]), ...]
     |> Map.ofList  // Map<int,SValue list>
     |> SDict
     |> List.singleton
-    |> (fun i -> CellData (i, []))    
+    |> (fun i -> CellData (i, [], 0u))
     |> Cell
 
 let encodeNode (v:GMachine.Node) : TVM.Value =
@@ -588,11 +586,11 @@ let rec compileTuple t : TVM.Code =
         l
         |> List.map compileElem
         |> List.concat
-        |> fun l -> l @ [Tuple l.Length]
+        |> fun l -> l @ [Tuple (uint l.Length)]
         | _ -> failwith "not a tuple"
 and compileSlice s : TVM.Code =
     match s with
-    | Slice (CellData (SDict d :: [], _)) ->
+    | Slice (CellData (SDict d :: [], _, 0u)) ->
         if Map.isEmpty d then
             [PushNull]
         else
@@ -629,9 +627,9 @@ let unwindCont =
     TVM.Cont { TVM.Continuation.Default with code = mapUnwind () }
 
 let initC7 =
-    TVM.arrayNew @ [SetGlob (int RuntimeGlobalVars.Heap)] @
-    [PushNull; SetGlob (int RuntimeGlobalVars.Globals)] @
-    [PushCont (mapUnwind ()); SetGlob (int RuntimeGlobalVars.UnwindCont)]
+    TVM.arrayNew @ [SetGlob RuntimeGlobalVarsHeap] @
+    [PushNull; SetGlob RuntimeGlobalVarsGlobals] @
+    [PushCont (mapUnwind ()); SetGlob RuntimeGlobalVarsUnwindCont]
 
 let compileInt (n:int) : TVM.Code =
     [PushInt n]
@@ -642,7 +640,7 @@ let compileHeap heapKV : TVM.Code =
                h @ v' @ (compileInt k) @ TVM.arrayPut) TVM.arrayNew heapKV
 
 let compileIntBuilder (n:int) : TVM.Code =
-    [PushInt n; Newc; Sti 128]
+    [PushInt n; Newc; Sti 128u]
 
 // Cell ([SDict vs]), vs = [(int,int)]
 let compileGlobals globals : TVM.Code =
@@ -656,9 +654,9 @@ let initC7with heap globals (unwindCont:TVM.Value) : TVM.Code =
     // we need to compile each object and put everything into C7
     // the order of putting items in C7 matters here: greater indexes
     // become accessible only after the lesser ones were added.
-    (compileHeap (Map.toList heap)) @ [SetGlob (int RuntimeGlobalVars.Heap)] @
-    (compileGlobals globals) @ [SetGlob (int RuntimeGlobalVars.Globals)] @
-    [PushCont unwindCont.unboxCont.code; SetGlob (int RuntimeGlobalVars.UnwindCont)]
+    (compileHeap (Map.toList heap)) @ [SetGlob RuntimeGlobalVarsHeap] @
+    (compileGlobals globals) @ [SetGlob RuntimeGlobalVarsGlobals] @
+    [PushCont unwindCont.unboxCont.code; SetGlob RuntimeGlobalVarsUnwindCont]
 
 let compile (gms: GMachine.GmState) : TVM.TVMState =
     let code = compileCode (GMachine.getCode gms)
