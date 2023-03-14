@@ -773,19 +773,21 @@ let testChoice () =
 [<Test>]
 let testIfThenElseTrue () =
     let coreProgGM =
-        [("main", [], EIf (EGt (ENum 6, ENum 10),
-                                    ENum 1, ENum 0))]
+        [("main", [], EIf (EGt (ENum 6, ENum 10), ENum 1, ENum 0))]
     let gmInitSt = GMachine.compile coreProgGM
     let tvmInitSt = compile gmInitSt
+    TVM.dumpFiftScript "testIfThenElseTrue.fif" (TVM.outputFift tvmInitSt)
     let final = List.last (TVM.runVMLimits tvmInitSt false 3000)
     Assert.AreEqual (nnum 0, getResultHeap final);
     Assert.AreEqual (1, List.length (getResultStack final));
+    printfn "%A: Gas consumed: %d"
+            NUnit.Framework.TestContext.CurrentContext.Test.Name
+            (final.gas.gas_limit - final.gas.gas_remaining)
 
 [<Test>]
 let testIfThenElseFalse () =
     let coreProgGM =
-        [("main", [], EIf (EGt (ENum 10, ENum 6),
-                                    ENum 1, ENum 0))]
+        [("main", [], EIf (EGt (ENum 10, ENum 6), ENum 1, ENum 0))]
     let gmInitSt = GMachine.putCode [Pushglobal "main";
                                      Eval] (GMachine.compile coreProgGM)
     let tvmInitSt = compile gmInitSt
@@ -907,18 +909,18 @@ let testMapList () =
     //        let t' = List.map f (tl l)
     //        h' :: t'
     // main = List.map f [1;2;3;4;5]
-    let TNil = EPack (0, 0, [])
-    let TCons x y = EPack (1, 2, [x; y])
+    let TNil = EPack (1, 0, [])
+    let TCons x y = EPack (2, 2, [x; y])
     let myList = TCons (ENum 1) (TCons (ENum 2) (TCons (ENum 3) (TCons (ENum 4) (TCons (ENum 5) TNil))))
     let coreProgGM =
-        [("f", ["n"], EMul (EVar "n", ENum 2));
+        [("f", ["n"], EInc (EVar "n"));
          ("List.map", ["fun"; "l"],
           ECase (EVar "l",
-                 [(0, [], TNil);
-                  (1, ["h"; "t"],
+                 [(1, [], ENum 0);
+                  (2, ["h"; "t"],
                    ELet (false, [("h'", EAp (EVar "fun", EVar "h"));
                                  ("t'", EAp (EAp (EVar "List.map", EVar "fun"), EVar "t"))],
-                         TCons (EVar "h'") (EVar "t'")))
+                         EAdd (EVar "h'", EVar "t'")))
                   ]
                  )
           );
@@ -926,10 +928,71 @@ let testMapList () =
     let gmInitSt = GMachine.compile coreProgGM
     let tvmInitSt = compile gmInitSt
     TVM.dumpFiftScript "testMapList.fif" (TVM.outputFift tvmInitSt)
-    let final = List.last (TVM.runVMLimits tvmInitSt true 10000)
+    let final = List.last (TVM.runVMLimits tvmInitSt false 10000)
     // printfn "%A" (tvmInitSt.cr.c7.unboxTup.Item 3)
-    printfn "%A" (getResultStack final)
-    printfn "%A" (List.indexed (simplifyHeap (tvmHeap final)))
+    // printfn "%A" (getResultStack final)
+    // printfn "%A" (List.indexed (simplifyHeap (tvmHeap final)))
+    printfn "%A: Gas consumed: %d"
+            NUnit.Framework.TestContext.CurrentContext.Test.Name
+            (final.gas.gas_limit - final.gas.gas_remaining)
+
+[<Test>]
+let testStubGas () =
+    let coreProgGM =
+        [("main", [], ENum 0)] // minimal program?
+    let gmInitSt = GMachine.compile coreProgGM
+    let tvmInitSt = compile gmInitSt
+    TVM.dumpFiftScript "testStubGas.fif" (TVM.outputFift tvmInitSt)
+    let final = List.last (TVM.runVMLimits tvmInitSt false 3000)
+    Assert.AreEqual (nnum 0, getResultHeap final);
+    Assert.AreEqual (1, List.length (getResultStack final));
+    printfn "%A: Gas consumed: %d"
+            NUnit.Framework.TestContext.CurrentContext.Test.Name
+            (final.gas.gas_limit - final.gas.gas_remaining)
+
+[<Test>]
+let testAddTwoNumbers () =
+    let coreProgGM =
+        [("main", [], EAdd (ENum 10, ENum 20))]
+    let gmInitSt = GMachine.compile coreProgGM
+    let tvmInitSt = compile gmInitSt
+    TVM.dumpFiftScript "testAddTwoNumbers.fif" (TVM.outputFift tvmInitSt)
+    let final = List.last (TVM.runVMLimits tvmInitSt false 3000)
+    Assert.AreEqual (nnum 30, getResultHeap final);
+    Assert.AreEqual (1, List.length (getResultStack final));
+    printfn "%A: Gas consumed: %d"
+            NUnit.Framework.TestContext.CurrentContext.Test.Name
+            (final.gas.gas_limit - final.gas.gas_remaining)
+
+[<Test>]
+let testAddThreeNumbers () =
+    let coreProgGM =
+        [("main", [], EAdd (ENum 30, EAdd (ENum 10, ENum 20)))]
+    let gmInitSt = GMachine.compile coreProgGM
+    let tvmInitSt = compile gmInitSt
+    TVM.dumpFiftScript "testAddThreeNumbers.fif" (TVM.outputFift tvmInitSt)
+    let final = List.last (TVM.runVMLimits tvmInitSt false 3000)
+    Assert.AreEqual (nnum 60, getResultHeap final);
+    Assert.AreEqual (1, List.length (getResultStack final));
+    printfn "%A: Gas consumed: %d"
+            NUnit.Framework.TestContext.CurrentContext.Test.Name
+            (final.gas.gas_limit - final.gas.gas_remaining)
+
+[<Test>]
+let testAddTenNumbers () =
+    let rec addSeries l =
+        match l with
+            | [] -> ENum 0
+            | [n] -> ENum n
+            | h :: t -> EAdd (ENum h, addSeries t)
+    let coreProgGM =
+        [("main", [], addSeries [1..10])]
+    let gmInitSt = GMachine.compile coreProgGM
+    let tvmInitSt = compile gmInitSt
+    TVM.dumpFiftScript "testAddTenNumbers.fif" (TVM.outputFift tvmInitSt)
+    let final = List.last (TVM.runVMLimits tvmInitSt false 3000)
+    Assert.AreEqual (nnum 55, getResultHeap final);
+    Assert.AreEqual (1, List.length (getResultStack final));
     printfn "%A: Gas consumed: %d"
             NUnit.Framework.TestContext.CurrentContext.Test.Name
             (final.gas.gas_limit - final.gas.gas_remaining)

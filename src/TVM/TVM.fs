@@ -57,6 +57,8 @@ type Instruction =
     | PopCtr of n:uint
     | IfElse
     | IfRet
+    | If
+    | IfJmp
     | Inc
     | Add
     | Sub
@@ -99,8 +101,6 @@ type Instruction =
     | ThrowIf of nn:int
     | Throw of nn:int
     | Equal
-    | IfExec     // If
-    | IfJmp
     | Ret
     | SetNumArgs of n:int
     | RollRev of n:uint
@@ -1169,6 +1169,8 @@ let dispatch (i:Instruction) (trace:bool) =
             getglob (int k)
         | SetGlob k ->
             setglob (int k)
+        | If ->
+            ifexec
         | IfRet ->
             ifret
         | Ret ->
@@ -1289,8 +1291,6 @@ let dispatch (i:Instruction) (trace:bool) =
             throwif n
         | Throw nn ->
             throw nn
-        | IfExec ->
-            ifexec
         | IfJmp ->
             ifjmp
         | Repeat ->
@@ -1405,10 +1405,12 @@ let gasCost (i: Instruction) : uint =
         | Endc -> 500u
         | CallDict _ -> 26u
         | NewDict -> 18u
+        | If -> 18u
         | IfJmp -> 18u
         | Xchg2 _ -> 18u
         | Second -> 26u
         | Third -> 26u
+        | Throw _ -> 26u
         | ThrowIf _ -> 26u
         | ThrowIfNot _ -> 26u
         | UntupleVar -> 26u + 5u  // approx. actually, 26 + s0
@@ -1503,6 +1505,7 @@ let rec instrToFift (i:Instruction) : string =
         | Equal -> "EQUAL"
         | Greater -> "GREATER"
         | Swap -> "SWAP"
+        | If -> "IF"
         | IfJmp -> "IFJMP"
         | Dup -> "DUP"
         | DictIGet -> "DICTIGET"

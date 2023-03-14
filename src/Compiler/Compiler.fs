@@ -3,7 +3,7 @@ module Compiler2
 
 // Debug switch turns on excessive logging
 // Turn it off to produce gas-optimal executables
-let debug = true
+let debug = false
 
 // Incomplete pattern matches on this expression.
 #nowarn "25"
