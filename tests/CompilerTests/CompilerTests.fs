@@ -11,6 +11,10 @@ open System.Collections.Generic
 open Compiler2
 open type TVM.Value
 
+open type GMachine.Expr
+open type GMachine.Instruction
+open type GMachine.Node
+
 [<OneTimeSetUp>]
 let Setup () =
     ()
@@ -18,8 +22,8 @@ let Setup () =
 [<Test>]
 let testPushInt0 () =
     let code = initC7 @
-               (compileCode [GMachine.Pushint 100;
-                             GMachine.Pushint 200])
+               (compileCode [Pushint 100;
+                             Pushint 200])
     let st = TVM.initialState code
     let final = List.last (TVM.runVM st false)
     Assert.AreEqual([Int 1; Int 0], getResultStack final)
@@ -27,13 +31,13 @@ let testPushInt0 () =
 [<Test>]
 let testAdd0 () =
     let code = initC7 @
-               (compileCode [GMachine.Pushint 100;
-                             GMachine.Pushint 200;
-                             GMachine.Add;
-                             GMachine.Pushint 300;
-                             GMachine.Add;
-                             GMachine.Pushint 400;
-                             GMachine.Add])
+               (compileCode [Pushint 100;
+                             Pushint 200;
+                             Add;
+                             Pushint 300;
+                             Add;
+                             Pushint 400;
+                             Add])
     let st = TVM.initialState code
     TVM.dumpFiftScript "testAdd0.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
@@ -44,7 +48,7 @@ let testAdd0 () =
 let testPushglobal0 () =
     let globals = Map [("add", 1)]
     let c7 = prepareC7 (prepareHeap (Map [])) (Int -1) (prepareGlobals globals) Null
-    let code = compileCode [GMachine.Pushglobal "add"]
+    let code = compileCode [Pushglobal "add"]
     let st = TVM.initialState code
     st.put_c7 c7
     let final = List.last (TVM.runVM st false)
@@ -55,7 +59,7 @@ let testPushglobal0 () =
 let testPushglobal1 () =
     let globals = Map [("fact", 1); ("main", 0)]
     let c7 = prepareC7 (prepareHeap (Map [])) (Int -1) (prepareGlobals globals) Null
-    let code = compileCode [GMachine.Pushglobal "fib"]
+    let code = compileCode [Pushglobal "fib"]
     let st = TVM.initialState code
     st.put_c7 c7
     try
@@ -71,13 +75,13 @@ let testPushglobal1 () =
 [<Test>]
 let testMixedArith0 () =
     let code = initC7 @
-               (compileCode [GMachine.Pushint 100;
-                             GMachine.Pushint 200;
-                             GMachine.Add;
-                             GMachine.Pushint 300;
-                             GMachine.Mul;
-                             GMachine.Pushint 500;
-                             GMachine.Div]) // 500 / 900
+               (compileCode [Pushint 100;
+                             Pushint 200;
+                             Add;
+                             Pushint 300;
+                             Mul;
+                             Pushint 500;
+                             Div]) // 500 / 900
     let st = TVM.initialState code
     TVM.dumpFiftScript "testMixedArith0.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
@@ -86,9 +90,9 @@ let testMixedArith0 () =
 [<Test>]
 let testEqual0 () =
     let code = initC7 @
-               (compileCode [GMachine.Pushint 100;
-                             GMachine.Pushint 200;
-                             GMachine.Equal])
+               (compileCode [Pushint 100;
+                             Pushint 200;
+                             Equal])
     let st = TVM.initialState code
     TVM.dumpFiftScript "testEqual0.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
@@ -97,9 +101,9 @@ let testEqual0 () =
 [<Test>]
 let testEqual1 () =
     let code = initC7 @
-               (compileCode [GMachine.Pushint 100;
-                             GMachine.Pushint 100;
-                             GMachine.Equal])
+               (compileCode [Pushint 100;
+                             Pushint 100;
+                             Equal])
     let st = TVM.initialState code
     TVM.dumpFiftScript "testEqual1.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
@@ -108,9 +112,9 @@ let testEqual1 () =
 [<Test>]
 let testGreater0 () =
     let code = initC7 @
-               (compileCode [GMachine.Pushint 200;
-                             GMachine.Pushint 100;
-                             GMachine.Greater]) // 100 > 200 , GMachine has a different argument order
+               (compileCode [Pushint 200;
+                             Pushint 100;
+                             Greater]) // 100 > 200 , GMachine has a different argument order
     let st = TVM.initialState code
     TVM.dumpFiftScript "testGreater0.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
@@ -119,9 +123,9 @@ let testGreater0 () =
 [<Test>]
 let testGreater1 () =
     let code = initC7 @
-               (compileCode [GMachine.Pushint 100;
-                             GMachine.Pushint 100;
-                             GMachine.Greater])
+               (compileCode [Pushint 100;
+                             Pushint 100;
+                             Greater])
     let st = TVM.initialState code
     TVM.dumpFiftScript "testGreater1.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
@@ -130,9 +134,9 @@ let testGreater1 () =
 [<Test>]
 let testGreater2 () =
     let code = initC7 @
-               (compileCode [GMachine.Pushint 100;
-                             GMachine.Pushint 200;
-                             GMachine.Greater]) // 200 > 100
+               (compileCode [Pushint 100;
+                             Pushint 200;
+                             Greater]) // 200 > 100
     let st = TVM.initialState code
     TVM.dumpFiftScript "testGreater2.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
@@ -141,9 +145,9 @@ let testGreater2 () =
 [<Test>]
 let testDiv0 () =
     let code = initC7 @
-               (compileCode [GMachine.Pushint 100;
-                             GMachine.Pushint 50;
-                             GMachine.Div]) // 50 / 100
+               (compileCode [Pushint 100;
+                             Pushint 50;
+                             Div]) // 50 / 100
     let st = TVM.initialState code
     TVM.dumpFiftScript "testDiv0.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
@@ -152,9 +156,9 @@ let testDiv0 () =
 [<Test>]
 let testDiv1 () =
     let code = initC7 @
-               (compileCode [GMachine.Pushint 50;
-                             GMachine.Pushint 100;
-                             GMachine.Div]) // 100 / 50
+               (compileCode [Pushint 50;
+                             Pushint 100;
+                             Div]) // 100 / 50
     let st = TVM.initialState code
     TVM.dumpFiftScript "testDiv1.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
@@ -163,9 +167,9 @@ let testDiv1 () =
 [<Test>]
 let testSub0 () =
     let code = initC7 @
-               (compileCode [GMachine.Pushint 50;
-                             GMachine.Pushint 100;
-                             GMachine.Sub]) // 100 - 50
+               (compileCode [Pushint 50;
+                             Pushint 100;
+                             Sub]) // 100 - 50
     let st = TVM.initialState code
     TVM.dumpFiftScript "testSub0.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
@@ -174,9 +178,9 @@ let testSub0 () =
 [<Test>]
 let testSub1 () =
     let code = initC7 @
-               (compileCode [GMachine.Pushint -50;
-                             GMachine.Pushint 50;
-                             GMachine.Sub]) // 50 - (-50)
+               (compileCode [Pushint -50;
+                             Pushint 50;
+                             Sub]) // 50 - (-50)
     let st = TVM.initialState code
     TVM.dumpFiftScript "testSub1.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
@@ -185,9 +189,9 @@ let testSub1 () =
 [<Test>]
 let testmkAp () =
     let code = initC7 @
-               (compileCode [GMachine.Pushint 100;
-                             GMachine.Pushint 200;
-                             GMachine.Mkap])
+               (compileCode [Pushint 100;
+                             Pushint 200;
+                             Mkap])
     let st = TVM.initialState code
     TVM.dumpFiftScript "testGreater1.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
@@ -198,10 +202,10 @@ let testmkAp () =
 [<Test>]
 let testUpdate0 () =
     let code = initC7 @
-               (compileCode [GMachine.Pushint 100; // 0 (pos:2)
-                             GMachine.Pushint 200; // 1 (pos:1)
-                             GMachine.Pushint 300; // 2 (pos:0)
-                             GMachine.Update 1])  // heap[0] = NInd 2, heap[2] = NNum 300
+               (compileCode [Pushint 100; // 0 (pos:2)
+                             Pushint 200; // 1 (pos:1)
+                             Pushint 300; // 2 (pos:0)
+                             Update 1])  // heap[0] = NInd 2, heap[2] = NNum 300
     let st = TVM.initialState code
     TVM.dumpFiftScript "testUpdate0.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
@@ -212,9 +216,9 @@ let testUpdate0 () =
 [<Test>]
 let testUpdate1 () =
     let code = initC7 @
-               (compileCode [GMachine.Pushint 100; // 0
-                             GMachine.Pushint 300; // 1
-                             GMachine.Update 0])  // heap[0] = NInd 1
+               (compileCode [Pushint 100; // 0
+                             Pushint 300; // 1
+                             Update 0])  // heap[0] = NInd 1
     let st = TVM.initialState code
     TVM.dumpFiftScript "testUpdate1.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
@@ -225,7 +229,7 @@ let testUpdate1 () =
 [<Test>]
 let testAlloc0 () =
     let code = initC7 @
-               (compileCode [GMachine.Alloc 3])
+               (compileCode [Alloc 3])
     let st = TVM.initialState code
     TVM.dumpFiftScript "testAlloc0.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
@@ -237,9 +241,9 @@ let testAlloc0 () =
 [<Test>]
 let testPack0 () =
     let code = initC7 @
-               (compileCode [GMachine.Pushint 100;
-                             GMachine.Pushint 200;
-                             GMachine.Pack (30, 2)])
+               (compileCode [Pushint 100;
+                             Pushint 200;
+                             Pack (30, 2)])
     let st = TVM.initialState code
     TVM.dumpFiftScript "testPack0.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
@@ -250,10 +254,10 @@ let testPack0 () =
 [<Test>]
 let testPack1 () =
     let code = initC7 @
-               (compileCode [GMachine.Pushint 100;
-                             GMachine.Pushint 200;
-                             GMachine.Pack (30, 2);
-                             GMachine.Pack (40, 1)]) // nested constructor
+               (compileCode [Pushint 100;
+                             Pushint 200;
+                             Pack (30, 2);
+                             Pack (40, 1)]) // nested constructor
     let st = TVM.initialState code
     TVM.dumpFiftScript "testPack1.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
@@ -265,10 +269,10 @@ let testPack1 () =
 [<Test>]
 let testSplit0 () =
     let code = initC7 @
-               (compileCode [GMachine.Pushint 100;
-                             GMachine.Pushint 200;
-                             GMachine.Pack (30, 2);
-                             GMachine.Split 2])
+               (compileCode [Pushint 100;
+                             Pushint 200;
+                             Pack (30, 2);
+                             Split 2])
     let st = TVM.initialState code
     TVM.dumpFiftScript "testSplit0.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
@@ -279,12 +283,12 @@ let testSplit0 () =
 [<Test>]
 let testSplit1 () =
     let code = initC7 @
-               (compileCode [GMachine.Pushint 100;
-                             GMachine.Pushint 200;
-                             GMachine.Pack (30, 2);
-                             GMachine.Pack (40, 1);
-                             GMachine.Split 1;
-                             GMachine.Split 2])
+               (compileCode [Pushint 100;
+                             Pushint 200;
+                             Pack (30, 2);
+                             Pack (40, 1);
+                             Split 1;
+                             Split 2])
     let st = TVM.initialState code
     TVM.dumpFiftScript "testSplit1.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
@@ -295,11 +299,11 @@ let testSplit1 () =
 [<Test>]
 let testCasejump0 () =
     let code = initC7 @
-               (compileCode [GMachine.Pushint 100;
-                             GMachine.Pushint 200;
-                             GMachine.Pack (30, 2);
-                             GMachine.Casejump [(0, [GMachine.Pushint 300]);
-                                                (30, [GMachine.Pushint 600])]])
+               (compileCode [Pushint 100;
+                             Pushint 200;
+                             Pack (30, 2);
+                             Casejump [(0, [Pushint 300]);
+                                                (30, [Pushint 600])]])
     let st = TVM.initialState code
     TVM.dumpFiftScript "testCasejump0.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
@@ -309,11 +313,11 @@ let testCasejump0 () =
 [<Ignore("step handle exceptions")>]
 let testCasejump1 () =
     let code = initC7 @
-               (compileCode [GMachine.Pushint 100;
-                             GMachine.Pushint 200;
-                             GMachine.Pack (30, 2);
-                             GMachine.Casejump [(0, [GMachine.Pushint 300]);
-                                                (20, [GMachine.Pushint 600])]])
+               (compileCode [Pushint 100;
+                             Pushint 200;
+                             Pack (30, 2);
+                             Casejump [(0, [Pushint 300]);
+                                                (20, [Pushint 600])]])
     let st = TVM.initialState code
     TVM.dumpFiftScript "testCasejump1.fif" (TVM.outputFift st)
     try
@@ -329,10 +333,10 @@ let testCasejump1 () =
 [<Test>]
 let testCond0 () =
     let code = initC7 @
-               (compileCode [GMachine.Pushint 100;
-                             GMachine.Pushint 100;
-                             GMachine.Equal;
-                             GMachine.Cond ([GMachine.Pushint 300], [GMachine.Pushint 600])])
+               (compileCode [Pushint 100;
+                             Pushint 100;
+                             Equal;
+                             Cond ([Pushint 300], [Pushint 600])])
     let st = TVM.initialState code
     TVM.dumpFiftScript "testCond0.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
@@ -341,10 +345,10 @@ let testCond0 () =
 [<Test>]
 let testCond1 () =
     let code = initC7 @
-               (compileCode [GMachine.Pushint 100;
-                             GMachine.Pushint 200;
-                             GMachine.Equal;
-                             GMachine.Cond ([GMachine.Pushint 300], [GMachine.Pushint 600])])
+               (compileCode [Pushint 100;
+                             Pushint 200;
+                             Equal;
+                             Cond ([Pushint 300], [Pushint 600])])
     let st = TVM.initialState code
     TVM.dumpFiftScript "testCond1.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
@@ -353,8 +357,8 @@ let testCond1 () =
 [<Test>]
 let testUnwind0 () =
     let code = initC7 @
-               (compileCode [GMachine.Pushint 100;
-                             GMachine.Unwind])
+               (compileCode [Pushint 100;
+                             Unwind])
     let st = TVM.initialState code
     TVM.dumpFiftScript "testUnwind0.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
@@ -364,7 +368,7 @@ let testUnwind0 () =
 [<Test>]
 let testGtTrueCompiler () =
     let coreProgGM =
-        [("main", [], GMachine.EGt (GMachine.ENum 10, GMachine.ENum 1))]
+        [("main", [], EGt (ENum 10, ENum 1))]
     let gmInitSt = GMachine.compile coreProgGM
     let tvmInitSt = compile gmInitSt
     let final = List.last (TVM.runVMLimits tvmInitSt false 1000)
@@ -374,10 +378,10 @@ let testGtTrueCompiler () =
 [<Test>]
 let testSlide0 () =
     let code = initC7 @
-               (compileCode [GMachine.Pushint 100;
-                             GMachine.Pushint 200;
-                             GMachine.Pushint 300;
-                             GMachine.Slide 2])
+               (compileCode [Pushint 100;
+                             Pushint 200;
+                             Pushint 300;
+                             Slide 2])
     let st = TVM.initialState code
     let final = List.last (TVM.runVM st false)
     Assert.AreEqual([Int 2], getResultStack final)
@@ -385,10 +389,10 @@ let testSlide0 () =
 [<Test>]
 let testSlide1 () =
     let code = initC7 @
-               (compileCode [GMachine.Pushint 100;
-                             GMachine.Pushint 200;
-                             GMachine.Pushint 300;
-                             GMachine.Slide 1])
+               (compileCode [Pushint 100;
+                             Pushint 200;
+                             Pushint 300;
+                             Slide 1])
     let st = TVM.initialState code
     let final = List.last (TVM.runVM st false)
     Assert.AreEqual([Int 2; Int 0], getResultStack final)
@@ -396,10 +400,10 @@ let testSlide1 () =
 [<Test>]
 let testSlide2 () =
     let code = initC7 @
-               (compileCode [GMachine.Pushint 100;
-                             GMachine.Pushint 200;
-                             GMachine.Pushint 300;
-                             GMachine.Slide 0])
+               (compileCode [Pushint 100;
+                             Pushint 200;
+                             Pushint 300;
+                             Slide 0])
     let st = TVM.initialState code
     let final = List.last (TVM.runVM st false)
     Assert.AreEqual([Int 2; Int 1; Int 0], getResultStack final)
@@ -407,9 +411,9 @@ let testSlide2 () =
 [<Test>]
 let testPush0 () =
     let code = initC7 @
-               (compileCode [GMachine.Pushint 100;
-                             GMachine.Pushint 100;
-                             GMachine.Push 0])
+               (compileCode [Pushint 100;
+                             Pushint 100;
+                             Push 0])
     let st = TVM.initialState code
     let final = List.last (TVM.runVM st false)
     Assert.AreEqual([Int 1; Int 1; Int 0], getResultStack final)
@@ -417,10 +421,10 @@ let testPush0 () =
 [<Test>]
 let testPop0 () =
     let code = initC7 @
-               (compileCode [GMachine.Pushint 100;
-                             GMachine.Pushint 100;
-                             GMachine.Push 0;
-                             GMachine.Pop 3])
+               (compileCode [Pushint 100;
+                             Pushint 100;
+                             Push 0;
+                             Pop 3])
     let st = TVM.initialState code
     let final = List.last (TVM.runVM st false)
     Assert.AreEqual([] :> TVM.Stack, getResultStack final)
@@ -429,15 +433,15 @@ let testPop0 () =
 [<Ignore("absolute")>]
 let testUnwindNGlobal () =
     let globals = prepareGlobals (Map [("add", 66)])
-    let addGlobal = GMachine.NGlobal (0, [GMachine.Pushint 100; // @add 0
-                                          GMachine.Pushint 200; // @add 0 1
-                                          GMachine.Update 1; // @add 0
-                                          GMachine.Pop 1; // @add
-                                          GMachine.Unwind])
+    let addGlobal = NGlobal (0, [Pushint 100; // @add 0
+                                          Pushint 200; // @add 0 1
+                                          Update 1; // @add 0
+                                          Pop 1; // @add
+                                          Unwind])
     let heap = prepareHeap (Map [(66, addGlobal)])
     let c7 = prepareC7 heap (Int -1) globals unwindCont
-    let code = compileCode [GMachine.Pushglobal "add";
-                            GMachine.Eval]
+    let code = compileCode [Pushglobal "add";
+                            Eval]
     let st = TVM.initialState code
     st.put_c7 c7
     let final = List.last (TVM.runVMLimits st false 1000)
@@ -449,17 +453,17 @@ let testUnwindNGlobal () =
 [<Ignore("absolute")>]
 let testUnwindNAp0 () =
     let globals = prepareGlobals (Map [("inc", 66)])
-    let incGlobal = GMachine.NGlobal (1, [GMachine.Pushint 1; // f @n @1
-                                          GMachine.Add; // f @(n+1)
-                                          GMachine.Update 0; // f'
-                                          GMachine.Pop 0;
-                                          GMachine.Unwind])
+    let incGlobal = NGlobal (1, [Pushint 1; // f @n @1
+                                          Add; // f @(n+1)
+                                          Update 0; // f'
+                                          Pop 0;
+                                          Unwind])
     let heap = prepareHeap (Map [(66, incGlobal)])
     let c7 = prepareC7 heap (Int -1) globals unwindCont
-    let code = compileCode [GMachine.Pushint 10;
-                            GMachine.Pushglobal "inc";
-                            GMachine.Mkap;
-                            GMachine.Eval]
+    let code = compileCode [Pushint 10;
+                            Pushglobal "inc";
+                            Mkap;
+                            Eval]
     let st = TVM.initialState code
     st.put_c7 c7
     let final = List.last (TVM.runVMLimits st false 500)
@@ -471,21 +475,21 @@ let testUnwindNAp0 () =
 [<Ignore("absolute")>]
 let testUnwindNAp2 () =
     let globals = prepareGlobals (Map [("inc", 66)])
-    let incGlobal = GMachine.NGlobal (1, [GMachine.Push 0; // f @n @n
-                                          GMachine.Eval;   // f @n !@n
-                                          GMachine.Pushint 1; // f @n !@n @1
-                                          GMachine.Add;    // f @n @(!n+1)
-                                          GMachine.Update 1; // f' @n
-                                          GMachine.Pop 1;  // f'
-                                          GMachine.Unwind])
+    let incGlobal = NGlobal (1, [Push 0; // f @n @n
+                                          Eval;   // f @n !@n
+                                          Pushint 1; // f @n !@n @1
+                                          Add;    // f @n @(!n+1)
+                                          Update 1; // f' @n
+                                          Pop 1;  // f'
+                                          Unwind])
     let heap = prepareHeap (Map [(66, incGlobal)])
     let c7 = prepareC7 heap (Int -1) globals unwindCont
-    let code = compileCode [GMachine.Pushint 10;
-                            GMachine.Pushglobal "inc";
-                            GMachine.Mkap;
-                            GMachine.Pushglobal "inc";
-                            GMachine.Mkap;
-                            GMachine.Eval]
+    let code = compileCode [Pushint 10;
+                            Pushglobal "inc";
+                            Mkap;
+                            Pushglobal "inc";
+                            Mkap;
+                            Eval]
     let st = TVM.initialState code
     st.put_c7 c7
     let final = List.last (TVM.runVMLimits st false 1000)
@@ -496,22 +500,22 @@ let testUnwindNAp2 () =
 [<Ignore("absolute")>]
 let testUnwindNAp3 () =
     let globals = prepareGlobals (Map [("add", 66)])
-    let addGlobal = GMachine.NGlobal (2, [GMachine.Push 1; // f @x @y @x
-                                          GMachine.Eval;   // f @x @y !x
-                                          GMachine.Push 1; // f @x @y @!x @y
-                                          GMachine.Eval;   // f @x @y @!x @!y
-                                          GMachine.Add;    // f @x @y @(!x+!y)
-                                          GMachine.Update 2; // f' @x @y
-                                          GMachine.Pop 2;  // f'
-                                          GMachine.Unwind])
+    let addGlobal = NGlobal (2, [Push 1; // f @x @y @x
+                                          Eval;   // f @x @y !x
+                                          Push 1; // f @x @y @!x @y
+                                          Eval;   // f @x @y @!x @!y
+                                          Add;    // f @x @y @(!x+!y)
+                                          Update 2; // f' @x @y
+                                          Pop 2;  // f'
+                                          Unwind])
     let heap = prepareHeap (Map [(66, addGlobal)])
     let c7 = prepareC7 heap (Int -1) globals unwindCont
-    let code = compileCode [GMachine.Pushint 10;
-                            GMachine.Pushint 20;
-                            GMachine.Pushglobal "add";
-                            GMachine.Mkap;
-                            GMachine.Mkap;
-                            GMachine.Eval]
+    let code = compileCode [Pushint 10;
+                            Pushint 20;
+                            Pushglobal "add";
+                            Mkap;
+                            Mkap;
+                            Eval]
     let st = TVM.initialState code
     st.put_c7 c7
     let final = List.last (TVM.runVMLimits st false 1000)
@@ -523,40 +527,40 @@ let testUnwindNAp3 () =
 let testUnwindNAp4 () =
     let globals = prepareGlobals (Map [("inc", 66); ("dec", 67); ("mix", 68)])
     let incGlobal =
-        GMachine.NGlobal (1, [GMachine.Push 0;    // @f @x @x
-                              GMachine.Eval;      // @f @x @!x
-                              GMachine.Pushint 1; // @f @x @!x 10
-                              GMachine.Add;       // @f @x @(!x+1)
-                              GMachine.Update 1;  // @f' @x
-                              GMachine.Pop 1;     // @f'
-                              GMachine.Unwind])
+        NGlobal (1, [Push 0;    // @f @x @x
+                              Eval;      // @f @x @!x
+                              Pushint 1; // @f @x @!x 10
+                              Add;       // @f @x @(!x+1)
+                              Update 1;  // @f' @x
+                              Pop 1;     // @f'
+                              Unwind])
     let decGlobal =
-        GMachine.NGlobal (1, [GMachine.Pushint 1; // @f @x 1
-                              GMachine.Push 1;    // @f @x 1 @x
-                              GMachine.Eval;      // @f @x 1 @!x
-                              GMachine.Sub;       // @f @x @(!x-1)
-                              GMachine.Update 1;  // @f' @x
-                              GMachine.Pop 1;     // @f'
-                              GMachine.Unwind])
+        NGlobal (1, [Pushint 1; // @f @x 1
+                              Push 1;    // @f @x 1 @x
+                              Eval;      // @f @x 1 @!x
+                              Sub;       // @f @x @(!x-1)
+                              Update 1;  // @f' @x
+                              Pop 1;     // @f'
+                              Unwind])
     let mixGlobal =
-        GMachine.NGlobal (1, [GMachine.Push 0;             // @f @x @x
-                              GMachine.Eval;
-                              GMachine.Pushglobal "inc";   // @f @x @x @inc
-                              GMachine.Mkap;               // @f @x @(ap @inc @x)
-                              GMachine.Eval;               // @f @x @!(inc x)
-                              GMachine.Pushglobal "dec";   // @f @x @!(inc x) @dec
-                              GMachine.Mkap;               // @f @x @(ap @dec @!(inc x))
-                              GMachine.Eval;               // @f @x @!ap
-                              GMachine.Update 1;           // @f' @x
-                              GMachine.Pop 1;              // @f'
-                              GMachine.Unwind])
+        NGlobal (1, [Push 0;             // @f @x @x
+                              Eval;
+                              Pushglobal "inc";   // @f @x @x @inc
+                              Mkap;               // @f @x @(ap @inc @x)
+                              Eval;               // @f @x @!(inc x)
+                              Pushglobal "dec";   // @f @x @!(inc x) @dec
+                              Mkap;               // @f @x @(ap @dec @!(inc x))
+                              Eval;               // @f @x @!ap
+                              Update 1;           // @f' @x
+                              Pop 1;              // @f'
+                              Unwind])
 
     let heap = prepareHeap (Map [(66, incGlobal); (67, decGlobal); (68, mixGlobal)])
     let c7 = prepareC7 heap (Int -1) globals unwindCont
-    let code = compileCode [GMachine.Pushint 10;
-                            GMachine.Pushglobal "mix";
-                            GMachine.Mkap;
-                            GMachine.Eval]
+    let code = compileCode [Pushint 10;
+                            Pushglobal "mix";
+                            Mkap;
+                            Eval]
     let st = TVM.initialState code
     st.put_c7 c7
     let final = List.last (TVM.runVMLimits st false 2000)
@@ -569,39 +573,39 @@ let testUnwindNAp4 () =
 let testUnwindNAp5 () =
     let globals = prepareGlobals (Map [("inc", 66); ("func", 68)])
     let incGlobal =
-        GMachine.NGlobal (1, [GMachine.Push 0;    // @f @x @x
-                              GMachine.Eval;      // @f @x @!x
-                              GMachine.Pushint 1; // @f @x @!x 10
-                              GMachine.Add;       // @f @x @(!x+1)
-                              GMachine.Update 1;  // @f' @x
-                              GMachine.Pop 1;     // @f'
-                              GMachine.Unwind])
+        NGlobal (1, [Push 0;    // @f @x @x
+                              Eval;      // @f @x @!x
+                              Pushint 1; // @f @x @!x 10
+                              Add;       // @f @x @(!x+1)
+                              Update 1;  // @f' @x
+                              Pop 1;     // @f'
+                              Unwind])
     // func x = if x < 10 then func (inc x) else x
     // This function is tail recursive, so the stack doesn't grow
     let funcGlobal =
-        GMachine.NGlobal (1, [GMachine.Pushint 10; // @f @x @10
-                              GMachine.Push 1;     // @f @x @10 @x
-                              GMachine.Eval;       // @f @x @10 @!x
-                              GMachine.Less;       // @f @x @(!x < 10?)
-                              GMachine.Cond ([GMachine.Push 0; // @f @x @x
-                                              GMachine.Eval;   // @f @x @!x
-                                              GMachine.Pushglobal "inc";   // @f @x @!x @inc
-                                              GMachine.Mkap;               // @f @x @(ap @inc @x)
-                                              GMachine.Eval;               // @f @x @!(inc x)
-                                              GMachine.Pushglobal "func";  // @f @x @!(inc x) @func
-                                              GMachine.Mkap;               // @f @x @(ap @func @!(inc x))
-                                              GMachine.Slide 2;            // @(ap ...)
-                                              GMachine.Eval],              // @!ap
-                                             [GMachine.Push 0])
-                              GMachine.Update 1;   // @f' @x
-                              GMachine.Pop 1;      // @f'
-                              GMachine.Unwind])
+        NGlobal (1, [Pushint 10; // @f @x @10
+                              Push 1;     // @f @x @10 @x
+                              Eval;       // @f @x @10 @!x
+                              Less;       // @f @x @(!x < 10?)
+                              Cond ([Push 0; // @f @x @x
+                                     Eval;   // @f @x @!x
+                                     Pushglobal "inc";   // @f @x @!x @inc
+                                     Mkap;               // @f @x @(ap @inc @x)
+                                     Eval;               // @f @x @!(inc x)
+                                     Pushglobal "func";  // @f @x @!(inc x) @func
+                                     Mkap;               // @f @x @(ap @func @!(inc x))
+                                     Slide 2;            // @(ap ...)
+                                     Eval],              // @!ap
+                                    [Push 0]);
+                              Update 1;   // @f' @x
+                              Pop 1;      // @f'
+                              Unwind])
     let heap = prepareHeap (Map [(66, incGlobal); (68, funcGlobal)])
     let c7 = prepareC7 heap (Int -1) globals unwindCont
-    let code = compileCode [GMachine.Pushint 1;
-                            GMachine.Pushglobal "func";
-                            GMachine.Mkap;
-                            GMachine.Eval]
+    let code = compileCode [Pushint 1;
+                            Pushglobal "func";
+                            Mkap;
+                            Eval]
     let st = TVM.initialState code
     st.put_c7 c7
     let final = List.last (TVM.runVMLimits st false 10000)
@@ -611,10 +615,10 @@ let testUnwindNAp5 () =
 [<Test>]
 let testUnwindNConstr0 () =
     let code = initC7 @
-               (compileCode [GMachine.Pushint 100;
-                             GMachine.Pushint 200;
-                             GMachine.Pack (1,2);
-                             GMachine.Unwind])
+               (compileCode [Pushint 100;
+                             Pushint 200;
+                             Pack (1,2);
+                             Unwind])
     let st = TVM.initialState code
     TVM.dumpFiftScript "testUnwindNConstr0.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
@@ -625,10 +629,10 @@ let testUnwindNConstr0 () =
 [<Test>]
 let testUnwindNInd0 () =
     let code = initC7 @
-               (compileCode [GMachine.Pushint 100; // 0     heap = [(0, Int 100)]
-                             GMachine.Pushint 200; // 0 1   heap = [(0, Int 100), (1, Int 200)]
-                             GMachine.Update 0; // 0        heap = [(0, NInd 1), (1, Int 200)]
-                             GMachine.Unwind])
+               (compileCode [Pushint 100; // 0     heap = [(0, Int 100)]
+                             Pushint 200; // 0 1   heap = [(0, Int 100), (1, Int 200)]
+                             Update 0; // 0        heap = [(0, NInd 1), (1, Int 200)]
+                             Unwind])
     let st = TVM.initialState code
     TVM.dumpFiftScript "testUnwindNInd0.fif" (TVM.outputFift st)
     let final = List.last (TVM.runVM st false)
@@ -639,8 +643,8 @@ let testUnwindNInd0 () =
 [<Test>]
 let testCompileConstr2 () =
     let coreProgGM =
-        [("main", [], GMachine.EPack (0, 2, [GMachine.EAdd (GMachine.ENum 1, GMachine.ENum 2);
-                                             GMachine.ESub (GMachine.ENum 10, GMachine.ENum 5)]))]
+        [("main", [], EPack (0, 2, [EAdd (ENum 1, ENum 2);
+                                             ESub (ENum 10, ENum 5)]))]
     let gmInitSt = GMachine.compile coreProgGM
     let tvmInitSt = compile gmInitSt
     let final = List.last (TVM.runVMLimits tvmInitSt false 1000)
@@ -663,7 +667,7 @@ let testCompileConstr2 () =
 [<Test>]
 let testCompileConstr3 () =
     let coreProgGM =
-        [("main", [], GMachine.EPack (0, 1, [GMachine.EPack (1, 0, [])]))]
+        [("main", [], EPack (0, 1, [EPack (1, 0, [])]))]
     let gmInitSt = GMachine.compile coreProgGM
     let tvmInitSt = compile gmInitSt
     let final = List.last (TVM.runVMLimits tvmInitSt false 1000)
@@ -692,10 +696,10 @@ let testCompileConstr3 () =
 [<Test>]
 let testCompileConstr4 () =
     let coreProgGM =
-        let c1 = GMachine.EPack (1, 0, []) // tag 1
-        let c2 = GMachine.EPack (2, 1, [c1]) // tag 2
-        let c3 = GMachine.EPack (3, 2, [c2; c1]) // tag 3
-        let c4 = GMachine.EPack (4, 3, [c3; c1; c2]) // tag 4
+        let c1 = EPack (1, 0, []) // tag 1
+        let c2 = EPack (2, 1, [c1]) // tag 2
+        let c3 = EPack (3, 2, [c2; c1]) // tag 3
+        let c4 = EPack (4, 3, [c3; c1; c2]) // tag 4
         [("main", [], c4)] // 0
     let gmInitSt = GMachine.compile coreProgGM
     let tvmInitSt = compile gmInitSt
@@ -719,8 +723,8 @@ let testCompileConstr4 () =
 [<Test>]
 let testCase1 () =
     let coreProgGM =
-        [("some", [], GMachine.EPack (0, 1, [GMachine.EPack (1, 0, [])]));
-         ("main", [], GMachine.ECase (GMachine.EVar "some", [(0, ["x"], GMachine.EVar "x")]))
+        [("some", [], EPack (0, 1, [EPack (1, 0, [])]));
+         ("main", [], ECase (EVar "some", [(0, ["x"], EVar "x")]))
          ]
     let gmInitSt = GMachine.compile coreProgGM
     let tvmInitSt = compile gmInitSt
@@ -742,10 +746,10 @@ let testCase1 () =
 [<Test>]
 let testCase2 () =
     let coreProgGM =
-        [("some", [], GMachine.EPack (1, 2, [GMachine.ENum 1; GMachine.ENum 2]));
-         ("main", [], GMachine.ECase (GMachine.EVar "some",
-                                      [(0, ["x"], GMachine.EVar "x");
-                                       (1, ["x"; "y"], GMachine.EAdd (GMachine.EVar "x", GMachine.EVar "y"))])
+        [("some", [], EPack (1, 2, [ENum 1; ENum 2]));
+         ("main", [], ECase (EVar "some",
+                                      [(0, ["x"], EVar "x");
+                                       (1, ["x"; "y"], EAdd (EVar "x", EVar "y"))])
           )
         ]
     let gmInitSt = GMachine.compile coreProgGM
@@ -757,9 +761,9 @@ let testCase2 () =
 [<Test>]
 let testChoice () =
     let coreProgGM =
-        [("first", ["n"; "m"], GMachine.EVar "n");
-         ("second", ["n"; "m"], GMachine.EVar "m");
-         ("main", [], GMachine.EAp (GMachine.EAp (GMachine.EVar "second", GMachine.ENum 10), GMachine.ENum 6))]
+        [("first", ["n"; "m"], EVar "n");
+         ("second", ["n"; "m"], EVar "m");
+         ("main", [], EAp (EAp (EVar "second", ENum 10), ENum 6))]
     let gmInitSt = GMachine.compile coreProgGM
     let tvmInitSt = compile gmInitSt
     let final = List.last (TVM.runVMLimits tvmInitSt false 3000)
@@ -769,8 +773,8 @@ let testChoice () =
 [<Test>]
 let testIfThenElseTrue () =
     let coreProgGM =
-        [("main", [], GMachine.EIf (GMachine.EGt (GMachine.ENum 6, GMachine.ENum 10),
-                                    GMachine.ENum 1, GMachine.ENum 0))]
+        [("main", [], EIf (EGt (ENum 6, ENum 10),
+                                    ENum 1, ENum 0))]
     let gmInitSt = GMachine.compile coreProgGM
     let tvmInitSt = compile gmInitSt
     let final = List.last (TVM.runVMLimits tvmInitSt false 3000)
@@ -780,10 +784,10 @@ let testIfThenElseTrue () =
 [<Test>]
 let testIfThenElseFalse () =
     let coreProgGM =
-        [("main", [], GMachine.EIf (GMachine.EGt (GMachine.ENum 10, GMachine.ENum 6),
-                                    GMachine.ENum 1, GMachine.ENum 0))]
-    let gmInitSt = GMachine.putCode [GMachine.Pushglobal "main";
-                                     GMachine.Eval] (GMachine.compile coreProgGM)
+        [("main", [], EIf (EGt (ENum 10, ENum 6),
+                                    ENum 1, ENum 0))]
+    let gmInitSt = GMachine.putCode [Pushglobal "main";
+                                     Eval] (GMachine.compile coreProgGM)
     let tvmInitSt = compile gmInitSt
     let final = List.last (TVM.runVMLimits tvmInitSt false 1000)
     Assert.AreEqual (nnum 1, getResultHeap final);
@@ -795,8 +799,8 @@ let testIfThenElseFalse () =
 [<Test>]
 let testMaxFunction0 () =
     let coreProgGM =
-        [("max", ["n"], GMachine.EIf (GMachine.EGt (GMachine.EVar "n", GMachine.ENum 5), GMachine.EVar "n", GMachine.ENum 5));
-         ("main", [], GMachine.EAp (GMachine.EVar "max", GMachine.ENum 10))]
+        [("max", ["n"], EIf (EGt (EVar "n", ENum 5), EVar "n", ENum 5));
+         ("main", [], EAp (EVar "max", ENum 10))]
     let gmInitSt = GMachine.compile coreProgGM
     let tvmInitSt = compile gmInitSt
     let final = List.last (TVM.runVMLimits tvmInitSt false 1000)
@@ -809,8 +813,8 @@ let testMaxFunction0 () =
 [<Test>]
 let testMaxFunction1 () =
     let coreProgGM =
-        [("max", ["n"; "m"], GMachine.EIf (GMachine.EGt (GMachine.EVar "n", GMachine.EVar "m"), GMachine.EVar "n", GMachine.EVar "m"));
-         ("main", [], GMachine.EAp (GMachine.EAp (GMachine.EVar "max", GMachine.ENum 10), GMachine.ENum 6))]
+        [("max", ["n"; "m"], EIf (EGt (EVar "n", EVar "m"), EVar "n", EVar "m"));
+         ("main", [], EAp (EAp (EVar "max", ENum 10), ENum 6))]
     let gmInitSt = GMachine.compile coreProgGM
     let tvmInitSt = compile gmInitSt
     let final = List.last (TVM.runVMLimits tvmInitSt false 1000)
@@ -826,15 +830,15 @@ let testFactorial5 () =
     // main = fact 5
     let coreProgGM =
         [("fact", ["n"],
-          GMachine.EIf (
-            GMachine.EEq (GMachine.EVar "n", GMachine.ENum 0),
-            GMachine.ENum 1, // true branch
-            GMachine.EMul (GMachine.EVar "n",
-                           GMachine.EAp (GMachine.EVar "fact",
-                                         GMachine.ESub (GMachine.EVar "n",
-                                                        GMachine.ENum 1)))) // else branch
+          EIf (
+            EEq (EVar "n", ENum 0),
+            ENum 1, // true branch
+            EMul (EVar "n",
+                           EAp (EVar "fact",
+                                         ESub (EVar "n",
+                                                        ENum 1)))) // else branch
           )
-         ("main", [], GMachine.EAp (GMachine.EVar "fact", GMachine.ENum 5))]
+         ("main", [], EAp (EVar "fact", ENum 5))]
     let gmInitSt = GMachine.compile coreProgGM
     let tvmInitSt = compile gmInitSt
     TVM.dumpFiftScript "testFactorial5.fif" (TVM.outputFift tvmInitSt)
@@ -851,15 +855,15 @@ let testFactorial10 () =
     // main = fact 10
     let coreProgGM =
         [("fact", ["n"],
-          GMachine.EIf (
-            GMachine.EEq (GMachine.EVar "n", GMachine.ENum 0),
-            GMachine.ENum 1, // true branch
-            GMachine.EMul (GMachine.EVar "n",
-                           GMachine.EAp (GMachine.EVar "fact",
-                                         GMachine.ESub (GMachine.EVar "n",
-                                                        GMachine.ENum 1)))) // else branch
+          EIf (
+            EEq (EVar "n", ENum 0),
+            ENum 1, // true branch
+            EMul (EVar "n",
+                           EAp (EVar "fact",
+                                         ESub (EVar "n",
+                                                        ENum 1)))) // else branch
           )
-         ("main", [], GMachine.EAp (GMachine.EVar "fact", GMachine.ENum 10))]
+         ("main", [], EAp (EVar "fact", ENum 10))]
     let gmInitSt = GMachine.compile coreProgGM
     let tvmInitSt = compile gmInitSt
     TVM.dumpFiftScript "testFactorial10.fif" (TVM.outputFift tvmInitSt)
@@ -876,20 +880,56 @@ let testCompiler2Factorial5 () =
     // main = fact 5
     let coreProgGM =
         [("fact", ["n"],
-          GMachine.EIf (
-            GMachine.EIsZero (GMachine.EVar "n"),
-            GMachine.ENum 1, // true branch
-            GMachine.EMul (GMachine.EVar "n",
-                           GMachine.EAp (GMachine.EVar "fact",
-                                         GMachine.EDec (GMachine.EVar "n")))) // else branch
+          EIf (
+            EIsZero (EVar "n"),
+            ENum 1, // true branch
+            EMul (EVar "n",
+                           EAp (EVar "fact",
+                                         EDec (EVar "n")))) // else branch
           )
-         ("main", [], GMachine.EAp (GMachine.EVar "fact", GMachine.ENum 5))]
+         ("main", [], EAp (EVar "fact", ENum 5))]
     let gmInitSt = GMachine.compile coreProgGM
     let tvmInitSt = compile gmInitSt
     TVM.dumpFiftScript "testCompiler2Factorial5.fif" (TVM.outputFift tvmInitSt)
     let final = List.last (TVM.runVMLimits tvmInitSt false 5000)
     Assert.AreEqual (nnum 120, getResultHeap final);
     Assert.AreEqual (1, List.length (getResultStack final));
+    printfn "%A: Gas consumed: %d"
+            NUnit.Framework.TestContext.CurrentContext.Test.Name
+            (final.gas.gas_limit - final.gas.gas_remaining)
+
+[<Test>]
+let testMapList () =
+    // f n = n * 2
+    // List.map f l =
+    //   if l = [] then []
+    //   else let h' = f (hd l)
+    //        let t' = List.map f (tl l)
+    //        h' :: t'
+    // main = List.map f [1;2;3;4;5]
+    let TNil = EPack (0, 0, [])
+    let TCons x y = EPack (1, 2, [x; y])
+    let myList = TCons (ENum 1) (TCons (ENum 2) (TCons (ENum 3) (TCons (ENum 4) (TCons (ENum 5) TNil))))
+    let coreProgGM =
+        [("f", ["n"], EMul (EVar "n", ENum 2));
+         ("List.map", ["fun"; "l"],
+          ECase (EVar "l",
+                 [(0, [], TNil);
+                  (1, ["h"; "t"],
+                   ELet (false, [("h'", EAp (EVar "fun", EVar "h"));
+                                 ("t'", EAp (EAp (EVar "List.map", EVar "fun"), EVar "t"))],
+                         TCons (EVar "h'") (EVar "t'")))
+                  ]
+                 )
+          );
+         ("main", [], EAp (EAp (EVar "List.map", EVar "f"), myList))]
+    let gmInitSt = GMachine.compile coreProgGM
+    let tvmInitSt = compile gmInitSt
+    TVM.dumpFiftScript "testMapList.fif" (TVM.outputFift tvmInitSt)
+    let final = List.last (TVM.runVMLimits tvmInitSt true 10000)
+    // printfn "%A" (tvmInitSt.cr.c7.unboxTup.Item 3)
+    printfn "%A" (getResultStack final)
+    printfn "%A" (List.indexed (simplifyHeap (tvmHeap final)))
     printfn "%A: Gas consumed: %d"
             NUnit.Framework.TestContext.CurrentContext.Test.Name
             (final.gas.gas_limit - final.gas.gas_remaining)

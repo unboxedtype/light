@@ -3,7 +3,7 @@ module Compiler2
 
 // Debug switch turns on excessive logging
 // Turn it off to produce gas-optimal executables
-let debug = false
+let debug = true
 
 // Incomplete pattern matches on this expression.
 #nowarn "25"
@@ -514,6 +514,17 @@ let getResultHeap (st:TVM.TVMState) : TVM.Value =
 let tvmHeap (st:TVM.TVMState) =
     let (Tup (Null :: Tup heap :: _))  = st.cr.c7
     heap
+
+// this is to remove continuation objects from the output
+// not to clutter it
+let rec simplifyHeap (l:TVM.Value list) : TVM.Value list =
+    let simplifyTuple (t:TVM.Value list) : TVM.Value list =
+        List.map (fun (e:TVM.Value) -> if e.isCont then Null else e) t
+    match l with
+        | (Tup h) :: l ->
+            (Tup (simplifyTuple h)) :: simplifyHeap l
+        | _ ->
+            l
 
 let mkCont (c:TVM.Code) : TVM.Value =
     Cont { TVM.Continuation.Default with code = c }
