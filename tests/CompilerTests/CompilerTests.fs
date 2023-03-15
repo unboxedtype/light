@@ -913,7 +913,7 @@ let testMapList () =
     let TCons x y = EPack (2, 2, [x; y])
     let myList = TCons (ENum 1) (TCons (ENum 2) (TCons (ENum 3) (TCons (ENum 4) (TCons (ENum 5) TNil))))
     let coreProgGM =
-        [("f", ["n"], EInc (EVar "n"));
+        [("f", ["n"], EMul (ENum 2, EVar "n"));
          ("List.map", ["fun"; "l"],
           ECase (EVar "l",
                  [(1, [], ENum 0);
