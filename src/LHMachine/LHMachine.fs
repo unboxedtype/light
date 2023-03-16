@@ -136,7 +136,7 @@ let rec compile (ast:Expr) (env: Environment) (ft: FuncArityTable) : LHCode =
 and compileAlts alts env ft =
     List.map (fun a ->
                  let (tag, names, body) = a
-                 let indexed = List.indexed names
+                 let indexed = List.indexed (List.rev names)
                  let env_len = List.length names
                  let env' = indexed @ (argOffset env_len env)
                  (tag, compileAlt env_len body env' ft)
@@ -185,6 +185,17 @@ let rec instrToTVM (i:Instruction) : string =
     | Split n ->
         " SECOND" + " " +
         (string n) + " UNTUPLE"
+    | Casejump l ->
+        let rec compileCasejumpSelector l =
+            match l with
+            | [] ->
+                "10 THROW " // proper case selector not found (shall not happen)
+            | (tag, code) :: t ->
+                "DUP " + (string tag) + " INT EQUAL " +
+                "<{ DROP " + generateFiftFunction code + " EXECUTE }> PUSHCONT IFJMP " +
+                compileCasejumpSelector t
+        let l' = compileCasejumpSelector l
+        "DUP 0 INDEX <{ " + l' + " }> " + " PUSHCONT EXECUTE"
     | _ ->
         failwith (sprintf "unimplemented instruction %A"  i)
 and generateFiftFunction (code:LHCode) : string =

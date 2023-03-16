@@ -103,7 +103,83 @@ let testPack2 () =
 [<Test>]
 let testPack3 () =
     let g =
-        [("main", [], EPack (1, 1, [EPack (2, 2, [EPack (3, 2, [ENum 10; ENum 20]);
-                                                  EPack (4, 2, [ENum 50; ENum 60])])]))]
+        [("main", [], EPack (1, 1, [EPack (2, 2, [EPack (3, 2, [ENum 10; ENum 20]);                                                  EPack (4, 2, [ENum 50; ENum 60])])]))]
     let ft = Map [("main", 0)]
     execAndCheck g ft "[ 1 [ [ 2 [ [ 3 [ 10 20 ] ] [ 4 [ 50 60 ] ] ] ] ] ]"
+
+[<Test>]
+let testCase1 () =
+    let g =
+        [("some", [], EPack (0, 1, [EPack (1, 0, [])]));
+         ("main", [], ECase (EVar "some", [(0, ["x"], EVar "x")]))]
+    let ft = Map [("main", 0); ("some", 0)]
+    execAndCheck g ft "[ 1 [] ]"
+
+[<Test>]
+let testCase2 () =
+    let g =
+        [("some", [], EPack (1, 2, [ENum 1; ENum 2]));
+         ("main", [], ECase (EVar "some",
+                             [(0, ["x"], EVar "x");
+                              (1, ["x"; "y"], EAdd (EVar "x", EVar "y"))])
+          )
+        ]
+    let ft = Map [("main", 0); ("some", 0)]
+    execAndCheck g ft "3"
+
+[<Test>]
+let testChoice () =
+    let g =
+        [("first", ["n"; "m"], EVar "n");
+         ("second", ["n"; "m"], EVar "m");
+         ("main", [], EAp (EAp (EVar "second", ENum 10), ENum 6))]
+    let ft = Map [("main", 0); ("first", 2); ("second", 2)]
+    execAndCheck g ft "6"
+
+[<Test>]
+let testList1 () =
+    let TNil = EPack (1, 0, [])
+    let TCons x y = EPack (2, 2, [x; y])
+    let myList = TCons (ENum 1) (TCons (ENum 2) (TCons (ENum 3) (TCons (ENum 4) (TCons (ENum 5) TNil))))
+    let g =
+        [("main", [], myList)]
+    let ft = Map [("main", 0)]
+    execAndCheck g ft "[ 2 [ 1 [ 2 [ 2 [ 2 [ 3 [ 2 [ 4 [ 2 [ 5 [ 1 [] ] ] ] ] ] ] ] ] ] ] ]"
+
+[<Test>]
+let testListPatternMatch () =
+    let TNil = EPack (1, 0, [])
+    let TCons x y = EPack (2, 2, [x; y])
+    let myList = TCons (ENum 1) (TCons (ENum 2) (TCons (ENum 3) (TCons (ENum 4) (TCons (ENum 5) TNil))))
+    let g =
+        [("mylist", [], myList);
+         ("main", [],
+          ECase (EVar "mylist",
+                 [(1, [], ENum 0);
+                  (2, ["h"; "t"], EVar "h")]))]
+    let ft = Map [("main", 0); ("mylist",0)]
+    execAndCheck g ft "1"
+
+[<Test>]
+let testMapList () =
+    // f n = n * 2
+    // List.map f l =
+    //   if l = [] then []
+    //   else let h' = f (hd l)
+    //        let t' = List.map f (tl l)
+    //        h' :: t'
+    // main = List.map f [1;2;3;4;5]
+    let TNil = EPack (1, 0, [])
+    let TCons x y = EPack (2, 2, [x; y])
+    let myList = TCons (ENum 1) (TCons (ENum 2) (TCons (ENum 3) (TCons (ENum 4) (TCons (ENum 5) TNil))))
+    let g =
+        [("f", ["n"], EMul (ENum 2, EVar "n"));
+         ("List.map", ["fun"; "l"],
+          ECase (EVar "l",
+                 [(1, [], TNil);
+                  (2, ["h"; "t"],
+                   TCons (EAp (EVar "fun", EVar "h")) (EAp (EAp (EVar "List.map", EVar "fun"), EVar "t")))])
+          );
+         ("main", [], EAp (EAp (EVar "List.map", EVar "f"), myList))]
+    let ft = Map [("main", 0); ("fun", 1); ("f", 1); ("List.map", 2)]
+    execAndCheck g ft "[ 2 [ 2 [ 2 [ 4 [ 2 [ 6 [ 2 [ 8 [ 2 [ 10 [ 1 [] ] ] ] ] ] ] ] ] ] ] ]"
