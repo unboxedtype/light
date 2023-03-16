@@ -68,3 +68,27 @@ let testCurry2 () =
          ("main", [], EAp (EAp (EAp (EAp (EVar "f", EVar "inc"), EVar "sum"), ENum 10), ENum 20))]
     let ft = Map [("main", 0); ("f", 4); ("inc", 1); ("sum", 2); ("f1", 1); ("f2", 2)]
     execAndCheck g ft "32"
+
+[<Test>]
+let testPack0 () =
+    let g =
+        [("main", [], EPack (1, 2, [ENum 10; ENum 20]))]
+    let ft = Map [("main", 0)]
+    execAndCheck g ft "[ 1 [ 10 20 ] ]"
+
+[<Test>]
+let testArity0 () =
+    let g =
+        [("x1", [], ENum 10);
+         ("main", [], EVar "x1")]
+    let ft = Map [("main", 0); ("x1", 0)]
+    execAndCheck g ft "10"
+
+[<Test>]
+let testPack1 () =
+    let g =
+        [("x1", [], ENum 10);
+         ("x2", [], ENum 20);
+         ("main", [], EPack (1, 2, [EVar "x1"; EVar "x2"]))]
+    let ft = Map [("main", 0); ("x1", 0); ("x2", 0)]
+    execAndCheck g ft "[ 1 [ 10 20 ] ]"

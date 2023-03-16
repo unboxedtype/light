@@ -26,8 +26,8 @@ type Instruction =
     | Greater
     | IfElse of t:LHCode * f:LHCode
     | Pack of tag:int * n:int
-    | Casejump of (int * LHCode) list
     | Split of n:int
+    | Casejump of (int * LHCode) list
     | DumpStk
     | Throw of n:int
 and LHCode = Instruction list
@@ -104,13 +104,14 @@ let rec compile (ast:Expr) (env: Environment) (ft: FuncArityTable) : LHCode =
             | Some n ->
                 [Push n]
             | _ ->
-                [GetGlob v]
+                [GetGlob v] @
+                (if ft.[v] = 0 then [Execute] else [])
     | ENum n ->
         [Pushint n]
     | EAp (e1, e2) ->
         (compile e2 env ft) @ (compile e1 (argOffset 1 env) ft) @
-        (if (arity e1 ft) = 1 then [Execute]
-         else [])
+        (let e1ar = arity e1 ft
+         if e1ar = 1 then [Execute] else [])
     | EIf (e0, t, f) ->
         (compile e0 env ft) @ [IfElse (compile t env ft, compile f env ft)]
     | EAdd (e0, e1) ->
@@ -123,6 +124,11 @@ let rec compile (ast:Expr) (env: Environment) (ft: FuncArityTable) : LHCode =
         (compile e0 env ft) @ (compile e1 (argOffset 1 env) ft) @ [Equal]
     | EGt (e0, e1) ->
         (compile e0 env ft) @ (compile e1 (argOffset 1 env) ft) @ [Greater]
+    | EPack (tag, arity, args) ->
+        List.concat
+          (List.map (fun (i, e) -> compile e (argOffset i env) ft)
+          (List.indexed args)) @
+        [Pack (tag, arity)]
     | _ ->
         failwith "not implemented"
 
@@ -159,6 +165,11 @@ let rec instrToTVM (i:Instruction) : string =
         (generateFiftFunction f) + " IFELSE"
     | DumpStk -> "DUMPSTK"
     | Throw n -> (string n) + " THROW"
+    | Pack (tag, arity) ->
+        (string arity) + " TUPLE" +
+        " " + (string tag) + " INT" +
+        " SWAP" +
+        " 2 TUPLE"
     | _ ->
         failwith (sprintf "unimplemented instruction %A"  i)
 and generateFiftFunction (code:LHCode) : string =
