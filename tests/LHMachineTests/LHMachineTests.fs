@@ -203,8 +203,28 @@ let testLet2 () =
 [<Test>]
 let testLet3 () =
     let g = [
-        ("func", ["x"; "y"], ELet (false, [("a", EVar "x"); ("b", EVar "y")], EAdd (EVar "a", EVar "b")));
+        ("func", ["x"; "y"],
+         ELet (false, [("a", EVar "x"); ("b", EVar "y")], EAdd (EVar "a", EVar "b")));
         ("main", [], EAp (EAp (EVar "func", ENum 10), ENum 20))
     ]
     let ft = Map [("main", 0); ("func", 2)]
     execAndCheck g ft "30"
+
+[<Test>]
+let testLetRec1 () =
+    let g = [
+        ("main", [], ELet (true, [("k", ENum 3); ("t", EVar "k")], EVar "t"))
+    ]
+    let ft = Map [("main", 0)]
+    execAndCheck g ft "3"
+
+[<Test>]
+let testLetRec2 () =
+    let g = [
+        ("main", [],
+         ELet (true, [("k", ENum 3);
+                      ("t", EVar "k");
+                      ("z", EAdd (EVar "t", EVar "k"))], EVar "z"))
+    ]
+    let ft = Map [("main", 0)]
+    execAndCheck g ft "6"

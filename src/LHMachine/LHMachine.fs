@@ -30,6 +30,8 @@ type Instruction =
     | Casejump of (int * LHCode) list
     | DumpStk
     | Throw of n:int
+    | Alloc of n:int  // allocate n dummy values on the stack
+    | Update of i:int // update the i-th stack value with the one residing on the top
 and LHCode = Instruction list
 
 // type LHDump = LHCode * LHStack
@@ -142,7 +144,7 @@ let rec compile (ast:Expr) (env: Environment) (ft: FuncArityTable) : LHCode =
         | false ->
             compileLet defs body env ft
         | true ->
-            failwith "not implemented"
+            compileLetRec defs body env ft
     | _ ->
         failwith "not implemented"
 and compileAlts alts env ft =
@@ -171,6 +173,16 @@ and compileLetDefs defs env ft =
             []
         | (name, expr) :: defs' ->
             (compile expr env ft) @ compileLetDefs defs' (argOffset 1 env) ft
+and compileLetRec (defs: BoundVarDefs) expr env ft =
+    let env' = compileArgs defs env
+    let n = List.length defs
+    [Alloc n] @ (compileLetRecDefs defs env' n ft) @ (compile expr env' ft) @ [Slide n]
+and compileLetRecDefs defs env n ft =
+    match defs with
+        | [] ->
+            []
+        | (name, expr) :: defs' ->
+            (compile expr env ft) @ [Update n] @ compileLetRecDefs defs' env (n - 1) ft
 
 type LHGlobalsDefs = (Name * (string list) * Expr) list
 type LHGlobalsTable = (int * (string * LHCode)) list
@@ -189,6 +201,8 @@ let compileGlobals (globals: LHGlobalsDefs) (ft:FuncArityTable) : LHGlobalsTable
 
 let rec instrToTVM (i:Instruction) : string =
     match i with
+    | Alloc n -> String.concat " " [for i in [1..n] -> "NULL"]
+    | Update i -> "s0 s" + (string i) + " XCHG DROP"
     | GetGlob n -> n + " GETGLOB"
     | Pushint n -> (string n) + " INT"
     | Push n -> "s" + (string n) + " PUSH"
