@@ -95,6 +95,12 @@ let rec arity (e:Expr) (ft:FuncArityTable) : int =
     | _ ->
         failwith "non executable code doesn't have an arity"
 
+let compileArgs (defs:BoundVarDefs) (env:Environment) : Environment =
+    let n = List.length defs
+    let indexes = List.rev [for i in 0 .. (n-1) -> i]
+    let names = List.map fst defs
+    (List.zip indexes names) @ (argOffset n env)
+
 let rec compile (ast:Expr) (env: Environment) (ft: FuncArityTable) : LHCode =
     match ast with
     | EVar v ->
@@ -131,6 +137,12 @@ let rec compile (ast:Expr) (env: Environment) (ft: FuncArityTable) : LHCode =
         [Pack (tag, arity)]
     | ECase (e, alts) ->
         (compile e env ft) @ [ Casejump (compileAlts alts env ft) ]
+    | ELet (isRec, defs, body) ->
+        match isRec with
+        | false ->
+            compileLet defs body env ft
+        | true ->
+            failwith "not implemented"
     | _ ->
         failwith "not implemented"
 and compileAlts alts env ft =
@@ -143,6 +155,22 @@ and compileAlts alts env ft =
               ) alts
 and compileAlt offset expr env ft =
     [Split offset] @ (compile expr env ft) @ [Slide offset]
+and compileLet (defs: BoundVarDefs) expr env ft =
+    // inject new definitions into the environment
+    let env' = compileArgs defs env
+    let n = List.length defs
+    // compile the definitions using the old environment
+    (compileLetDefs defs env ft) @
+      // compile the expression using the new environment
+      (compile expr env' ft) @
+      // remove local variables after the evaluation
+      [Slide n]
+and compileLetDefs defs env ft =
+    match defs with
+        | [] ->
+            []
+        | (name, expr) :: defs' ->
+            (compile expr env ft) @ compileLetDefs defs' (argOffset 1 env) ft
 
 type LHGlobalsDefs = (Name * (string list) * Expr) list
 type LHGlobalsTable = (int * (string * LHCode)) list

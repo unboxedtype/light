@@ -183,3 +183,28 @@ let testMapList () =
          ("main", [], EAp (EAp (EVar "List.map", EVar "f"), myList))]
     let ft = Map [("main", 0); ("fun", 1); ("f", 1); ("List.map", 2)]
     execAndCheck g ft "[ 2 [ 2 [ 2 [ 4 [ 2 [ 6 [ 2 [ 8 [ 2 [ 10 [ 1 [] ] ] ] ] ] ] ] ] ] ] ]"
+
+[<Test>]
+let testLet1 () =
+    let  g = [
+        ("main", [], ELet (false, [("t", ENum 3)], (EVar "t")))
+    ]
+    let ft = Map [("main", 0)]
+    execAndCheck g ft "3"
+
+[<Test>]
+let testLet2 () =
+    let g = [
+        ("main", [], ELet (false, [("k", ENum 3); ("t", ENum 4)], EVar "t"))
+    ]
+    let ft = Map [("main", 0)]
+    execAndCheck g ft "4"
+
+[<Test>]
+let testLet3 () =
+    let g = [
+        ("func", ["x"; "y"], ELet (false, [("a", EVar "x"); ("b", EVar "y")], EAdd (EVar "a", EVar "b")));
+        ("main", [], EAp (EAp (EVar "func", ENum 10), ENum 20))
+    ]
+    let ft = Map [("main", 0); ("func", 2)]
+    execAndCheck g ft "30"
