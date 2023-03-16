@@ -1,3 +1,5 @@
+// For emacs: -*- fsharp -*-
+
 module FiftExecutor
 
 open System
@@ -40,6 +42,6 @@ let runFiftScript (scriptPath: string) =
         res.StandardOutput.Split(Environment.NewLine) |>
             Array.collect (fun s -> [| s.Trim() |])
     if out.[0] = "0" then // VM successful completion
-        Some out.[1]
+        out.[1]
     else
-        None // VM thrown an exception
+        "(empty)"

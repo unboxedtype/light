@@ -10,6 +10,13 @@ open type LHMachine.Expr
 let Setup () =
     ()
 
+let execAndCheck g ft expected =
+    let gs = compileGlobals g ft
+    let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".fif"
+    TVM.dumpFiftScript filename (generateFift gs)
+    let res = FiftExecutor.runFiftScript filename
+    Assert.AreEqual (expected, res)
+
 [<Test>]
 let testTrivial () =
     let code = compile (ENum 0) [] (Map [])
@@ -17,21 +24,47 @@ let testTrivial () =
 
 [<Test>]
 let testFactorial () =
-    let eCode =
-        EIf (EGt (EVar "n", ENum 0),
-             EMul (EVar "n", EAp (EVar "fact", ESub (EVar "n", ENum 1))),
-             ENum 1)
-    let code = compile eCode [(0, "n")]
-    // printfn "%A" code
-    Assert.Pass()      
+    let g = [("fact", ["n"],
+                    EIf (EGt (EVar "n", ENum 1),
+                         EMul (EVar "n", EAp (EVar "fact", ESub (EVar "n", ENum 1))),
+                         ENum 1));
+                   ("main", [], EAp (EVar "fact", ENum 5))]
+    let ft = Map [("main", 0); ("fact", 1)]
+    execAndCheck g ft "120"
 
 [<Test>]
 let testFunc2Args () =
     // let sum n m = if (n > 0) then (n + sum (n - 1) m) else m
-    let eCode =
-        EIf (EGt (EVar "n", ENum 0),
-             EAdd (EVar "n", EAp (EAp (EVar "sum", ESub (EVar "n", ENum 1)), EVar "m")),
-             EVar "m")
-    let code = (compile eCode [(1, "n"); (0, "m")] (Map [("sum", 2)])) @ [Slide 2]
-    printfn "%A" code
-    Assert.Pass()      
+    let g = [("sum", ["n";"m"],
+                    EIf (EGt (EVar "n", ENum 0),
+                         EAdd (EVar "n", EAp (EAp (EVar "sum", ESub (EVar "n", ENum 1)), EVar "m")),
+                         EVar "m"));
+                   ("main", [], EAp (EAp (EVar "sum", ENum 5), ENum 10))]
+    let ft = Map [("main", 0); ("sum", 2)]
+    execAndCheck g ft "25"
+
+[<Test>]
+let testGlobals () =
+    let g = [("f", ["x"], ESub (EVar "x", ENum 1));
+                   ("main", [], EAp (EVar "f", ENum 5))]
+    let ft = Map [("main", 0); ("f", 1)]
+    execAndCheck g ft "4"
+
+[<Test>]
+let testCurry1 () =
+    let g = [("f", ["func"; "x"], EAp (EVar "func", EVar "x"));
+                   ("inc", ["x"], EAdd (EVar "x", ENum 1));
+                   ("main", [], EAp (EAp (EVar "f", EVar "inc"), ENum 1))]
+    let ft = Map [("main", 0); ("f", 2); ("inc", 1); ("func", 1)]
+    execAndCheck g ft "2"
+
+[<Test>]
+let testCurry2 () =
+    let g =
+        // f f1 f2 x y = f2 (f1 x) (f1 y)
+        [("f", ["f1"; "f2"; "x"; "y"], EAp (EAp (EVar "f2", EAp (EVar "f1", EVar "x")), EAp (EVar "f1", EVar "y")));
+         ("sum", ["x"; "y"], EAdd (EVar "x", EVar "y"));
+         ("inc", ["x"], EAdd (EVar "x", ENum 1));
+         ("main", [], EAp (EAp (EAp (EAp (EVar "f", EVar "inc"), EVar "sum"), ENum 10), ENum 20))]
+    let ft = Map [("main", 0); ("f", 4); ("inc", 1); ("sum", 2); ("f1", 1); ("f2", 2)]
+    execAndCheck g ft "32"

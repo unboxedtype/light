@@ -6,6 +6,7 @@ open System.Collections.Generic
 
 exception GMError of string
 
+
 // Incomplete pattern matches on this expression.
 #nowarn "25"
 
@@ -69,30 +70,32 @@ let argOffset (m:int) (env: Environment) =
 // let fact n =  ..
 // let sum a b = ...
 // let main = ...
-// FuncTable = [("fact",1); ("sum",2); ("main",0)]        
-type FuncTable = Map<Name,int>
+// FuncArityTable = [("fact",1); ("sum",2); ("main",0)]
+type FuncArityTable = Map<Name,int>
 
-let rec argCount (e:Expr) (ft:FuncTable) : int =
+let rec argCount (e:Expr) (ft:FuncArityTable) : int =
     match e with
-    | EVar v ->        
+    | EVar v ->
         ft.[v]
     | EAp (e1, e2) ->
         argCount e1 ft
     | _ ->
         failwith "argCount applies only to function identifiers and applications"
-    
-let rec arity (e:Expr) (ft:FuncTable) : int =
-    match e with
-        | EVar v ->
-            argCount e ft
-        | EAp (e1, e2) ->
-            (arity e1 ft) - 1
-        | EIf (c, t, f) ->
-            arity t ft   // type system must guarantee that arity of both branches is the same
-        | _ ->
-            failwith "non executable code doesn't have an arity"
 
-let rec compile (ast:Expr) (env: Environment) (ft: FuncTable) : LHCode =
+let rec arity (e:Expr) (ft:FuncArityTable) : int =
+    match e with
+    | EVar v ->
+        argCount e ft
+    | EAp (e1, e2) ->
+        (arity e1 ft) - 1
+    | EIf (c, t, f) ->
+        // The type system must guarantee that
+        // the arity of both branches is the same.
+        arity t ft
+    | _ ->
+        failwith "non executable code doesn't have an arity"
+
+let rec compile (ast:Expr) (env: Environment) (ft: FuncArityTable) : LHCode =
     match ast with
     | EVar v ->
         let r = List.tryPick (fun (n, v') ->
@@ -106,7 +109,7 @@ let rec compile (ast:Expr) (env: Environment) (ft: FuncTable) : LHCode =
         [Pushint n]
     | EAp (e1, e2) ->
         (compile e2 env ft) @ (compile e1 (argOffset 1 env) ft) @
-        (if (arity e1 ft) = 1 then [Execute; Slide (argCount e1 ft)]
+        (if (arity e1 ft) = 1 then [Execute]
          else [])
     | EIf (e0, t, f) ->
         (compile e0 env ft) @ [IfElse (compile t env ft, compile f env ft)]
@@ -122,4 +125,64 @@ let rec compile (ast:Expr) (env: Environment) (ft: FuncTable) : LHCode =
         (compile e0 env ft) @ (compile e1 (argOffset 1 env) ft) @ [Greater]
     | _ ->
         failwith "not implemented"
-        
+
+type LHGlobalsDefs = (Name * (string list) * Expr) list
+type LHGlobalsTable = (int * (string * LHCode)) list
+
+let globalsBaseNumber = 1
+
+let compileGlobals (globals: LHGlobalsDefs) (ft:FuncArityTable) : LHGlobalsTable =
+    // ft could have been generated from globals, but...
+    globals
+    |> List.map
+       (fun (name,vars,expr) ->
+        let indVars = List.indexed vars
+        (name, (compile expr indVars ft) @ [Slide ft.[name]]))
+    |> List.indexed
+    |> List.map (fun (n,t) -> (n + globalsBaseNumber, t))
+
+let rec instrToTVM (i:Instruction) : string =
+    match i with
+    | GetGlob n -> n + " GETGLOB"
+    | Pushint n -> (string n) + " INT"
+    | Push n -> "s" + (string n) + " PUSH"
+    | Pop n -> "s" + (string n) + " POP"
+    | Slide n -> String.concat " " [for i in [1..n] -> "NIP"]
+    | Execute -> "EXECUTE"
+    | Add -> "ADD"
+    | Sub -> "SUB"
+    | Mul -> "MUL"
+    | Equal -> "EQUAL"
+    | Greater -> "GREATER"
+    | IfElse (t, f) ->
+        (generateFiftFunction t) + " " +
+        (generateFiftFunction f) + " IFELSE"
+    | DumpStk -> "DUMPSTK"
+    | Throw n -> (string n) + " THROW"
+    | _ ->
+        failwith (sprintf "unimplemented instruction %A"  i)
+and generateFiftFunction (code:LHCode) : string =
+    let contBody =
+        code
+        |> List.map instrToTVM
+        |> String.concat " "
+    "<{ " + contBody + " }> PUSHCONT"
+
+let generateFiftGlobFunction (name:string, code:LHCode) : string =
+    (generateFiftFunction code) + " " + name + " SETGLOB"
+
+let defineFiftNames (t:LHGlobalsTable) : string list =
+    t
+    |> List.map (fun (i, (name, _)) ->
+                 "{ " + (string i) + " } : " + name)
+
+let generateFift (t:LHGlobalsTable) : string =
+    (List.singleton "\"Asm.fif\" include" @
+     (defineFiftNames t) @
+     List.singleton "<{ " @
+     (t
+      |> List.map snd
+      |> List.map generateFiftGlobFunction) @
+     List.singleton "main GETGLOB EXECUTE" @
+     List.singleton " }>s 1000000 gasrunvmcode drop .dump cr .dump cr")
+    |> String.concat "\n"
