@@ -228,3 +228,16 @@ let testLetRec2 () =
     ]
     let ft = Map [("main", 0)]
     execAndCheck g ft "6"
+
+[<Test>]
+let testLetRec3 () =
+    let g = [
+        ("func1", [], ENum 3);
+        ("func2", ["x"], EAdd (EVar "x", ENum 10));
+        ("main", [],
+         ELet (true, [("k", EAp (EVar "func2", EVar "func1"));
+                      ("t", EVar "k");
+                      ("z", EAdd (EVar "t", EVar "k"))], EVar "z"))
+    ]
+    let ft = Map [("main", 0); ("func1", 0); ("func2", 1)]
+    execAndCheck g ft "26"
