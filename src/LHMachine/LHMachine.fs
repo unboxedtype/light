@@ -129,8 +129,20 @@ let rec compile (ast:Expr) (env: Environment) (ft: FuncArityTable) : LHCode =
           (List.map (fun (i, e) -> compile e (argOffset i env) ft)
           (List.indexed args)) @
         [Pack (tag, arity)]
+    | ECase (e, alts) ->
+        (compile e env ft) @ [ Casejump (compileAlts alts env ft) ]
     | _ ->
         failwith "not implemented"
+and compileAlts alts env ft =
+    List.map (fun a ->
+                 let (tag, names, body) = a
+                 let indexed = List.indexed names
+                 let env_len = List.length names
+                 let env' = indexed @ (argOffset env_len env)
+                 (tag, compileAlt env_len body env' ft)
+              ) alts
+and compileAlt offset expr env ft =
+    [Split offset] @ (compile expr env ft) @ [Slide offset]
 
 type LHGlobalsDefs = (Name * (string list) * Expr) list
 type LHGlobalsTable = (int * (string * LHCode)) list
@@ -170,6 +182,9 @@ let rec instrToTVM (i:Instruction) : string =
         " " + (string tag) + " INT" +
         " SWAP" +
         " 2 TUPLE"
+    | Split n ->
+        " SECOND" + " " +
+        (string n) + " UNTUPLE"
     | _ ->
         failwith (sprintf "unimplemented instruction %A"  i)
 and generateFiftFunction (code:LHCode) : string =

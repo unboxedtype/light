@@ -70,19 +70,19 @@ let testCurry2 () =
     execAndCheck g ft "32"
 
 [<Test>]
-let testPack0 () =
-    let g =
-        [("main", [], EPack (1, 2, [ENum 10; ENum 20]))]
-    let ft = Map [("main", 0)]
-    execAndCheck g ft "[ 1 [ 10 20 ] ]"
-
-[<Test>]
 let testArity0 () =
     let g =
         [("x1", [], ENum 10);
          ("main", [], EVar "x1")]
     let ft = Map [("main", 0); ("x1", 0)]
     execAndCheck g ft "10"
+
+[<Test>]
+let testPack0 () =
+    let g =
+        [("main", [], EPack (1, 2, [ENum 10; ENum 20]))]
+    let ft = Map [("main", 0)]
+    execAndCheck g ft "[ 1 [ 10 20 ] ]"
 
 [<Test>]
 let testPack1 () =
@@ -92,3 +92,18 @@ let testPack1 () =
          ("main", [], EPack (1, 2, [EVar "x1"; EVar "x2"]))]
     let ft = Map [("main", 0); ("x1", 0); ("x2", 0)]
     execAndCheck g ft "[ 1 [ 10 20 ] ]"
+
+[<Test>]
+let testPack2 () =
+    let g =
+        [("main", [], EPack (1, 0, []))]
+    let ft = Map [("main", 0)]
+    execAndCheck g ft "[ 1 [] ]"
+
+[<Test>]
+let testPack3 () =
+    let g =
+        [("main", [], EPack (1, 1, [EPack (2, 2, [EPack (3, 2, [ENum 10; ENum 20]);
+                                                  EPack (4, 2, [ENum 50; ENum 60])])]))]
+    let ft = Map [("main", 0)]
+    execAndCheck g ft "[ 1 [ [ 2 [ [ 3 [ 10 20 ] ] [ 4 [ 50 60 ] ] ] ] ] ]"
