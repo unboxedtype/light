@@ -11,7 +11,6 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/TVM/TVM.fsproj" />
-    <ProjectReference Include="../../src/TVM/Compiler.fsproj" />
   </ItemGroup>
 
 </Project>

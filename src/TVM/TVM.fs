@@ -91,6 +91,8 @@ type Instruction =
     | Endc
     | Sti of cc:uint
     | Ldi of cc:uint
+    | Stu of cc:uint
+    | Ldu of cc:uint
     | LdDict
     | Ends
     | StRef
