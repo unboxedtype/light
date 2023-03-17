@@ -57,7 +57,13 @@
 // * [State Read] An algorithm for deconstructing the C4 cell according
 //   to a given State description into a set of (name, VM-native value)
 //   pairs. This list may be further fed into ValuesIntoGlobals algorithm.
-//   StateRead : C4 -> [(name, TVM.value)]
+//   StateWrite : StateRecord -> Cell -> [(name, TVM.value)]
+
+// * [State Write] An algorithm for constructing the C4 cell according
+//   to a given State description. New variable values are taken from
+//   the stack. They get serialized and placed into a cell according to
+//   the chosen data placement structure.
+//   StateWrite : StateRecord -> [(name, TVM.value)] -> Cell
 
 // * [ValueIntoGlobals]  An  algorithm  for  inserting  the  value  into
 //   globals  collection with  the  given name,  according to  variable
@@ -69,7 +75,7 @@
 //   affected by the function as an output.
 //   VariableUpdateAnalisys: AST -> [name]
 
-module Types
+module LHTypes
 
 open type TVM.Instruction
 
@@ -146,7 +152,7 @@ let deserializeValue (t:Type) : TVM.Code =
     | UInt n ->
         [Ldu (uint n)]
     | Bool ->
-        [Ldu 1u] // is it correct?
+        [Ldu 2u] // is it correct?
     | _ ->
         failwith "not implemented"
 
@@ -158,7 +164,7 @@ let serializeValue (t:Type) : TVM.Code =
     | UInt n ->
         [Stu (uint n)]
     | Bool ->
-        [Stu 1u]
+        [Stu 2u]
     | _ ->
         failwith "not implemented"
 
@@ -189,6 +195,10 @@ let loadNextCell () : TVM.Code =
 let switchLoadNextCell () : TVM.Code =
     [LdRef; Ends; Ctos; LdRef; Swap] // s'' c
 
+// b -> b
+let switchAddCell : TVM.Code =
+    [Newc]
+
 // Outputs the TVM code that builds the contract state
 // according to the given State description.
 let stateRead (types:ProgramTypes) : TVM.Code =
@@ -205,14 +215,30 @@ let stateRead (types:ProgramTypes) : TVM.Code =
                      (valueFromCell typ) @
                      valueIntoGlobals name vm)
         |> List.concat
-        |> List.append [PushCtr 7u; Ctos] // Cell with the State
+        |> List.append [PushCtr 4u; Ctos] // Cell with the State
+        |> (fun l -> List.append l [Ends])
     | _ ->
         failwith "State shall be a Product type"
 
-let testStateRead0 () =
-    let types = [("State", PT ([("x", (Int 256));("y", Bool)]))]
-    let code = stateRead types
-    printfn "%A" code
-    // let c4 = encodeC4
-    // let init = initialState code
-    // let final = runVMWithC4 c4 init
+// Outputs the TVM code that assembles the C4 cell from the
+// given state variable values located on the stack. State is
+// encoded according to the given State description.
+let stateWrite (types:ProgramTypes) : TVM.Code =
+    let statePT = findStateType types
+    match statePT with
+    | PT stateT ->
+        let vm = stateGlobalsMapping stateT
+        let n = List.length stateT
+        stateT
+        |> List.zip [1..n]  // [(1, (n,t)); (2, (n',t'))...]
+        |> List.map (fun (i, (name, typ)) ->
+                     [GetGlob (uint i)] @
+                     (valueToCell typ) @  // b c
+                     [Swap; StRef] @ // c b -> b'
+                     (if (i % 4 = 0) then switchAddCell else []))
+        |> List.concat
+        |> (fun l -> List.append l (List.concat (List.replicate (n / 4) [Endc; StRef])))
+        |> List.append [Newc] // New cell for the State
+        |> (fun l -> List.append l [Endc; PopCtr 4u]) // seal and save into C4
+    | _ ->
+        failwith "State shall be a Product type"

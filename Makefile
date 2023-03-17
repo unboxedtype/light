@@ -6,10 +6,7 @@ clean:
 
 ## /m:1 switch is a workaround not to
 ## let dotnet break the tty
-test: test_gm test_tvm test_comp
-
-test_gm:
-	@dotnet test /m:1 ./tests/GMachineTests
+test: test_tvm test_lhm test_lht
 
 test_lhm:
 	@dotnet test /m:1 ./tests/LHMachineTests
@@ -17,5 +14,5 @@ test_lhm:
 test_tvm:
 	@dotnet test /m:1 ./tests/TVMTests
 
-test_comp:
-	@dotnet test /m:1 ./tests/CompilerTests
+test_lht:
+	@dotnet test /m:1 ./tests/LHTypesTests

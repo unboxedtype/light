@@ -385,6 +385,18 @@ let sti cc st =
     st.put_stack ((mkBuilder vs) :: stack')
     st
 
+// STU cc + 1 (x b – b'), stores an unsigned cc + 1-bit integer x into
+// Builder b.
+let stu cc st =
+    let (b :: x :: stack') = st.stack
+    failIfNot (b.isBuilder) "STU: not a builder"
+    failIfNot (x.isInt) "STU: not an integer"
+    failIfNot (cc - 1 <= 255) "STU: type check error"
+    let vs = b.unboxBuilder.appendVal (SInt (x.unboxInt, (uint cc))) // this will throw if the uint doesn't fit
+    // failIf (x > float 2 ** cc) "STU: Range check exception"
+    st.put_stack ((mkBuilder vs) :: stack')
+    st
+
 let ldi cc st =
     let (s :: stack') = st.stack
     failIfNot (s.isSlice) "LDI: slice expected"
@@ -399,6 +411,22 @@ let ldi cc st =
         st.put_stack (Slice (CellData (t, refs, databits - w)) :: Int i :: stack')
     | Slice (CellData ([], _, _)) ->
         failwith "LDI: cell underflow"
+    st
+
+let ldu cc st =
+    let (s :: stack') = st.stack
+    failIfNot (s.isSlice) "LDU: slice expected"
+    failIfNot (cc >= 1) "LDU: range check error"
+    match s with
+    | Slice (CellData (x :: t, refs, databits)) ->
+        let (SInt (i, w)) = x
+        failIf (cc > int w) "LDU: cell underflow"
+        failIf (int databits < cc) "LDU: cell underflow"
+        failIf (cc < int w) "LDU: cell overflow"
+        // check n-th size against cc
+        st.put_stack (Slice (CellData (t, refs, databits - w)) :: Int i :: stack')
+    | Slice (CellData ([], _, _)) ->
+        failwith "LDU: cell underflow"
     st
 
 let ends st =
@@ -1277,6 +1305,10 @@ let dispatch (i:Instruction) (trace:bool) =
             sti (int cc)
         | Ldi cc ->
             ldi (int cc)
+        | Stu cc ->
+            stu (int cc)
+        | Ldu cc ->
+            ldu (int cc)
         | LdDict ->
             lddict
         | Ends ->
@@ -1332,6 +1364,8 @@ let dispatch (i:Instruction) (trace:bool) =
 
 let gasCost (i: Instruction) : uint =
     match i with
+        | Stu _ -> 26u
+        | Ldu _ -> 26u
         | LdRef -> 18u
         | SRefs -> 26u
         | Ctos -> 100u  // 500 ?
@@ -1517,8 +1551,10 @@ let rec instrToFift (i:Instruction) : string =
         | Drop -> "DROP"
         | DictISetB -> "DICTISETB"
         | Sti n -> (string n) + " STI"
+        | Stu n -> (string n) + " STU"
         | LdRef -> " LDREF"
         | Ldi n -> (string n) + " LDI"
+        | Ldu n -> (string n) + " LDU"
         | PushCtr n -> "c" + (string n) + " PUSHCTR"
         | PopCtr n -> "c" + (string n) + " POPCTR"
         | Pop n -> "s" + (string n) + " POP"
@@ -1674,22 +1710,23 @@ let arrayGetWithCode =
 // the following rule:
 // Each time there is insufficient data bits available in the current cell,
 // we insert a reference to a new cell and continue storing data there.
-let rec valsIntoCelldataRec (v: SValue list) (res:CellData) : CellData =
+let rec valsIntoCelldataRec (v: SValue list) (res:CellData) (iter:int) : CellData =
     match v with
-        | SInt (n, w) :: t ->
-            let (CellData (_, _, databits)) = res
-            if (databits + w > 1023u) then (
-                let c1 = valsIntoCelldataRec v CellData.Default
+        | (SInt (n, w) :: t) ->
+            if (iter % 4 = 0) then
+                // pack the other values into the cell c1 and
+                // put the reference to it into the current cell
+                let c1 = valsIntoCelldataRec v CellData.Default 1
                 res.appendRef c1
-            )
-            else (
-                let n = List.head v
-                valsIntoCelldataRec t (res.appendVal n)
-            )
+            else
+                // create new cell for the value and append the reference to the result
+                let c1 = CellData.Default.appendVal (List.head v)
+                valsIntoCelldataRec t (res.appendRef c1) (iter + 1)
         | _ :: t ->
             failwith "not implemented"
         | [] ->
             res
 
 let valsIntoCelldata (v: SValue list) : CellData =
-    valsIntoCelldataRec v CellData.Default
+    let n = List.length v
+    valsIntoCelldataRec v CellData.Default 1

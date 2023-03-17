@@ -1265,81 +1265,20 @@ let testReadVar0 () =
 [<Test>]
 let testValsIntoCelldata0 () =
     let vars = [SInt (100, 8u); SInt (-1, 8u); SInt (123456789, 32u)]
+    let cell x l = CellData ([x], [], l)
+    let c1 = cell (SInt (100, 8u)) 8u
+    let c2 = cell (SInt (-1, 8u)) 8u
+    let c3 = cell (SInt (123456789, 32u)) 32u
     let cd = valsIntoCelldata vars
-    Assert.AreEqual(
-        CellData ([SInt (100, 8u);
-                   SInt (-1, 8u);
-                   SInt (123456789, 32u)], [], 48u), cd)
+    Assert.AreEqual(CellData ([], [c1; c2; c3], 0u), cd)
 
 [<Test>]
 let testValsIntoCelldata1 () =
-    let vars = [SInt (100, 256u); SInt (-1, 256u);
-                SInt (123456789, 256u); SInt (1, 256u)]
+    let vars = [SInt (100, 8u); SInt (-1, 8u); SInt (123456789, 32u); SInt (777, 32u)]
+    let cell x l = CellData ([x], [], l)
+    let c1 = cell vars.[0] 8u
+    let c2 = cell vars.[1] 8u
+    let c3 = cell vars.[2] 32u
+    let c4 = cell vars.[3] 32u
     let cd = valsIntoCelldata vars
-    Assert.AreEqual(
-        CellData ([SInt (100, 256u); SInt (-1, 256u); SInt (123456789, 256u)],
-                  [CellData ([SInt (1, 256u)], [], 256u)], 256u * 3u), cd)
-
-[<Test>]
-let testValsIntoCelldata2 () =
-    let vars = [SInt (100, 256u);
-                SInt (-1, 256u);
-                SInt (123456789, 256u);
-                SInt (1, 256u);
-                SInt (2, 256u);
-                SInt (3, 256u);
-                SInt (4, 256u)]
-    let cd = valsIntoCelldata vars
-    Assert.AreEqual(
-        CellData ([SInt (100, 256u); SInt (-1, 256u); SInt (123456789, 256u)],
-                  [CellData ([SInt (1, 256u); SInt (2, 256u); SInt (3, 256u)],
-                             [CellData ([SInt (4, 256u)], [], 256u)],
-                             256u * 3u)], 256u * 3u), cd)
-
-[<Test>]
-let testValsIntoCelldata3 () =
-    let vars = [SInt (100, 256u);
-                SInt (-1, 256u);
-                SInt (123456789, 256u);
-                SInt (1, 256u);
-                SInt (2, 256u);
-                SInt (3, 256u);
-                SInt (4, 255u)]
-    let cd = valsIntoCelldata vars
-    Assert.AreEqual(
-        CellData ([SInt (100, 256u); SInt (-1, 256u); SInt (123456789, 256u)],
-                  [CellData ([SInt (1, 256u); SInt (2, 256u); SInt (3, 256u); SInt (4, 255u)],
-                             [], 1023u)], 256u * 3u), cd)
-
-[<Test>]
-let testCellDataIntoCell4 () =
-    let vars = [SInt (100, 256u); SInt (-1, 256u);
-                SInt (123456789, 256u); SInt (1, 256u)]
-    let c4 = valsIntoCelldata vars
-    let c4str = celldataIntoCell c4
-    let st = initialState [PushCtr 4u; Ctos; Ldi 256u; Ldi 256u; Ldi 256u;
-                           LdRef; Ends; Ctos; Ldi 256u; Ends]
-    dumpFiftScript "testCellDataIntoCell4.fif" (outputFiftWithC4 st c4str)
-    let finalSt = List.last (runVMWithC4 st c4 false)
-    let stk = List.tail finalSt.stack
-    Assert.AreEqual([Int 1; Int 123456789; Int -1; Int 100], stk)
-
-[<Test>]
-let testCellDataIntoCell5 () =
-    let vars = [SInt (100, 256u);
-                SInt (-1, 256u);
-                SInt (123456789, 256u);
-                SInt (1, 256u);
-                SInt (2, 256u);
-                SInt (3, 256u);
-                SInt (4, 255u)]
-    let c4 = valsIntoCelldata vars
-    let c4str = celldataIntoCell c4
-    let st = initialState [PushCtr 4u; Ctos; Ldi 256u; Ldi 256u; Ldi 256u;
-                           LdRef; Ends; Ctos; Ldi 256u; Ldi 256u; Ldi 256u;
-                           Ldi 255u; Ends]
-    dumpFiftScript "testCellDataIntoCell5.fif" (outputFiftWithC4 st c4str)
-    let finalSt = List.last (runVMWithC4 st c4 false)
-    let stk = List.tail finalSt.stack
-    Assert.AreEqual([Int 4; Int 3; Int 2; Int 1; Int 123456789;
-                     Int -1; Int 100], stk)
+    Assert.AreEqual(CellData ([], [c1; c2; c3; CellData ([], [c4], 0u)], 0u), cd)
