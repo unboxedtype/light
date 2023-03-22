@@ -227,14 +227,12 @@ let rec instrToTVM (i:Instruction) : string =
         " " + (string tag) + " INT" +
         " SWAP" +
         " 2 TUPLE"
-    | Split n ->
+    | Split n when n < 16 ->
         " SECOND" + " " +
-        (string n) + " INT" +
-        " UNTUPLEVAR"
-    | Select n ->
+        (string n) + " UNTUPLE"
+    | Select n when n < 16 ->
         " SECOND" + " " +
-        (string n) + " INT" +
-        " INDEXVAR"
+        (string n) + " INDEX"
     | Casejump l ->
         let rec compileCasejumpSelector l =
             match l with
