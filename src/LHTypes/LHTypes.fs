@@ -13,11 +13,6 @@
 // updated.  This is  done by  serializing globals  back into  the Cell.
 // This Cell is put back in the C4.
 
-// Each contract State variable is represented  by its own cell.  It may
-// seem unoptimal at first, however,  this structure allows us to update
-// the state  more effectively:  unaffected values  are taken  back from
-// previuos C4 without cell rebuilding.
-
 // Hence, we need the following algorithms and structures:
 
 // * [StateRecord] A structure for  describing State variables and their
@@ -43,15 +38,13 @@
 //   ValueIntoCell: T -> Cell
 
 // * [State Init] An  algorithm to construct the C4 cell  according to a
-//   given State description and a set of value cells *from scratch*.
-//   StateInit : StateRecord -> [(name,valueCell)] -> Cell
+//   given State description and a set of values.
+//   StateInit : StateRecord -> [(name,value)] -> Cell
 
 // * [State Update] An algorithm for  constructing the C4 cell according
-//   to a given State description, a set of new value cells and a set of
-//   old value cells.
+//   to a given State description and a set of new values.
 //   StateUpdate : StateRecord
-//                 -> [(name,valueCell)]
-//                 -> [(name,valueCell)]
+//                 -> [(name,value)]
 //                 -> Cell
 
 // * [State Read] An algorithm for deconstructing the C4 cell according
@@ -70,11 +63,6 @@
 //   mapping (see StateGlobalsMapping).
 //   ValueIntoGlobals : [(name, TVM.value)] -> VariableMapping -> ()
 
-// * [VariableUpdateAnalisys]  An   algorithm  that  takes   a  function
-//   definition  as an  input and  gives a  set of  variables that  gets
-//   affected by the function as an output.
-//   VariableUpdateAnalisys: AST -> [name]
-
 module LHTypes
 
 open type TVM.Instruction
@@ -89,17 +77,35 @@ type Name =
 type VarName =
     Name
 
-// built-in types
+// Type id is a unique type identifier; built-in
+// types has it defined initially, and user
+// data types are assigned their own typeid
+// during the compilation.
+type TypeId =
+    int
+
+// Unit        = 0001  // terminal type
+// Bool        = 0010  // terminal type
+// UInt        = 0100  // terminal type
+// String      = 1000  // terminal type
+
+// List<Int>.Cons     = 1001  // compound type
+// List<Int>.Nil      = 1011
+// Map<T1,T2>         = 1100
+// Function<T1,T2>    = 1101
+
 type Type =
+    | Unit
     | Bool
-    | Int of n:int
-    | UInt of n:int
+    | Int of n:int    // n = bit length
+    | UInt of n:int   // n = bit length
     | String
-    | List of e:Type
-    | Pair of l:Type * r:Type
-    | PT of e:ProductType             // product type (records)
-    | ST of e:SumType                 // sum type     (disjoint unions)
+    | List of e:Type                  // list of values of type e
+    | Pair of l:Type * r:Type         // pair of values a * b
+    | PT of e:ProductType             // product type
+    | ST of e:SumType                 // sum type
     | Function of inp:Type * out:Type // function type
+    | UserType of s:Name            // user-defined type with name s
 and Variable =
     VarName * Type
 and VariableList =
@@ -169,54 +175,26 @@ let serializeValue (t:Type) : TVM.Code =
         failwith "not implemented"
 
 // Construct the heap representation of the variable of type t
-// residing in the given cell.
+// residing in the given slice.
 // Cell resides on the stack.
-// c -> a
+// s -> a
 let valueFromCell (t:Type) : TVM.Code =
-    [Ctos] @ (deserializeValue t) @ [Ends]
-
-// Construct the cell with the variable value of type t
-// Value is residing on the stack.
-// v -> c
-let valueToCell (t:Type) : TVM.Code =
-    [Newc] @ (serializeValue t) @ [Endc]
-
-// Put the constructed object into the global variable "v"
-// The object is residing on the stack.
-// a -> _
-let valueIntoGlobals (v:Name) (vm: VariablesMapping) : TVM.Code =
-    [SetGlob (uint vm.[v])]
-
-// s -> s' s''
-let loadNextCell () : TVM.Code =
-    [LdRef; Swap] // s'' c
-
-// s -> s' c
-let switchLoadNextCell () : TVM.Code =
-    [LdRef; Ends; Ctos; LdRef; Swap] // s'' c
-
-// b -> b
-let switchAddCell : TVM.Code =
-    [Newc]
+    (deserializeValue t)
 
 // Outputs the TVM code that builds the contract state
 // according to the given State description.
-let stateRead (types:ProgramTypes) : TVM.Code =
+let stateReader (types:ProgramTypes) : TVM.Code =
     let statePT = findStateType types
     match statePT with
     | PT stateT ->
         let vm = stateGlobalsMapping stateT
         let n = List.length stateT
         stateT
-        |> List.zip [1..n]  // [(1, (n,t)); (2, (n',t'))...]
-        |> List.map (fun (i, (name, typ)) ->
-                     (if (i % 4 = 0) then switchLoadNextCell ()
-                      else loadNextCell ()) @
-                     (valueFromCell typ) @
-                     valueIntoGlobals name vm)
+        |> List.zip [1..n]  // [(1, (n, t)); (2, (n',t'))...]
+        |> List.map (fun (i, (name, typ)) -> (valueFromCell typ))
         |> List.concat
         |> List.append [PushCtr 4u; Ctos] // Cell with the State
-        |> (fun l -> List.append l [Ends])
+        |> (fun l -> List.append l [Ends; Tuple (uint n); PushInt 0; Swap; Tuple 2u])
     | _ ->
         failwith "State shall be a Product type"
 
@@ -224,21 +202,4 @@ let stateRead (types:ProgramTypes) : TVM.Code =
 // given state variable values located on the stack. State is
 // encoded according to the given State description.
 let stateWrite (types:ProgramTypes) : TVM.Code =
-    let statePT = findStateType types
-    match statePT with
-    | PT stateT ->
-        let vm = stateGlobalsMapping stateT
-        let n = List.length stateT
-        stateT
-        |> List.zip [1..n]  // [(1, (n,t)); (2, (n',t'))...]
-        |> List.map (fun (i, (name, typ)) ->
-                     [GetGlob (uint i)] @
-                     (valueToCell typ) @  // b c
-                     [Swap; StRef] @ // c b -> b'
-                     (if (i % 4 = 0) then switchAddCell else []))
-        |> List.concat
-        |> (fun l -> List.append l (List.concat (List.replicate (n / 4) [Endc; StRef])))
-        |> List.append [Newc] // New cell for the State
-        |> (fun l -> List.append l [Endc; PopCtr 4u]) // seal and save into C4
-    | _ ->
-        failwith "State shall be a Product type"
+    failwith "not implemented"

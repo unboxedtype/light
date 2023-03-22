@@ -26,6 +26,7 @@ type Instruction =
     | IfElse of t:LHCode * f:LHCode
     | Pack of tag:int * n:int
     | Split of n:int
+    | Select of n:int
     | Casejump of (int * LHCode) list
     | DumpStk
     | Throw of n:int
@@ -57,6 +58,7 @@ type Expr =
     | EGt of e0:Expr * e1:Expr
     | ECase of c:Expr * cs:CaseAlt list
     | EPack of tag:int * arity:int * args:Expr list
+    | ESelect of e:Expr * n:int
 and CaseAlt = int * (Name list) * Expr   // case (tag:0) (vars: ["x","y"]) -> x + y
 and BoundVarDefs = (Name * Expr) list
 
@@ -144,6 +146,8 @@ let rec compile (ast:Expr) (env: Environment) (ft: FuncArityTable) : LHCode =
             compileLet defs body env ft
         | true ->
             compileLetRec defs body env ft
+    | ESelect (e, n) ->
+        (compile e env ft) @ [Select n]
     | _ ->
         failwith "not implemented"
 and compileAlts alts env ft =
@@ -225,7 +229,12 @@ let rec instrToTVM (i:Instruction) : string =
         " 2 TUPLE"
     | Split n ->
         " SECOND" + " " +
-        (string n) + " UNTUPLE"
+        (string n) + " INT" +
+        " UNTUPLEVAR"
+    | Select n ->
+        " SECOND" + " " +
+        (string n) + " INT" +
+        " INDEXVAR"
     | Casejump l ->
         let rec compileCasejumpSelector l =
             match l with
@@ -254,13 +263,17 @@ let defineFiftNames (t:LHGlobalsTable) : string list =
     |> List.map (fun (i, (name, _)) ->
                  "{ " + (string i) + " } : " + name)
 
-let generateFift (t:LHGlobalsTable) : string =
+let generateFift (t:LHGlobalsTable) (stateReader:string) (dataCell:string) : string =
     (List.singleton "\"Asm.fif\" include" @
      (defineFiftNames t) @
      List.singleton "<{ " @
      (t
       |> List.map snd
       |> List.map generateFiftGlobFunction) @
+     (if stateReader <> "" then
+         ["<{ " + stateReader + " }> PUSHCONT "] @
+         ["state SETGLOB"]
+      else []) @
      List.singleton "main GETGLOB EXECUTE" @
-     List.singleton " }>s 1000000 gasrunvmcode drop .dump cr .dump cr")
+     List.singleton (" }>s " + (if dataCell <> "" then dataCell else "<b b>") + " 1000000 gasrunvm drop drop .dump cr .dump cr"))
     |> String.concat "\n"
