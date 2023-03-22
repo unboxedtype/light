@@ -93,6 +93,10 @@ let rec argCount (e:Expr) (ft:FuncArityTable) : int =
 
 let rec arity (e:Expr) (ft:FuncArityTable) : int =
     match e with
+    | ESelect (_, _) ->
+        1 // this idea here is that all stored functions
+          // have the arity 1 due to currying;
+          // f : int -> int -> int is actually int -> (int -> int)
     | EVar v ->
         argCount e ft
     | EAp (e1, e2) ->

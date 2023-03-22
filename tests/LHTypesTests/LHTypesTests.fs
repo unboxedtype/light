@@ -67,3 +67,16 @@ let testStateSet0 () =
              ("main", [], ELet (false, ["x", (EVar "update")], EVar "state"))]
     let ft = Map [("main", 0); ("state", 0); ("update", 0)]
     execAndCheck g ft types dataCell "[ 0 [ 200 1 ] ]"
+
+[<Test>]
+let testStateFunction0 () =
+    // update () = if state.y then (updateState ({ state with x = state.x * 2})) else ()
+    // main () = let x = update () in state
+    let types = [("State", LHTypes.PT [("x", (UInt 64));
+                                       ("y", Bool);
+                                       ("fun", Function (UInt 64, UInt 64))])]
+    let dataCell = "<b 100 64 u, 1 2 u, <{ INC }>s s>c ref,  b>"
+    let g = [("state", [], ENull);  // this is a stub; will be replaced
+             ("main", [], EAp (ESelect (EVar "state", 2), ENum 100))]
+    let ft = Map [("main", 0); ("state", 0)]
+    execAndCheck g ft types dataCell "101"

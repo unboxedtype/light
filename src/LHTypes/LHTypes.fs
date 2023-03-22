@@ -138,6 +138,8 @@ let deserializeValue (t:Type) : TVM.Code =
         [Ldu (uint n)]
     | Bool ->
         [Ldu 2u] // is it correct?
+    | Function (_, _) ->
+        [LdRef; Swap; Ctos; Bless; Swap]
     | _ ->
         failwith "not implemented"
 
@@ -150,6 +152,8 @@ let serializeValue (t:Type) : TVM.Code =
         [Stu (uint n)]
     | Bool ->
         [Stu 2u]
+    | Function (_, _) ->
+        [StRef]
     | _ ->
         failwith "not implemented"
 
