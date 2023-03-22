@@ -14,7 +14,9 @@ exception GMError of string
 
 type Name = string
 type Instruction =
+    | Null
     | GetGlob of name: Name
+    | SetGlob of name: Name
     | Pushint of v: int
     | Push of n: int
     | Pop of n: int
@@ -26,7 +28,8 @@ type Instruction =
     | IfElse of t:LHCode * f:LHCode
     | Pack of tag:int * n:int
     | Split of n:int
-    | Select of n:int
+    | Select of n:int // take the n-th field of the record
+    | UpdateRec of n:int // update the n-th field of the record
     | Casejump of (int * LHCode) list
     | DumpStk
     | Throw of n:int
@@ -59,6 +62,8 @@ type Expr =
     | ECase of c:Expr * cs:CaseAlt list
     | EPack of tag:int * arity:int * args:Expr list
     | ESelect of e:Expr * n:int
+    | EUpdateRec of e0:Expr * n:int * e1:Expr
+    | EUpdateState of e0:Expr
 and CaseAlt = int * (Name list) * Expr   // case (tag:0) (vars: ["x","y"]) -> x + y
 and BoundVarDefs = (Name * Expr) list
 
@@ -148,6 +153,10 @@ let rec compile (ast:Expr) (env: Environment) (ft: FuncArityTable) : LHCode =
             compileLetRec defs body env ft
     | ESelect (e, n) ->
         (compile e env ft) @ [Select n]
+    | EUpdateRec (e, n, e1) ->
+        (compile e env ft) @ (compile e1 (argOffset 1 env) ft) @ [UpdateRec n]
+    | EUpdateState e ->
+        (compile e env ft) @ [SetGlob "5"] @ [Null]
     | _ ->
         failwith "not implemented"
 and compileAlts alts env ft =
@@ -204,9 +213,11 @@ let compileGlobals (globals: LHGlobalsDefs) (ft:FuncArityTable) : LHGlobalsTable
 
 let rec instrToTVM (i:Instruction) : string =
     match i with
+    | Null -> "NULL"
     | Alloc n -> String.concat " " [for i in [1..n] -> "NULL"]
     | Update i -> "s0 s" + (string i) + " XCHG DROP"
     | GetGlob n -> n + " GETGLOB"
+    | SetGlob n -> n + " SETGLOB"
     | Pushint n -> (string n) + " INT"
     | Push n -> "s" + (string n) + " PUSH"
     | Pop n -> "s" + (string n) + " POP"
@@ -233,6 +244,12 @@ let rec instrToTVM (i:Instruction) : string =
     | Select n when n < 16 ->
         " SECOND" + " " +
         (string n) + " INDEX"
+    | UpdateRec n when n < 16 ->
+        " SWAP" +      // x t
+        " 2 UNTUPLE" + // x tag args
+        " ROT " +      // tag args x
+        (string n) + " SETINDEX" +
+        " 2 TUPLE"
     | Casejump l ->
         let rec compileCasejumpSelector l =
             match l with
@@ -261,7 +278,10 @@ let defineFiftNames (t:LHGlobalsTable) : string list =
     |> List.map (fun (i, (name, _)) ->
                  "{ " + (string i) + " } : " + name)
 
-let generateFift (t:LHGlobalsTable) (stateReader:string) (dataCell:string) : string =
+let generateFift (t:LHGlobalsTable) (stateReader:string) (stateWriter:string) (dataCell:string) : string =
+    let dataCell' =
+        if dataCell <> "" then dataCell
+        else "<b b>"
     (List.singleton "\"Asm.fif\" include" @
      (defineFiftNames t) @
      List.singleton "<{ " @
@@ -269,9 +289,12 @@ let generateFift (t:LHGlobalsTable) (stateReader:string) (dataCell:string) : str
       |> List.map snd
       |> List.map generateFiftGlobFunction) @
      (if stateReader <> "" then
-         ["<{ " + stateReader + " }> PUSHCONT "] @
-         ["state SETGLOB"]
+         List.singleton stateReader @
+         List.singleton "5 SETGLOB" @
+         List.singleton "<{ 5 GETGLOB }> PUSHCONT " @
+         List.singleton "state SETGLOB"
       else []) @
      List.singleton "main GETGLOB EXECUTE" @
-     List.singleton (" }>s " + (if dataCell <> "" then dataCell else "<b b>") + " 1000000 gasrunvm drop drop .dump cr .dump cr"))
+     List.singleton stateWriter @
+     List.singleton (" }>s " + dataCell' + " 1000000 gasrunvm drop drop .dump cr .dump cr"))
     |> String.concat "\n"

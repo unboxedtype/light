@@ -22,46 +22,25 @@
 //   program AST.
 //   ReadStateRecord : AST -> StateRecord
 
-// * [ValueFromCell] An algorithm for deserialization of a value of type
-//   T from the cell.
-//   ValueFromCell: Cell -> T
+// * [deserializeValue] An algorithm for deserialization of a value of type
+//   T from the slice.
 
 // * [StateGlobalsMapping]  An   algorithm  for  assinging   each  state
-//   variable its  own unique  global identifier (variable  mapping). We
-//   have no more than (254 - N) identifiers available for that, where N
-//   is a number  of functions defined in the contract.   There might be
-//   more spendings.
+//   variable its  own unique  global identifier (variable  mapping).
 //   StateGlobalsMapping : StateRecord -> Map [(string, int)]
 
-// * [ValueIntoCell] An algorithm for serialization of a value of type T
-//   to a cell.
-//   ValueIntoCell: T -> Cell
+// * [serializeValue] An algorithm for serialization of a value of type T
+//   into a slice.
 
-// * [State Init] An  algorithm to construct the C4 cell  according to a
-//   given State description and a set of values.
-//   StateInit : StateRecord -> [(name,value)] -> Cell
-
-// * [State Update] An algorithm for  constructing the C4 cell according
-//   to a given State description and a set of new values.
-//   StateUpdate : StateRecord
-//                 -> [(name,value)]
-//                 -> Cell
-
-// * [State Read] An algorithm for deconstructing the C4 cell according
+// * [State Reader] An algorithm for deconstructing the C4 cell according
 //   to a given State description into a set of (name, VM-native value)
 //   pairs. This list may be further fed into ValuesIntoGlobals algorithm.
 //   StateWrite : StateRecord -> Cell -> [(name, TVM.value)]
 
-// * [State Write] An algorithm for constructing the C4 cell according
+// * [State Writer] An algorithm for constructing the C4 cell according
 //   to a given State description. New variable values are taken from
-//   the stack. They get serialized and placed into a cell according to
+//   the 'state' variable. They get serialized and placed into a cell according to
 //   the chosen data placement structure.
-//   StateWrite : StateRecord -> [(name, TVM.value)] -> Cell
-
-// * [ValueIntoGlobals]  An  algorithm  for  inserting  the  value  into
-//   globals  collection with  the  given name,  according to  variable
-//   mapping (see StateGlobalsMapping).
-//   ValueIntoGlobals : [(name, TVM.value)] -> VariableMapping -> ()
 
 module LHTypes
 
@@ -97,8 +76,8 @@ type TypeId =
 type Type =
     | Unit
     | Bool
-    | Int of n:int    // n = bit length
-    | UInt of n:int   // n = bit length
+    | Int of n:int    // n = bit length; 1 <= n <= 256
+    | UInt of n:int   // n = bit length  1 <= n <= 256
     | String
     | List of e:Type                  // list of values of type e
     | Pair of l:Type * r:Type         // pair of values a * b
@@ -174,24 +153,15 @@ let serializeValue (t:Type) : TVM.Code =
     | _ ->
         failwith "not implemented"
 
-// Construct the heap representation of the variable of type t
-// residing in the given slice.
-// Cell resides on the stack.
-// s -> a
-let valueFromCell (t:Type) : TVM.Code =
-    (deserializeValue t)
-
 // Outputs the TVM code that builds the contract state
 // according to the given State description.
 let stateReader (types:ProgramTypes) : TVM.Code =
     let statePT = findStateType types
     match statePT with
     | PT stateT ->
-        let vm = stateGlobalsMapping stateT
         let n = List.length stateT
         stateT
-        |> List.zip [1..n]  // [(1, (n, t)); (2, (n',t'))...]
-        |> List.map (fun (i, (name, typ)) -> (valueFromCell typ))
+        |> List.map (fun (name, typ) -> deserializeValue typ)
         |> List.concat
         |> List.append [PushCtr 4u; Ctos] // Cell with the State
         |> (fun l -> List.append l [Ends; Tuple (uint n); PushInt 0; Swap; Tuple 2u])
@@ -201,5 +171,27 @@ let stateReader (types:ProgramTypes) : TVM.Code =
 // Outputs the TVM code that assembles the C4 cell from the
 // given state variable values located on the stack. State is
 // encoded according to the given State description.
-let stateWrite (types:ProgramTypes) : TVM.Code =
-    failwith "not implemented"
+let stateWriter (types:ProgramTypes) : TVM.Code =
+    // this function generates a pairs of swaps needed
+    // to reverse the list l. The acc is an accumulator (state)
+    let rec xchgs l acc =
+        let len = List.length l
+        if len > 1 then
+            let (s,e) = (List.head l, List.last l)
+            let next = List.take (len-2) (List.tail l)
+            xchgs next ((s,e) :: acc)
+        else
+            acc
+    let statePT = findStateType types
+    match statePT with
+    | PT stateT ->
+        let n = List.length stateT
+        stateT
+        |> List.map (fun (name, typ) -> serializeValue typ)
+        |> List.concat
+        |> List.append ([GetGlob 1u; Execute; Second; Untuple (uint n)] @
+                        (let pairs = xchgs [0..(n-1)] []
+                         [for (i,j) in pairs -> Xchg2 (uint i, uint j)]) @ [Newc])
+        |> (fun l -> List.append l [Endc; PopCtr 4u])
+    | _ ->
+        failwith "State shall be a Product type"

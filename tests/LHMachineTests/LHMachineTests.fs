@@ -13,7 +13,7 @@ let Setup () =
 let execAndCheck g ft expected =
     let gs = compileGlobals g ft
     let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".fif"
-    TVM.dumpFiftScript filename (generateFift gs "" "")
+    TVM.dumpFiftScript filename (generateFift gs "" "" "")
     let res = FiftExecutor.runFiftScript filename
     Assert.AreEqual (expected, res)
 

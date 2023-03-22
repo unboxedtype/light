@@ -1562,6 +1562,7 @@ let rec instrToFift (i:Instruction) : string =
         | Index n -> (string n) + " INDEX"
         | ThrowIfNot n -> (string n) + " THROWIFNOT"
         | ThrowIf n -> (string n) + " THROWIF"
+        | Untuple n -> (string n) + " UNTUPLE"
         | UntupleVar -> "UNTUPLEVAR"
         | SetNumArgs n -> (string n) + " SETNUMARGS"
         | Throw n -> (string n) + " THROW"
