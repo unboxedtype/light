@@ -189,7 +189,7 @@ let stateWriter (types:ProgramTypes) : TVM.Code =
         stateT
         |> List.map (fun (name, typ) -> serializeValue typ)
         |> List.concat
-        |> List.append ([GetGlob 1u; Execute; Second; Untuple (uint n)] @
+        |> List.append ([GetGlob 2u; Execute; Second; Untuple (uint n)] @
                         (let pairs = xchgs [0..(n-1)] []
                          [for (i,j) in pairs -> Xchg2 (uint i, uint j)]) @ [Newc])
         |> (fun l -> List.append l [Endc; PopCtr 4u])

@@ -51,6 +51,7 @@ type Expr =
 //    | EFunc of name:Name   // variable of type Func
     | EVar of name:Name // variable of type Int
     | ENum of n:int
+    | ENull
     | EAp of e1:Expr * e2:Expr
     | ELet of isRec:bool * defs:BoundVarDefs * body:Expr
     | EIf of e0:Expr * e1:Expr * e2:Expr
@@ -122,6 +123,8 @@ let rec compile (ast:Expr) (env: Environment) (ft: FuncArityTable) : LHCode =
                 (if ft.[v] = 0 then [Execute] else [])
     | ENum n ->
         [Pushint n]
+    | ENull ->
+        [Null]
     | EAp (e1, e2) ->
         (compile e2 env ft) @ (compile e1 (argOffset 1 env) ft) @
         (let e1ar = arity e1 ft
@@ -156,7 +159,7 @@ let rec compile (ast:Expr) (env: Environment) (ft: FuncArityTable) : LHCode =
     | EUpdateRec (e, n, e1) ->
         (compile e env ft) @ (compile e1 (argOffset 1 env) ft) @ [UpdateRec n]
     | EUpdateState e ->
-        (compile e env ft) @ [SetGlob "5"] @ [Null]
+        (compile e env ft) @ [SetGlob "1"] @ [Null]
     | _ ->
         failwith "not implemented"
 and compileAlts alts env ft =
@@ -199,7 +202,7 @@ and compileLetRecDefs defs env n ft =
 type LHGlobalsDefs = (Name * (string list) * Expr) list
 type LHGlobalsTable = (int * (string * LHCode)) list
 
-let globalsBaseNumber = 1
+let globalsBaseNumber = 2
 
 let compileGlobals (globals: LHGlobalsDefs) (ft:FuncArityTable) : LHGlobalsTable =
     // ft could have been generated from globals, but...
@@ -290,8 +293,8 @@ let generateFift (t:LHGlobalsTable) (stateReader:string) (stateWriter:string) (d
       |> List.map generateFiftGlobFunction) @
      (if stateReader <> "" then
          List.singleton stateReader @
-         List.singleton "5 SETGLOB" @
-         List.singleton "<{ 5 GETGLOB }> PUSHCONT " @
+         List.singleton "1 SETGLOB" @
+         List.singleton "<{ 1 GETGLOB }> PUSHCONT" @
          List.singleton "state SETGLOB"
       else []) @
      List.singleton "main GETGLOB EXECUTE" @
