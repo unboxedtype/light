@@ -10,131 +10,128 @@ open type LHMachine.Expr
 let Setup () =
     ()
 
-let execAndCheck g ft expected =
-    let gs = compileGlobals g ft
+let execAndCheck g expected =
+    let gs = compileGlobals g
     let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".fif"
     TVM.dumpFiftScript filename (generateFift gs "" "" "")
     let res = FiftExecutor.runFiftScript filename
     Assert.AreEqual (expected, res)
-(**
+
 [<Test>]
 let testTrivial () =
-    let code = compile (ENum 0) [] (Map [])
+    let code = compile (ENum 0) []
     Assert.AreEqual( [Integer 0], code );
 
 [<Test>]
 let testFactorial () =
-    let g = [("fact", ["n"],
-                    EIf (EGt (EVar "n", ENum 1),
-                         EMul (EVar "n", EAp (EVar "fact", ESub (EVar "n", ENum 1))),
-                         ENum 1));
-                   ("main", [], EAp (EVar "fact", ENum 5))]
-    let ft = Map [("main", 0); ("fact", 1)]
-    execAndCheck g ft "120"
+    let g = [("fact", [], EFunc ("n",
+                           EIf (EGt (EVar "n", ENum 1),
+                                EMul (EVar "n", EEval (EAp (EVar "fact", ESub (EVar "n", ENum 1)))),
+                                      ENum 1)));
+                   ("main", [], EFunc ("", EEval (EAp (EVar "fact", ENum 5))))]
+    execAndCheck g "120"
 
 [<Test>]
 let testFunc2Args () =
     // let sum n m = if (n > 0) then (n + sum (n - 1) m) else m
-    let g = [("sum", ["n";"m"],
-                    EIf (EGt (EVar "n", ENum 0),
-                         EAdd (EVar "n", EAp (EAp (EVar "sum", ESub (EVar "n", ENum 1)), EVar "m")),
-                         EVar "m"));
-                   ("main", [], EAp (EAp (EVar "sum", ENum 5), ENum 10))]
-    let ft = Map [("main", 0); ("sum", 2)]
-    execAndCheck g ft "25"
+    let g = [("sum", [], EFunc ("n",
+                          EFunc ("m",
+                           EIf (EGt (EVar "n", ENum 0),
+                                EAdd (EVar "n", EEval (EAp (EAp (EVar "sum", ESub (EVar "n", ENum 1)), EVar "m"))),
+                                EVar "m"))));
+             ("main", [], EFunc ("", EEval (EAp (EAp (EVar "sum", ENum 5), ENum 10))))]
+    execAndCheck g "25"
 
 [<Test>]
 let testGlobals () =
-    let g = [("f", ["x"], ESub (EVar "x", ENum 1));
-                   ("main", [], EAp (EVar "f", ENum 5))]
-    let ft = Map [("main", 0); ("f", 1)]
-    execAndCheck g ft "4"
+    let g = [("f", [], EFunc ("x", ESub (EVar "x", ENum 1)));
+             ("main", [], EFunc ("", EEval (EAp (EVar "f", ENum 5))))]
+    execAndCheck g "4"
 
 [<Test>]
 let testCurry1 () =
-    let g = [("f", ["func"; "x"], EAp (EVar "func", EVar "x"));
-                   ("inc", ["x"], EAdd (EVar "x", ENum 1));
-                   ("main", [], EAp (EAp (EVar "f", EVar "inc"), ENum 1))]
-    let ft = Map [("main", 0); ("f", 2); ("inc", 1); ("func", 1)]
-    execAndCheck g ft "2"
+    let g = [("f", [], EFunc ("func", EFunc ("x", EEval (EAp (EVar "func", EVar "x")))));
+             ("inc", [], EFunc ("x", EAdd (EVar "x", ENum 1)));
+             ("main", [], EFunc ("", EEval (EAp (EAp (EVar "f", EVar "inc"), ENum 1))))]
+    execAndCheck g "2"
 
 [<Test>]
 let testCurry2 () =
     let g =
         // f f1 f2 x y = f2 (f1 x) (f1 y)
-        [("f", ["f1"; "f2"; "x"; "y"], EAp (EAp (EVar "f2", EAp (EVar "f1", EVar "x")), EAp (EVar "f1", EVar "y")));
-         ("sum", ["x"; "y"], EAdd (EVar "x", EVar "y"));
-         ("inc", ["x"], EAdd (EVar "x", ENum 1));
-         ("main", [], EAp (EAp (EAp (EAp (EVar "f", EVar "inc"), EVar "sum"), ENum 10), ENum 20))]
-    let ft = Map [("main", 0); ("f", 4); ("inc", 1); ("sum", 2); ("f1", 1); ("f2", 2)]
-    execAndCheck g ft "32"
+        [("f", [],
+           EFunc ("f1",
+            EFunc ("f2",
+             EFunc ("x",
+              EFunc ("y",
+               EEval (
+                EAp (EAp (EVar "f2", EEval (EAp (EVar "f1", EVar "x"))), EEval (EAp (EVar "f1", EVar "y")))
+          ))))));
+
+         ("sum", [], EFunc ("x", EFunc ("y", EAdd (EVar "x", EVar "y"))));
+         ("inc", [], EFunc ("x", EAdd (EVar "x", ENum 1)));
+         ("main", [], EFunc ("", EEval (EAp (EAp (EAp (EAp (EVar "f", EVar "inc"), EVar "sum"), ENum 10), ENum 20))))]
+    execAndCheck g "32"
 
 [<Test>]
 let testArity0 () =
     let g =
         [("x1", [], ENum 10);
-         ("main", [], EVar "x1")]
-    let ft = Map [("main", 0); ("x1", 0)]
-    execAndCheck g ft "10"
+         ("main", [], EFunc ("", EVar "x1"))]
+    execAndCheck g "10"
 
 [<Test>]
 let testPack0 () =
     let g =
-        [("main", [], EPack (1, 2, [ENum 10; ENum 20]))]
-    let ft = Map [("main", 0)]
-    execAndCheck g ft "[ 1 [ 10 20 ] ]"
+        [("main", [], EFunc ("", EPack (1, 2, [ENum 10; ENum 20])))]
+    execAndCheck g "[ 1 [ 10 20 ] ]"
 
 [<Test>]
 let testPack1 () =
     let g =
         [("x1", [], ENum 10);
          ("x2", [], ENum 20);
-         ("main", [], EPack (1, 2, [EVar "x1"; EVar "x2"]))]
-    let ft = Map [("main", 0); ("x1", 0); ("x2", 0)]
-    execAndCheck g ft "[ 1 [ 10 20 ] ]"
+         ("main", [], EFunc ("", EPack (1, 2, [EVar "x1"; EVar "x2"])))]
+    execAndCheck g "[ 1 [ 10 20 ] ]"
 
 [<Test>]
 let testPack2 () =
     let g =
-        [("main", [], EPack (1, 0, []))]
-    let ft = Map [("main", 0)]
-    execAndCheck g ft "[ 1 [] ]"
+        [("main", [], EFunc ("", EPack (1, 0, [])))]
+    execAndCheck g "[ 1 [] ]"
 
 [<Test>]
 let testPack3 () =
     let g =
-        [("main", [], EPack (1, 1, [EPack (2, 2, [EPack (3, 2, [ENum 10; ENum 20]);                                                  EPack (4, 2, [ENum 50; ENum 60])])]))]
-    let ft = Map [("main", 0)]
-    execAndCheck g ft "[ 1 [ [ 2 [ [ 3 [ 10 20 ] ] [ 4 [ 50 60 ] ] ] ] ] ]"
+        [("main", [], EFunc ("", EPack (1, 1, [EPack (2, 2, [EPack (3, 2, [ENum 10; ENum 20]);                                                  EPack (4, 2, [ENum 50; ENum 60])])])))]
+    execAndCheck g "[ 1 [ [ 2 [ [ 3 [ 10 20 ] ] [ 4 [ 50 60 ] ] ] ] ] ]"
 
 [<Test>]
 let testCase1 () =
     let g =
         [("some", [], EPack (0, 1, [EPack (1, 0, [])]));
-         ("main", [], ECase (EVar "some", [(0, ["x"], EVar "x")]))]
-    let ft = Map [("main", 0); ("some", 0)]
-    execAndCheck g ft "[ 1 [] ]"
+         ("main", [], EFunc ("", ECase (EVar "some", [(0, ["x"], EVar "x")])))]
+    execAndCheck g "[ 1 [] ]"
 
 [<Test>]
 let testCase2 () =
     let g =
         [("some", [], EPack (1, 2, [ENum 1; ENum 2]));
-         ("main", [], ECase (EVar "some",
-                             [(0, ["x"], EVar "x");
-                              (1, ["x"; "y"], EAdd (EVar "x", EVar "y"))])
+         ("main", [], EFunc ("",
+                             ECase (EVar "some",
+                                    [(0, ["x"], EVar "x");
+                                     (1, ["x"; "y"], EAdd (EVar "x", EVar "y"))]))
           )
         ]
-    let ft = Map [("main", 0); ("some", 0)]
-    execAndCheck g ft "3"
+    execAndCheck g "3"
 
 [<Test>]
 let testChoice () =
     let g =
-        [("first", ["n"; "m"], EVar "n");
-         ("second", ["n"; "m"], EVar "m");
-         ("main", [], EAp (EAp (EVar "second", ENum 10), ENum 6))]
-    let ft = Map [("main", 0); ("first", 2); ("second", 2)]
-    execAndCheck g ft "6"
+        [("first", [], EFunc ("n", EFunc ("m", EVar "n")));
+         ("second", [], EFunc ("n", EFunc ("m", EVar "m")));
+         ("main", [], EFunc ("", EEval (EAp (EAp (EVar "second", ENum 10), ENum 6))))]
+    execAndCheck g "6"
 
 [<Test>]
 let testList1 () =
@@ -142,9 +139,8 @@ let testList1 () =
     let TCons x y = EPack (2, 2, [x; y])
     let myList = TCons (ENum 1) (TCons (ENum 2) (TCons (ENum 3) (TCons (ENum 4) (TCons (ENum 5) TNil))))
     let g =
-        [("main", [], myList)]
-    let ft = Map [("main", 0)]
-    execAndCheck g ft "[ 2 [ 1 [ 2 [ 2 [ 2 [ 3 [ 2 [ 4 [ 2 [ 5 [ 1 [] ] ] ] ] ] ] ] ] ] ] ]"
+        [("main", [], EFunc ("", myList))]
+    execAndCheck g "[ 2 [ 1 [ 2 [ 2 [ 2 [ 3 [ 2 [ 4 [ 2 [ 5 [ 1 [] ] ] ] ] ] ] ] ] ] ] ]"
 
 [<Test>]
 let testListPatternMatch () =
@@ -154,11 +150,11 @@ let testListPatternMatch () =
     let g =
         [("mylist", [], myList);
          ("main", [],
-          ECase (EVar "mylist",
+          EFunc ("",
+           ECase (EVar "mylist",
                  [(1, [], ENum 0);
-                  (2, ["h"; "t"], EVar "h")]))]
-    let ft = Map [("main", 0); ("mylist",0)]
-    execAndCheck g ft "1"
+                  (2, ["h"; "t"], EVar "h")])))]
+    execAndCheck g "1"
 
 [<Test>]
 let testMapList () =
@@ -173,75 +169,73 @@ let testMapList () =
     let TCons x y = EPack (2, 2, [x; y])
     let myList = TCons (ENum 1) (TCons (ENum 2) (TCons (ENum 3) (TCons (ENum 4) (TCons (ENum 5) TNil))))
     let g =
-        [("f", ["n"], EMul (ENum 2, EVar "n"));
-         ("List.map", ["fun"; "l"],
-          ECase (EVar "l",
-                 [(1, [], TNil);
-                  (2, ["h"; "t"],
-                   TCons (EAp (EVar "fun", EVar "h")) (EAp (EAp (EVar "List.map", EVar "fun"), EVar "t")))])
-          );
-         ("main", [], EAp (EAp (EVar "List.map", EVar "f"), myList))]
-    let ft = Map [("main", 0); ("fun", 1); ("f", 1); ("List.map", 2)]
-    execAndCheck g ft "[ 2 [ 2 [ 2 [ 4 [ 2 [ 6 [ 2 [ 8 [ 2 [ 10 [ 1 [] ] ] ] ] ] ] ] ] ] ] ]"
+        [("f", [], EFunc ("n", EMul (ENum 2, EVar "n")));
+         ("List.map", [],
+          EFunc ("fun",
+           EFunc ("l",
+             ECase (EVar "l",
+                    [(1, [], TNil);
+                     (2, ["h"; "t"],
+                      (let h = EEval (EAp (EVar "fun", EVar "h"))
+                       let t = EEval (EAp (EAp (EVar "List.map", EVar "fun"), EVar "t"))
+                       TCons h t))]))));
+         ("main", [], EFunc ("", EEval (EAp (EAp (EVar "List.map", EVar "f"), myList))))]
+    execAndCheck g "[ 2 [ 2 [ 2 [ 4 [ 2 [ 6 [ 2 [ 8 [ 2 [ 10 [ 1 [] ] ] ] ] ] ] ] ] ] ] ]"
 
 [<Test>]
 let testLet1 () =
     let  g = [
-        ("main", [], ELet (false, [("t", ENum 3)], (EVar "t")))
+        ("main", [], EFunc ("", ELet (false, [("t", ENum 3)], (EVar "t"))))
     ]
-    let ft = Map [("main", 0)]
-    execAndCheck g ft "3"
+    execAndCheck g "3"
 
 [<Test>]
 let testLet2 () =
     let g = [
-        ("main", [], ELet (false, [("k", ENum 3); ("t", ENum 4)], EVar "t"))
+        ("main", [], EFunc ("", ELet (false, [("k", ENum 3); ("t", ENum 4)], EVar "t")))
     ]
-    let ft = Map [("main", 0)]
-    execAndCheck g ft "4"
+    execAndCheck g "4"
 
 [<Test>]
 let testLet3 () =
     let g = [
-        ("func", ["x"; "y"],
-         ELet (false, [("a", EVar "x"); ("b", EVar "y")], EAdd (EVar "a", EVar "b")));
-        ("main", [], EAp (EAp (EVar "func", ENum 10), ENum 20))
+        ("func", [],
+          EFunc ("x",
+           EFunc ("y",
+            ELet (false, [("a", EVar "x"); ("b", EVar "y")], EAdd (EVar "a", EVar "b")))));
+        ("main", [], EFunc ("", EEval (EAp (EAp (EVar "func", ENum 10), ENum 20))))
     ]
-    let ft = Map [("main", 0); ("func", 2)]
-    execAndCheck g ft "30"
+    execAndCheck g "30"
 
 [<Test>]
 let testLetRec1 () =
     let g = [
-        ("main", [], ELet (true, [("k", ENum 3); ("t", EVar "k")], EVar "t"))
+        ("main", [], EFunc ("", ELet (true, [("k", ENum 3); ("t", EVar "k")], EVar "t")))
     ]
-    let ft = Map [("main", 0)]
-    execAndCheck g ft "3"
+    execAndCheck g "3"
 
 [<Test>]
 let testLetRec2 () =
     let g = [
         ("main", [],
-         ELet (true, [("k", ENum 3);
+         EFunc ("", ELet (true, [("k", ENum 3);
                       ("t", EVar "k");
-                      ("z", EAdd (EVar "t", EVar "k"))], EVar "z"))
+                      ("z", EAdd (EVar "t", EVar "k"))], EVar "z")))
     ]
-    let ft = Map [("main", 0)]
-    execAndCheck g ft "6"
+    execAndCheck g "6"
 
 [<Test>]
 let testLetRec3 () =
     let g = [
         ("func1", [], ENum 3);
-        ("func2", ["x"], EAdd (EVar "x", ENum 10));
+        ("func2", [], EFunc ("x", EAdd (EVar "x", ENum 10)));
         ("main", [],
-         ELet (true, [("k", EAp (EVar "func2", EVar "func1"));
-                      ("t", EVar "k");
-                      ("z", EAdd (EVar "t", EVar "k"))], EVar "z"))
-    ]
-    let ft = Map [("main", 0); ("func1", 0); ("func2", 1)]
-    execAndCheck g ft "26"
-***)
+         EFunc ("", ELet (true,
+                          [("k", EEval (EAp (EVar "func2", EVar "func1")));
+                           ("t", EVar "k");
+                           ("z", EAdd (EVar "t", EVar "k"))],
+                          EVar "z")))]
+    execAndCheck g "26"
 
 [<Test>]
 let testFunc0 () =
@@ -249,25 +243,22 @@ let testFunc0 () =
         ("func1", [], EFunc ("x", EAdd (EVar "x", ENum 1)));
         ("main", [], EFunc ("", EEval (EAp (EVar "func1", ENum 100))))
     ]
-    let ft = Map [("main", 0); ("func1", 0)]
-    execAndCheck g ft "101"
+    execAndCheck g "101"
 
 [<Test>]
 let testFunc1 () =
     let g = [("main", [], EFunc ("", EEval (EAp (EFunc ("n", EAdd (EVar "n", ENum 10)), ENum 10)))) ]
-    let ft = Map [("main", 0)]
-    execAndCheck g ft "20"
+    execAndCheck g "20"
 
 [<Test>]
-let testFactorial () =
+let testFactorial2 () =
     let g = [("fact", [],
-                    EFunc ("n", 
+                    EFunc ("n",
                       EIf (EGt (EVar "n", ENum 1),
                            EMul (EVar "n", EEval (EAp (EVar "fact", ESub (EVar "n", ENum 1))) ),
                            ENum 1)));
              ("main", [], EFunc ("", EEval (EAp (EVar "fact", ENum 5))))]
-    let ft = Map [("main", 0); ("fact", 0)]
-    execAndCheck g ft "120"
+    execAndCheck g "120"
 
 [<Test>]
 let testMax () =
@@ -276,5 +267,4 @@ let testMax () =
                       EFunc ("m",
                         EIf (EGt (EVar "n", EVar "m"), EVar "n", EVar "m"))));
              ("main", [], EFunc ("", EEval (EAp (EAp (EVar "max", ENum 5), ENum 10)))) ]
-    let ft = Map [("main", 0); ("max", 0)]
-    execAndCheck g ft "10"
+    execAndCheck g "10"

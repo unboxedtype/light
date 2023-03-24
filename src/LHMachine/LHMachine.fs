@@ -78,48 +78,13 @@ type LHCompiledSC = Name * int * LHCode
 let argOffset (m:int) (env: Environment) =
     [for (n, v) in env -> (n + m, v)]
 
-// A mapping between a combinator name and its arity
-// let fact n =  ..
-// let sum a b = ...
-// let main = ...
-// FuncArityTable = [("fact",1); ("sum",2); ("main",0)]
-type FuncArityTable = Map<Name,int>
-
-let rec argCount (e:Expr) (ft:FuncArityTable) : int =
-    match e with
-    | EVar v ->
-        ft.[v]
-    | EAp (e1, e2) ->
-        argCount e1 ft
-    | _ ->
-        failwith "argCount applies only to function identifiers and applications"
-
-let rec arity (e:Expr) (ft:FuncArityTable) : int =
-    match e with
-    | ESelect (_, _) ->
-        1 // this idea here is that all stored functions
-          // have the arity 1 due to currying;
-          // f : int -> int -> int is actually int -> (int -> int)
-    | EFunc (_, _) ->
-        1
-    | EVar v ->
-        argCount e ft
-    | EAp (e1, e2) ->
-        (arity e1 ft) - 1
-    | EIf (c, t, f) ->
-        // The type system must guarantee that
-        // the arity of both branches is the same
-        arity t ft
-    | _ ->
-        failwith "non executable code doesn't have an arity"
-
 let compileArgs (defs:BoundVarDefs) (env:Environment) : Environment =
     let n = List.length defs
     let indexes = List.rev [for i in 0 .. (n-1) -> i]
     let names = List.map fst defs
     (List.zip indexes names) @ (argOffset n env)
 
-let rec compile (ast:Expr) (env: Environment) (ft: FuncArityTable) (depth:int) : LHCode =
+let rec compile (ast:Expr) (env: Environment) : LHCode =
     match ast with
     | EVar v ->
         let r = List.tryPick (fun (n, v') ->
@@ -127,7 +92,7 @@ let rec compile (ast:Expr) (env: Environment) (ft: FuncArityTable) (depth:int) :
         match r with
             | Some n ->
                 [Push n]
-            | _ ->
+            | None ->
                 [GetGlob v]
     | ENum n ->
         [Integer n]
@@ -135,99 +100,98 @@ let rec compile (ast:Expr) (env: Environment) (ft: FuncArityTable) (depth:int) :
         let env' = (0, argName) :: (argOffset 1 env)
         match body with
         | EFunc (_, _) ->
-            compile body env' ft 0
+            compile body env'
         | _ ->
-            [Function (compile body env' ft 0)]
+            [Function (compile body env')]
     | ENull ->
         [Null]
     | EEval e ->
-        (compile e env ft 0) @ [Execute]
+        (compile e env) @ [Execute]
     | EAp (e1, e2) ->
-        (compile e2 env ft 0) @
-        (compile e1 (argOffset 1 env) ft 0) @
+        (compile e2 env) @
+        (compile e1 (argOffset 1 env)) @
         [Apply]
     | EIf (e0, t, f) ->
-        (compile e0 env ft 0) @ [IfElse (compile t env ft 0, compile f env ft 0)]
+        (compile e0 env) @ [IfElse (compile t env, compile f env)]
     | EAdd (e0, e1) ->
-        (compile e0 env ft 0) @ (compile e1 (argOffset 1 env) ft 0) @ [Add]
+        (compile e0 env) @ (compile e1 (argOffset 1 env)) @ [Add]
     | ESub (e0, e1) ->
-        (compile e0 env ft 0) @ (compile e1 (argOffset 1 env) ft 0) @ [Sub]
+        (compile e0 env) @ (compile e1 (argOffset 1 env)) @ [Sub]
     | EMul (e0, e1) ->
-        (compile e0 env ft 0) @ (compile e1 (argOffset 1 env) ft 0) @ [Mul]
+        (compile e0 env) @ (compile e1 (argOffset 1 env)) @ [Mul]
     | EEq (e0, e1) ->
-        (compile e0 env ft 0) @ (compile e1 (argOffset 1 env) ft 0) @ [Equal]
+        (compile e0 env) @ (compile e1 (argOffset 1 env)) @ [Equal]
     | EGt (e0, e1) ->
-        (compile e0 env ft 0) @ (compile e1 (argOffset 1 env) ft 0) @ [Greater]
+        (compile e0 env) @ (compile e1 (argOffset 1 env)) @ [Greater]
     | EPack (tag, arity, args) ->
         List.concat
-          (List.map (fun (i, e) -> compile e (argOffset i env) ft 0)
+          (List.map (fun (i, e) -> compile e (argOffset i env))
           (List.indexed args)) @
         [Pack (tag, arity)]
     | ECase (e, alts) ->
-        (compile e env ft 0) @ [ Casejump (compileAlts alts env ft) ]
+        (compile e env) @ [ Casejump (compileAlts alts env) ]
     | ELet (isRec, defs, body) ->
         match isRec with
         | false ->
-            compileLet defs body env ft
+            compileLet defs body env
         | true ->
-            compileLetRec defs body env ft
+            compileLetRec defs body env
     | ESelect (e, n) ->
-        (compile e env ft 0) @ [Select n]
+        (compile e env) @ [Select n]
     | EUpdateRec (e, n, e1) ->
-        (compile e env ft 0) @ (compile e1 (argOffset 1 env) ft 0) @ [UpdateRec n]
+        (compile e env) @ (compile e1 (argOffset 1 env)) @ [UpdateRec n]
     | EUpdateState e ->
-        (compile e env ft 0) @ [SetGlob "1"] @ [Null]
+        (compile e env) @ [SetGlob "1"] @ [Null]
     | _ ->
         failwith "not implemented"
-and compileAlts alts env ft =
+and compileAlts alts env =
     List.map (fun a ->
                  let (tag, names, body) = a
                  let indexed = List.indexed (List.rev names)
                  let env_len = List.length names
                  let env' = indexed @ (argOffset env_len env)
-                 (tag, compileAlt env_len body env' ft)
+                 (tag, compileAlt env_len body env')
               ) alts
-and compileAlt offset expr env ft =
-    [Split offset] @ (compile expr env ft 0) @ [Slide offset]
-and compileLet (defs: BoundVarDefs) expr env ft =
+and compileAlt offset expr env =
+    [Split offset] @ (compile expr env) @ [Slide offset]
+and compileLet (defs: BoundVarDefs) expr env =
     // inject new definitions into the environment
     let env' = compileArgs defs env
     let n = List.length defs
     // compile the definitions using the old environment
-    (compileLetDefs defs env ft) @
+    (compileLetDefs defs env) @
       // compile the expression using the new environment
-      (compile expr env' ft 0) @
+      (compile expr env') @
       // remove local variables after the evaluation
       [Slide n]
-and compileLetDefs defs env ft =
+and compileLetDefs defs env =
     match defs with
         | [] ->
             []
         | (name, expr) :: defs' ->
-            (compile expr env ft 0) @ compileLetDefs defs' (argOffset 1 env) ft
-and compileLetRec (defs: BoundVarDefs) expr env ft =
+            (compile expr env) @ compileLetDefs defs' (argOffset 1 env)
+and compileLetRec (defs: BoundVarDefs) expr env =
     let env' = compileArgs defs env
     let n = List.length defs
-    [Alloc n] @ (compileLetRecDefs defs env' n ft) @ (compile expr env' ft 0) @ [Slide n]
-and compileLetRecDefs defs env n ft =
+    [Alloc n] @ (compileLetRecDefs defs env' n) @ (compile expr env') @ [Slide n]
+and compileLetRecDefs defs env n =
     match defs with
         | [] ->
             []
         | (name, expr) :: defs' ->
-            (compile expr env ft 0) @ [Update n] @ compileLetRecDefs defs' env (n - 1) ft
+            (compile expr env) @ [Update n] @ compileLetRecDefs defs' env (n - 1)
 
 type LHGlobalsDefs = (Name * (string list) * Expr) list
 type LHGlobalsTable = (int * (string * LHCode)) list
 
 let globalsBaseNumber = 2
 
-let compileGlobals (globals: LHGlobalsDefs) (ft:FuncArityTable) : LHGlobalsTable =
-    // ft could have been generated from globals, but...
+let compileGlobals (globals: LHGlobalsDefs) : LHGlobalsTable =
     globals
     |> List.map
        (fun (name,vars,expr) ->
         let indVars = List.indexed vars
-        (name, (compile expr indVars ft 0) @ [Slide ft.[name]]))
+        (name, (compile expr indVars) @ [Slide 0]))
     |> List.indexed
     |> List.map (fun (n,t) -> (n + globalsBaseNumber, t))
 
@@ -279,7 +243,7 @@ let rec instrToTVM (i:Instruction) : string =
                 "10 THROW " // proper case selector not found (shall not happen)
             | (tag, code) :: t ->
                 "DUP " + (string tag) + " INT EQUAL " +
-                "<{ DROP " + compileToTVM code + " EXECUTE }> PUSHCONT IFJMP " +
+                "<{ DROP " + compileToTVM code + " }> PUSHCONT IFJMP " +
                 compileCasejumpSelector t
         let l' = compileCasejumpSelector l
         "DUP 0 INDEX <{ " + l' + " }> " + " PUSHCONT EXECUTE"
