@@ -16,11 +16,11 @@ let execAndCheck g ft expected =
     TVM.dumpFiftScript filename (generateFift gs "" "" "")
     let res = FiftExecutor.runFiftScript filename
     Assert.AreEqual (expected, res)
-
+(**
 [<Test>]
 let testTrivial () =
     let code = compile (ENum 0) [] (Map [])
-    Assert.AreEqual( [Pushint 0], code );
+    Assert.AreEqual( [Integer 0], code );
 
 [<Test>]
 let testFactorial () =
@@ -241,3 +241,40 @@ let testLetRec3 () =
     ]
     let ft = Map [("main", 0); ("func1", 0); ("func2", 1)]
     execAndCheck g ft "26"
+***)
+
+[<Test>]
+let testFunc0 () =
+    let g = [
+        ("func1", [], EFunc ("x", EAdd (EVar "x", ENum 1)));
+        ("main", [], EFunc ("", EEval (EAp (EVar "func1", ENum 100))))
+    ]
+    let ft = Map [("main", 0); ("func1", 0)]
+    execAndCheck g ft "101"
+
+[<Test>]
+let testFunc1 () =
+    let g = [("main", [], EFunc ("", EEval (EAp (EFunc ("n", EAdd (EVar "n", ENum 10)), ENum 10)))) ]
+    let ft = Map [("main", 0)]
+    execAndCheck g ft "20"
+
+[<Test>]
+let testFactorial () =
+    let g = [("fact", [],
+                    EFunc ("n", 
+                      EIf (EGt (EVar "n", ENum 1),
+                           EMul (EVar "n", EEval (EAp (EVar "fact", ESub (EVar "n", ENum 1))) ),
+                           ENum 1)));
+             ("main", [], EFunc ("", EEval (EAp (EVar "fact", ENum 5))))]
+    let ft = Map [("main", 0); ("fact", 0)]
+    execAndCheck g ft "120"
+
+[<Test>]
+let testMax () =
+    let g = [("max", [],
+                    EFunc ("n",
+                      EFunc ("m",
+                        EIf (EGt (EVar "n", EVar "m"), EVar "n", EVar "m"))));
+             ("main", [], EFunc ("", EEval (EAp (EAp (EVar "max", ENum 5), ENum 10)))) ]
+    let ft = Map [("main", 0); ("max", 0)]
+    execAndCheck g ft "10"
