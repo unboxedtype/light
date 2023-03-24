@@ -141,7 +141,7 @@ let rec compile (ast:Expr) (env: Environment) : LHCode =
     | EUpdateRec (e, n, e1) ->
         (compile e env) @ (compile e1 (argOffset 1 env)) @ [UpdateRec n]
     | EUpdateState e ->
-        (compile e env) @ [SetGlob "1"] @ [Null]
+        (compile e env) @ [SetGlob "2"] @ [Null]
     | _ ->
         failwith "not implemented"
 and compileAlts alts env =
@@ -276,8 +276,8 @@ let generateFift (t:LHGlobalsTable) (stateReader:string) (stateWriter:string) (d
       |> List.map mkFiftGlobFunction) @
      (if stateReader <> "" then
          List.singleton stateReader @
-         List.singleton "1 SETGLOB" @
-         List.singleton "<{ 1 GETGLOB }> PUSHCONT" @
+//         List.singleton "1 SETGLOB" @
+//         List.singleton "<{ 1 GETGLOB }> PUSHCONT" @
          List.singleton "state SETGLOB"
       else []) @
      List.singleton "NULL main GETGLOB 1 1 CALLXARGS" @

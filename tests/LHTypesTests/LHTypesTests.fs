@@ -8,7 +8,7 @@ open LHTypes
 open TVM
 open type LHMachine.Expr
 
-let execAndCheck g ft types dataCell expected =
+let execAndCheck g types dataCell expected =
     let stReader =
         stateReader types
         |> List.map TVM.instrToFift
@@ -18,7 +18,7 @@ let execAndCheck g ft types dataCell expected =
         |> List.map TVM.instrToFift
         |> String.concat "\n"
 
-    let gs = LHMachine.compileGlobals g ft
+    let gs = LHMachine.compileGlobals g
     let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".fif"
     TVM.dumpFiftScript filename (LHMachine.generateFift gs stReader stWriter dataCell)
     let res = FiftExecutor.runFiftScript filename
@@ -34,12 +34,10 @@ let testStateGet0 () =
                                        ("y", LHTypes.Bool);])]
     let dataCell = "<b 100 256 u, 1 2 u, b>"
     let g = [("state", [], ENum 0);  // this is a stub; will be replaced
-             ("main", [], EIf (ESelect (EVar "state", 1),
-                               EMul (ESelect (EVar "state", 0),
-                                     ENum 2),
-                               ENum 0))]
-    let ft = Map [("main", 0); ("state", 0)]
-    execAndCheck g ft types dataCell "200"
+             ("main", [], EFunc ("", EIf (ESelect (EVar "state", 1),
+                                          EMul (ESelect (EVar "state", 0), ENum 2),
+                                          ENum 0)))]
+    execAndCheck g types dataCell "200"
 
 [<Test>]
 let testStateGet1 () =
@@ -47,9 +45,8 @@ let testStateGet1 () =
                                        ("y", LHTypes.Bool);])]
     let dataCell = "<b 100 256 u, 1 2 u, b>"
     let g = [("state", [], ENum 0);  // this is a stub; will be replaced
-             ("main", [], ELet (false, [("s", ESelect (EVar "state", 1))], EVar "s"))]
-    let ft = Map [("main", 0); ("state", 0)]
-    execAndCheck g ft types dataCell "1"
+             ("main", [], EFunc ("", ELet (false, [("s", ESelect (EVar "state", 1))], EVar "s")))]
+    execAndCheck g types dataCell "1"
 
 
 [<Test>]
@@ -60,13 +57,14 @@ let testStateSet0 () =
                                        ("y", LHTypes.Bool)])]
     let dataCell = "<b 100 64 u, 1 2 u, b>"
     let g = [("state", [], ENum 0);  // this is a stub; will be replaced
-             ("update", [], EIf (ESelect (EVar "state", 1),
-                                 EUpdateState (EUpdateRec (EVar "state", 0,
-                                                         EMul (ESelect (EVar "state", 0), ENum 2))),
-                                 ENull));
-             ("main", [], ELet (false, ["x", (EVar "update")], EVar "state"))]
-    let ft = Map [("main", 0); ("state", 0); ("update", 0)]
-    execAndCheck g ft types dataCell "[ 0 [ 200 1 ] ]"
+             ("update", [], EFunc ("",
+                             EIf (ESelect (EVar "state", 1),
+                                   EUpdateState (
+                                   EUpdateRec (EVar "state", 0,
+                                               EMul (ESelect (EVar "state", 0), ENum 2))),
+                                  ENull)));
+             ("main", [], EFunc ("", ELet (false, ["x", (EEval (EVar "update"))], EVar "state")))]
+    execAndCheck g types dataCell "[ 0 [ 200 1 ] ]"
 
 [<Test>]
 let testStateFunction0 () =
@@ -77,6 +75,5 @@ let testStateFunction0 () =
                                        ("fun", Function (UInt 64, UInt 64))])]
     let dataCell = "<b 100 64 u, 1 2 u, <{ INC }>s s>c ref,  b>"
     let g = [("state", [], ENull);  // this is a stub; will be replaced
-             ("main", [], EAp (ESelect (EVar "state", 2), ENum 100))]
-    let ft = Map [("main", 0); ("state", 0)]
-    execAndCheck g ft types dataCell "101"
+             ("main", [], EFunc ("", EEval (EAp (ESelect (EVar "state", 2), ENum 100))))]
+    execAndCheck g types dataCell "101"
