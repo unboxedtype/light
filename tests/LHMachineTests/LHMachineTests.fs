@@ -268,3 +268,24 @@ let testMax () =
                         EIf (EGt (EVar "n", EVar "m"), EVar "n", EVar "m"))));
              ("main", [], EFunc ("", EEval (EAp (EAp (EVar "max", ENum 5), ENum 10)))) ]
     execAndCheck g "10"
+
+[<Test>]
+let testApply () =
+    // apply f x = f x
+    // main = apply (fun x -> x + 1) 100
+    let g = [("apply", [],
+                    EFunc ("f",
+                      EFunc ("x", EEval (EAp (EVar "f", EVar "x")))));
+             ("main", [],
+                    EFunc ("",
+                      EEval (EAp (EAp (EVar "apply", EFunc ("x", EAdd (EVar "x", ENum 1))),
+                                  ENum 100))))]
+    execAndCheck g "101"
+
+[<Test>]
+let testConst () =
+    // const x = fun _ -> x
+    // main = (const 100) 1   ---> evals to 100
+    let g = [("const", [], EFunc ("x", EFunc ("", EVar "x")));
+             ("main", [], EFunc ("", EEval (EAp (EAp (EVar "const", ENum 100), ENum 1))))]
+    execAndCheck g "100"
