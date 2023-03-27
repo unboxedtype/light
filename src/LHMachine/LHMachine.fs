@@ -199,7 +199,7 @@ let rec instrToTVM (i:Instruction) : string =
     match i with
     | Null -> "NULL"
     | Alloc n -> String.concat " " [for i in [1..n] -> "NULL"]
-    | Apply ->  "<{ DEPTH DEC ZERO DEC SETCONTVARARGS }> PUSHCONT 2 1 CALLXARGS" // inject one argument and receive a new function in return
+    | Apply ->  "1 GETGLOB 2 1 CALLXARGS" // inject one argument and receive a new function in return
     | Update i -> "s0 s" + (string i) + " XCHG DROP"
     | GetGlob n -> n + " GETGLOB"
     | SetGlob n -> n + " SETGLOB"
@@ -276,10 +276,9 @@ let generateFift (t:LHGlobalsTable) (stateReader:string) (stateWriter:string) (d
       |> List.map mkFiftGlobFunction) @
      (if stateReader <> "" then
          List.singleton stateReader @
-//         List.singleton "1 SETGLOB" @
-//         List.singleton "<{ 1 GETGLOB }> PUSHCONT" @
          List.singleton "state SETGLOB"
       else []) @
+     List.singleton "<{ DEPTH DEC ZERO DEC SETCONTVARARGS }> PUSHCONT 1 SETGLOB" @
      List.singleton "NULL main GETGLOB 1 1 CALLXARGS" @
      List.singleton stateWriter @
      List.singleton (" }>s " + dataCell' + " 1000000 gasrunvm drop drop .dump cr .dump cr"))
