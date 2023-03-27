@@ -289,3 +289,39 @@ let testConst () =
     let g = [("const", [], EFunc ("x", EFunc ("", EVar "x")));
              ("main", [], EFunc ("", EEval (EAp (EAp (EVar "const", ENum 100), ENum 1))))]
     execAndCheck g "100"
+
+[<Test>]
+let testFunctionLine () =
+    // add5 = fun x -> x + 5
+    // mul2 = fun x -> x * 2
+    // sub3 = fun x -> x - 3
+    //
+    // main =
+    //   let fLine = [add5, mul2, sub3]
+    //   List.fold (fun acc f -> f acc) 10 fLine
+    // main --> (10 + 5) * 2 - 3 = 27
+
+    let TNil = EPack (1, 0, [])
+    let TCons x y = EPack (2, 2, [x; y])
+
+    let fLine = ("fline",
+                   TCons (EVar "add5") (TCons (EVar "mul2") (TCons (EVar "sub3") TNil)))
+    let folder = EFunc ("acc", EFunc ("x", EEval (EAp (EVar "x", EVar "acc"))))
+    let g = [("add5", [], EFunc ("x", EAdd (EVar "x", ENum 5)));
+             ("mul2", [], EFunc ("x", EMul (EVar "x", ENum 2)));
+             ("sub3", [], EFunc ("x", ESub (EVar "x", ENum 3)));
+             ("fold", [],
+               EFunc ("f",
+                EFunc ("acc",
+                 EFunc ("list",
+                  ECase (EVar "list",
+                    [(1, [], EVar "acc");
+                     (2, ["h"; "t"],
+                      (let acc' = EEval (EAp (EAp (EVar "f", EVar "acc"), EVar "h"))
+                       EEval (EAp (EAp (EAp (EVar "fold", EVar "f"), acc'), EVar "t"))))])))));
+             ("main", [],
+               EFunc ("",
+                ELet (false, [fLine],
+                   EEval (EAp (EAp (EAp (EVar "fold", folder), ENum 10), EVar "fline")))));
+        ]
+    execAndCheck g "27"
