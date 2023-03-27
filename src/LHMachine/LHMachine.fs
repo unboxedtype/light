@@ -19,7 +19,7 @@ type Instruction =
     | SetGlob of name: Name
     | Integer of v: int
     | Function of c:LHCode
-    | Apply
+    | Apply 
     | Push of n: int
     | Pop of n: int
     | Slide of n: int
@@ -38,9 +38,6 @@ type Instruction =
     | Alloc of n:int  // allocate n Null values on the stack
     | Update of i:int // update the i-th stack value with the one residing on the top
 and LHCode = Instruction list
-
-// type LHDump = LHCode * LHStack
-// type LHState = LHCode * LHStack * LHGlobals * LHDump
 
 // index + variable name
 // [(1,"x"); (2,"y"); ...]
@@ -67,7 +64,7 @@ type Expr =
     | EPack of tag:int * arity:int * args:Expr list
     | ESelect of e:Expr * n:int
     | EUpdateRec of e0:Expr * n:int * e1:Expr
-    | EUpdateState of e0:Expr
+    | EAssign of e0:Expr
 and CaseAlt = int * (Name list) * Expr   // case (tag:0) (vars: ["x","y"]) -> x + y
 and BoundVarDefs = (Name * Expr) list
 
@@ -140,7 +137,7 @@ let rec compile (ast:Expr) (env: Environment) : LHCode =
         (compile e env) @ [Select n]
     | EUpdateRec (e, n, e1) ->
         (compile e env) @ (compile e1 (argOffset 1 env)) @ [UpdateRec n]
-    | EUpdateState e ->
+    | EAssign e ->
         (compile e env) @ [SetGlob "2"] @ [Null]
     | _ ->
         failwith "not implemented"

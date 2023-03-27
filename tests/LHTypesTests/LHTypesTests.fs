@@ -59,7 +59,7 @@ let testStateSet0 () =
     let g = [("state", [], ENum 0);  // this is a stub; will be replaced
              ("update", [], EFunc ("",
                              EIf (ESelect (EVar "state", 1),
-                                   EUpdateState (
+                                   EAssign (
                                    EUpdateRec (EVar "state", 0,
                                                EMul (ESelect (EVar "state", 0), ENum 2))),
                                   ENull)));

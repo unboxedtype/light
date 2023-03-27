@@ -1,0 +1,56 @@
+//This parser has been writen with help of "Real world OCaml" book By Yaron Minsky, Anil Madhavapeddy, Jason Hickey (chapter 16)
+%{
+open ParserModule
+%}
+
+%start start
+
+%token <int> INT
+%token <string> UIDENT  // uppercase identifier
+%token <string> LIDENT  // lowercase identifier
+%token <string> IDENT    // variable type
+%token <string> STRING
+%token MODULE
+%token TYPEDEF
+%token EQ
+%token SEMICOLON
+%token VBAR
+%token LEFT_BRACE
+%token RIGHT_BRACE
+%token LEFT_BRACK
+%token RIGHT_BRACK
+%token COLON
+%token COMMA
+%token EOF
+
+%type <ParserModule.Module option> start
+
+%%
+
+start: expr { $1 }
+
+expr:
+  | EOF { None }
+  | modle { Some $1 }
+
+varDecl:
+  | LIDENT COLON LIDENT    { List.singleton ($1, $3) }
+  | LIDENT COLON UIDENT    { List.singleton ($1, $3) }
+  
+varDecls:
+  | varDecl  { $1 }
+  | varDecl SEMICOLON varDecls  { $1 @ $3 }
+
+prodtype:
+  | LEFT_BRACE RIGHT_BRACE { ProdType [] }
+  | LEFT_BRACE varDecls RIGHT_BRACE  { ProdType $2 }
+
+decl:
+  | TYPEDEF UIDENT EQ prodtype  { TypeDef ($2, $4) }
+
+decls:
+  | { [] }
+  | decl decls    { $1 :: $2 }
+
+modle:
+  | MODULE LIDENT decls { Module ($2, $3) }

@@ -1,0 +1,59 @@
+//This lexer has been writen with help of "Real world OCaml" book By Yaron Minsky, Anil Madhavapeddy, Jason Hickey (chapter 16)
+{
+
+module Lexer
+
+open FSharp.Text.Lexing
+open System
+open Parser
+
+exception SyntaxError of string
+
+let lexeme = LexBuffer<_>.LexemeString
+
+let newline (lexbuf: LexBuffer<_>) = 
+  lexbuf.StartPos <- lexbuf.StartPos.NextLine
+}
+
+let int = ['-' '+']? ['0'-'9']+
+let digit = ['0'-'9']
+let ucase = ['A'-'Z']
+let lcase = ['a'-'z']
+let ucaseIdentifier = ucase+ (lcase | digit)*
+let lcaseIdentifier = lcase+ (ucase | digit | lcase)*
+let identifier = lcaseIdentifier | ucaseIdentifier
+let moduleKeyword = "module"
+
+let white = [' ' '\t']+
+let newline = '\r' | '\n' | "\r\n"
+
+rule read =
+  parse
+  | white    { read lexbuf }
+  | newline  { newline lexbuf; read lexbuf }
+  | int      { INT (int (lexeme lexbuf)) }
+  | "module" { MODULE }
+  | "type"   { TYPEDEF }
+  | ucaseIdentifier  { UIDENT (string (lexeme lexbuf)) }
+  | lcaseIdentifier  { LIDENT (string (lexeme lexbuf)) }
+  | identifier { IDENT (string (lexeme lexbuf)) }
+  | '"'      { read_string "" false lexbuf } 
+  | '{'      { LEFT_BRACE }
+  | '}'      { RIGHT_BRACE }
+  | '['      { LEFT_BRACK }
+  | ']'      { RIGHT_BRACK }
+  | '|'      { VBAR }
+  | ':'      { COLON }
+  | ','      { COMMA }
+  | ';'      { SEMICOLON }
+  | '='      { EQ }
+  | eof      { EOF }
+  | _ { raise (Exception (sprintf "SyntaxError: Unexpected char: '%s' Line: %d Column: %d" (lexeme lexbuf) (lexbuf.StartPos.Line+1) lexbuf.StartPos.Column)) }
+
+
+and read_string str ignorequote =
+  parse
+  | '"'           { if ignorequote  then (read_string (str+"\\\"") false lexbuf) else STRING (str) }
+  | '\\'          { read_string str true lexbuf }
+  | [^ '"' '\\']+ { read_string (str+(lexeme lexbuf)) false lexbuf }
+  | eof           { raise (Exception ("String is not terminated")) }
