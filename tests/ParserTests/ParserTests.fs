@@ -212,13 +212,43 @@ let testLet2 () =
 
                      handler msg_handler1 (n:int) =
                        let f = 10 in
-                       let g = 20 in
+                       let g = msg_handler1 10 in
                        g
                     "
 
     let decls = [HandlerDef ("msg_handler1",
                              [("n","int")],
                              ELet (false, [("f", ENum 10)],
-                                    ELet (false, [("g", ENum 20)],
+                                    ELet (false, [("g", EAp (EVar "msg_handler1", ENum 10))],
                                           EVar "g")))]
+    Assert.AreEqual( Some (Module ("test", decls)), res  );
+
+[<Test>]
+let testLet3 () =
+    let res = parse "module test
+
+                     handler msg_handler1 (n:int) =
+                      let f x = x + 5 in
+                      f 10
+                    "
+
+    let decls = [HandlerDef ("msg_handler1",
+                             [("n","int")],
+                             ELet (false, [("f", EFunc ("x", EAdd (EVar "x", ENum 5)))],
+                                   EAp (EVar "f", ENum 10)))]
+    Assert.AreEqual( Some (Module ("test", decls)), res  );
+
+[<Test>]
+let testLet4 () =
+    let res = parse "module test
+                     handler msg_handler1 (n:int) =
+                      let f x = x + 5 in
+                      let g = 1000 in
+                      f g
+                    "
+    let decls = [HandlerDef ("msg_handler1",
+                             [("n","int")],
+                             ELet (false, [("f", EFunc ("x", EAdd (EVar "x", ENum 5)))],
+                              ELet (false, [("g", ENum 1000)], 
+                               EAp (EVar "f", EVar "g"))))]
     Assert.AreEqual( Some (Module ("test", decls)), res  );

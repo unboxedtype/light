@@ -117,17 +117,21 @@ funcArgs:
 // may be one of the following:
 // =================================================
 expr:
-  | INT                         { ENum ( $1 |> int ) }
-  | LIDENT                      { EVar $1 }
-  | LEFT_BRACKET expr RIGHT_BRACKET { $2 }
-  | expr GT expr                { EGt ($1, $3) }
-  | expr PLUS expr              { EAdd ($1, $3) }
-  | expr MINUS expr             { ESub ($1, $3) }
-  | expr STAR expr              { EMul ($1, $3) }
-  | IF expr THEN expr ELSE expr { EIf ($2, $4, $6) }
-  | LET LIDENT EQ expr IN expr  { ELet (false, [($2,$4)], $6) }
-  | LET REC LIDENT EQ expr IN expr  { ELet (true, [($2, $4)], $6) }
-  | expr expr                   { EAp ($1, $2) }
+  | INT                                 { ENum ( $1 |> int ) }
+  | LIDENT                              { EVar $1 }
+  | LEFT_BRACKET expr RIGHT_BRACKET     { $2 }
+  | expr GT expr                        { EGt ($1, $3)  }
+  | expr PLUS expr                      { EAdd ($1, $3) }
+  | expr MINUS expr                     { ESub ($1, $3) }
+  | expr STAR expr                      { EMul ($1, $3) }
+  | IF expr THEN expr ELSE expr         { EIf ($2, $4, $6) }
+  | LET LIDENT EQ expr IN expr          { ELet (false, [($2, $4)], $6)                   }
+  | LET LIDENT funcArgs EQ expr IN expr
+     {
+       let argNames = List.map fst $3
+       ELet (false, [($2, unfoldFunction argNames $5)], $7)
+     }
+  | expr expr                           { EAp ($1, $2) }
 
 exprs:
   | { [] }
