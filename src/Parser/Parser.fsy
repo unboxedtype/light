@@ -12,9 +12,11 @@ open ParserModule
 %token <string> STRING
 %token MODULE
 %token TYPEDEF
+%token OF
 %token EQ
 %token SEMICOLON
 %token VBAR
+%token STAR
 %token LEFT_BRACE
 %token RIGHT_BRACE
 %token LEFT_BRACK
@@ -36,17 +38,37 @@ expr:
 varDecl:
   | LIDENT COLON LIDENT    { List.singleton ($1, $3) }
   | LIDENT COLON UIDENT    { List.singleton ($1, $3) }
-  
+
 varDecls:
   | varDecl  { $1 }
   | varDecl SEMICOLON varDecls  { $1 @ $3 }
 
+ctorArg:
+  | LIDENT COLON UIDENT   { ($1, $3) }
+  | LIDENT                { ($1, "") }
+
+ctorArgs:
+  | ctorArg { List.singleton $1 }
+  | ctorArg STAR ctorArgs  { $1 :: $3 }
+
+sumtypeCtor:
+  | VBAR UIDENT { ($2, []) }
+  | VBAR UIDENT OF ctorArgs { ($2, $4) }
+
+sumtypeCtors:
+  | sumtypeCtor  { List.singleton $1 }
+  | sumtypeCtor sumtypeCtors { $1 :: $2 }
+
+sumtype:
+  | sumtypeCtors  { SumType $1 }
+
 prodtype:
   | LEFT_BRACE RIGHT_BRACE { ProdType [] }
-  | LEFT_BRACE varDecls RIGHT_BRACE  { ProdType $2 }
+  | LEFT_BRACE varDecls RIGHT_BRACE  { ProdType ($2) }
 
 decl:
   | TYPEDEF UIDENT EQ prodtype  { TypeDef ($2, $4) }
+  | TYPEDEF UIDENT EQ sumtype { TypeDef ($2, $4) }
 
 decls:
   | { [] }

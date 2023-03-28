@@ -11,7 +11,7 @@ exception SyntaxError of string
 
 let lexeme = LexBuffer<_>.LexemeString
 
-let newline (lexbuf: LexBuffer<_>) = 
+let newline (lexbuf: LexBuffer<_>) =
   lexbuf.StartPos <- lexbuf.StartPos.NextLine
 }
 
@@ -19,8 +19,8 @@ let int = ['-' '+']? ['0'-'9']+
 let digit = ['0'-'9']
 let ucase = ['A'-'Z']
 let lcase = ['a'-'z']
-let ucaseIdentifier = ucase+ (lcase | digit)*
-let lcaseIdentifier = lcase+ (ucase | digit | lcase)*
+let ucaseIdentifier = ucase (lcase | digit | ucase)*
+let lcaseIdentifier = lcase (ucase | digit | lcase)*
 let identifier = lcaseIdentifier | ucaseIdentifier
 let moduleKeyword = "module"
 
@@ -34,16 +34,18 @@ rule read =
   | int      { INT (int (lexeme lexbuf)) }
   | "module" { MODULE }
   | "type"   { TYPEDEF }
+  | "of"     { OF }
   | ucaseIdentifier  { UIDENT (string (lexeme lexbuf)) }
   | lcaseIdentifier  { LIDENT (string (lexeme lexbuf)) }
   | identifier { IDENT (string (lexeme lexbuf)) }
-  | '"'      { read_string "" false lexbuf } 
+  | '"'      { read_string "" false lexbuf }
   | '{'      { LEFT_BRACE }
   | '}'      { RIGHT_BRACE }
   | '['      { LEFT_BRACK }
   | ']'      { RIGHT_BRACK }
   | '|'      { VBAR }
   | ':'      { COLON }
+  | '*'      { STAR }
   | ','      { COMMA }
   | ';'      { SEMICOLON }
   | '='      { EQ }

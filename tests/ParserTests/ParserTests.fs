@@ -11,7 +11,7 @@ open NUnit.Framework
 let Setup () =
     ()
 
-let parse source = 
+let parse source =
     let lexbuf = LexBuffer<char>.FromString source
     let res = Parser.start Lexer.read lexbuf
     res
@@ -52,3 +52,51 @@ let testDecl3 () =
                      type State = { x : List }
     "
     Assert.AreEqual( Some (Module ("test", [TypeDef ("State", ProdType [("x","List")])])), res );
+
+[<Test>]
+let testDecl4 () =
+    let res = parse "module test
+                     type State = { x : List; y : Bool }
+    "
+    Assert.AreEqual( Some (Module ("test", [TypeDef ("State", ProdType [("x","List"); ("y","Bool")])])), res );
+
+[<Test>]
+let testDecl5 () =
+    let res = parse "module test
+                     type UserData = { name : String; balance : Uint }
+                     type State = { ud:UserData }
+    "
+    let decls = [TypeDef ("UserData", ProdType [("name","String"); ("balance","Uint")]);
+                 TypeDef ("State", ProdType [("ud","UserData")])]
+    Assert.AreEqual( Some (Module ("test", decls)), res  );
+
+[<Test>]
+let testDecl6 () =
+    let res = parse "module test
+
+                     type UserData =
+                         | Borrower of name:String * amount:Uint
+                         | Depositor of name:String * amount:Uint
+    "
+    let decls = [TypeDef ("UserData",
+                          SumType [("Borrower", [("name","String"); ("amount","Uint")]);
+                                   ("Depositor", [("name","String"); ("amount","Uint")])])]
+    Assert.AreEqual( Some (Module ("test", decls)), res  );
+
+[<Test>]
+let testDecl7 () =
+    let res = parse "module test
+
+                     type UserData =
+                         | Borrower of name:String * amount:Uint
+                         | Depositor of name:String * amount:Uint
+
+                     type State = { user : UserData }
+    "
+    let decls = [TypeDef ("UserData",
+                          SumType [("Borrower", [("name","String"); ("amount","Uint")]);
+                                   ("Depositor", [("name","String"); ("amount","Uint")])]);
+                 TypeDef ("State",
+                          ProdType [("user","UserData")])]
+
+    Assert.AreEqual( Some (Module ("test", decls)), res  );
