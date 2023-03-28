@@ -16,36 +16,17 @@ let rec unfoldFunction args body =
 %start start
 
 %token <int> INT
-%token <string> UIDENT  // uppercase identifier
-%token <string> LIDENT  // lowercase identifier
-%token <string> IDENT    // variable type
+%token <string> UIDENT
+%token <string> LIDENT
+%token <string> IDENT
 %token <string> STRING
-%token MODULE
-%token TYPEDEF
-%token OF
-%token IF
-%token THEN
-%token ELSE
-%token HANDLER
-%token LET
-%token RECURSIVE
-%token IN
-%token EQ
-%token GT
-%token PLUS
-%token MINUS
-%token SEMICOLON
-%token VBAR
-%token STAR
-%token LEFT_BRACE
-%token RIGHT_BRACE
-%token LEFT_BRACKET
-%token RIGHT_BRACKET
-%token COLON
-%token COMMA
-%token EOF
+%token MODULE TYPEDEF OF IF THEN ELSE HANDLER LET RECURSIVE IN
+%token EQ GT PLUS MINUS SEMICOLON VBAR STAR COLON COMMA EOF
+%token LEFT_BRACE RIGHT_BRACE LEFT_BRACKET RIGHT_BRACKET
 
 %type <ParserModule.Module option> start
+
+%nonassoc LET
 
 %%
 
@@ -145,9 +126,12 @@ expr:
   | expr STAR expr              { EMul ($1, $3) }
   | IF expr THEN expr ELSE expr { EIf ($2, $4, $6) }
   | LET LIDENT EQ expr IN expr  { ELet (false, [($2,$4)], $6) }
+  | LET REC LIDENT EQ expr IN expr  { ELet (true, [($2, $4)], $6) }
   | expr expr                   { EAp ($1, $2) }
 
-
+exprs:
+  | { [] }
+  | expr exprs { $1 :: $2 }
 
 // =================================================
 // Declaration is one of the following:

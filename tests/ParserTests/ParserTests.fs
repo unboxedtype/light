@@ -185,7 +185,7 @@ let testHandler7 () =
     Assert.AreEqual( Some (Module ("test", decls)), res  );
 
 [<Test>]
-let testHandler8 () =
+let testLet0 () =
     let res = parse "module test
                      handler msg_handler1 (n:int) =
                        let f = 10 in f
@@ -193,4 +193,32 @@ let testHandler8 () =
     let decls = [HandlerDef ("msg_handler1",
                              [("n","int")],
                              ELet (false, [("f",ENum 10)], EVar "f"))];
+    Assert.AreEqual( Some (Module ("test", decls)), res  );
+
+[<Test>]
+let testLet1 () =
+    let res = parse "module test
+                     handler msg_handler1 (n:int) =
+                       let f = 10 in f
+    "
+    let decls = [HandlerDef ("msg_handler1",
+                             [("n","int")],
+                             ELet (false, [("f",ENum 10)], EVar "f"))];
+    Assert.AreEqual( Some (Module ("test", decls)), res  );
+
+[<Test>]
+let testLet2 () =
+    let res = parse "module test
+
+                     handler msg_handler1 (n:int) =
+                       let f = 10 in
+                       let g = 20 in
+                       g
+                    "
+
+    let decls = [HandlerDef ("msg_handler1",
+                             [("n","int")],
+                             ELet (false, [("f", ENum 10)],
+                                    ELet (false, [("g", ENum 20)],
+                                          EVar "g")))]
     Assert.AreEqual( Some (Module ("test", decls)), res  );
