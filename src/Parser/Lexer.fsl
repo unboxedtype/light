@@ -35,20 +35,25 @@ rule read =
   | "module" { MODULE }
   | "type"   { TYPEDEF }
   | "of"     { OF }
+  | "handler" { HANDLER }
+  | "if" { IF }
+  | "then" { THEN }
+  | "else" { ELSE }
   | ucaseIdentifier  { UIDENT (string (lexeme lexbuf)) }
   | lcaseIdentifier  { LIDENT (string (lexeme lexbuf)) }
   | identifier { IDENT (string (lexeme lexbuf)) }
   | '"'      { read_string "" false lexbuf }
   | '{'      { LEFT_BRACE }
   | '}'      { RIGHT_BRACE }
-  | '['      { LEFT_BRACK }
-  | ']'      { RIGHT_BRACK }
+  | '('      { LEFT_BRACKET }
+  | ')'      { RIGHT_BRACKET }
   | '|'      { VBAR }
   | ':'      { COLON }
   | '*'      { STAR }
   | ','      { COMMA }
   | ';'      { SEMICOLON }
   | '='      { EQ }
+  | '>'      { GT }
   | eof      { EOF }
   | _ { raise (Exception (sprintf "SyntaxError: Unexpected char: '%s' Line: %d Column: %d" (lexeme lexbuf) (lexbuf.StartPos.Line+1) lexbuf.StartPos.Column)) }
 

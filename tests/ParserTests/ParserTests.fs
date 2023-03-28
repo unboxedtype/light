@@ -7,6 +7,8 @@ open Parser
 open ParserModule
 open NUnit.Framework
 
+open type LHMachine.Expr
+
 [<SetUp>]
 let Setup () =
     ()
@@ -98,5 +100,27 @@ let testDecl7 () =
                                    ("Depositor", [("name","String"); ("amount","Uint")])]);
                  TypeDef ("State",
                           ProdType [("user","UserData")])]
+
+    Assert.AreEqual( Some (Module ("test", decls)), res  );
+
+[<Test>]
+let testHandler1 () =
+    let res = parse "module test
+                     handler test (x:int) =
+                          if 1 > 5 then 1 else 0
+    "
+    let decls = [HandlerDef ("test", [("x","int")],
+                             EIf (EGt (ENum 1, ENum 5), ENum 1, ENum 0))]
+
+    Assert.AreEqual( Some (Module ("test", decls)), res  );
+
+[<Test>]
+let testHandler2 () =
+    let res = parse "module test
+                     handler test (x:int) =
+                          if x > 5 then 1 else 0
+    "
+    let decls = [HandlerDef ("test", [("x","int")],
+                             EIf (EGt (EVar "x", ENum 5), ENum 1, ENum 0))]
 
     Assert.AreEqual( Some (Module ("test", decls)), res  );

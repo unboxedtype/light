@@ -1,6 +1,7 @@
 module ParserModule
 
 open LHTypes
+open type LHMachine.Expr
 
 type ValueConstant =
     | Int of n:int
@@ -19,8 +20,7 @@ type TypeDecl =
 
 type Decl =
     | TypeDef of name:string * t:TypeDecl
-    // | FunctionDef (name:string) (paramos:Param list) (body:FunctionBody)
-    // | HandlerDef (name:string) (params:Param list) (body:HandlerBody)
-   
+    | HandlerDef of name:string * pars:VarDecl list * body:LHMachine.Expr
+
 type Module =
     | Module of name:string * defs:Decl list
