@@ -124,3 +124,64 @@ let testHandler2 () =
                              EIf (EGt (EVar "x", ENum 5), ENum 1, ENum 0))]
 
     Assert.AreEqual( Some (Module ("test", decls)), res  );
+
+[<Test>]
+let testHandler3 () =
+    let res = parse "module test
+                     handler test (x:int) =
+                          if (x > 5) then 1 else 0
+    "
+    let decls = [HandlerDef ("test", [("x","int")],
+                             EIf (EGt (EVar "x", ENum 5), ENum 1, ENum 0))]
+
+    Assert.AreEqual( Some (Module ("test", decls)), res  );
+
+[<Test>]
+let testHandler4 () =
+    let res = parse "module test
+                     handler test (x:int) =
+                          if ( (1 + 1) > 2) then 1 else 0
+    "
+    let decls = [HandlerDef ("test", [("x","int")],
+                             EIf (EGt (EAdd (ENum 1, ENum 1), ENum 2), ENum 1, ENum 0))]
+
+    Assert.AreEqual( Some (Module ("test", decls)), res  );
+
+[<Test>]
+let testHandler5 () =
+    // This sample will not pass the typechecker, but shall parse well.
+    let res = parse "module test
+                     handler test (x:int) =
+                          if (1 + (1 > 2)) then 1 else 0
+    "
+    let decls = [HandlerDef ("test", [("x","int")],
+                             EIf (EAdd (ENum 1, EGt (ENum 1, ENum 2)), ENum 1, ENum 0))]
+
+    Assert.AreEqual( Some (Module ("test", decls)), res  );
+
+[<Test>]
+let testHandler6 () =
+    // This sample will not pass the typechecker, but shall parse well.
+    let res = parse "module test
+                     handler fact (n:int) =
+                          if (n > 1) then n * fact (n - 1) else 1
+    "
+    let decls = [HandlerDef ("fact", [("n","int")],
+                             EIf (EGt (EVar "n", ENum 1),
+                                  EMul (EVar "n", EAp (EVar "fact", ESub (EVar "n", ENum 1))),
+                                  ENum 1))]
+
+    Assert.AreEqual( Some (Module ("test", decls)), res  );
+
+[<Test>]
+let testHandler7 () =
+    // This sample will not pass the typechecker, but shall parse well.
+    let res = parse "module test
+                     handler msg_handler1 (n:int) =
+                          n
+                     handler msg_handler2 (n:int) =
+                          n * 2
+    "
+    let decls = [HandlerDef ("msg_handler1", [("n","int")], EVar "n");
+                 HandlerDef ("msg_handler2", [("n","int")], EMul (EVar "n", ENum 2))]
+    Assert.AreEqual( Some (Module ("test", decls)), res  );
