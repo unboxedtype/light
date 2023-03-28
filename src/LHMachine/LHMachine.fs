@@ -19,7 +19,7 @@ type Instruction =
     | SetGlob of name: Name
     | Integer of v: int
     | Function of c:LHCode
-    | Apply 
+    | Apply
     | Push of n: int
     | Pop of n: int
     | Slide of n: int

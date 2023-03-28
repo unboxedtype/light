@@ -161,7 +161,6 @@ let testHandler5 () =
 
 [<Test>]
 let testHandler6 () =
-    // This sample will not pass the typechecker, but shall parse well.
     let res = parse "module test
                      handler fact (n:int) =
                           if (n > 1) then n * fact (n - 1) else 1
@@ -175,7 +174,6 @@ let testHandler6 () =
 
 [<Test>]
 let testHandler7 () =
-    // This sample will not pass the typechecker, but shall parse well.
     let res = parse "module test
                      handler msg_handler1 (n:int) =
                           n
@@ -184,4 +182,15 @@ let testHandler7 () =
     "
     let decls = [HandlerDef ("msg_handler1", [("n","int")], EVar "n");
                  HandlerDef ("msg_handler2", [("n","int")], EMul (EVar "n", ENum 2))]
+    Assert.AreEqual( Some (Module ("test", decls)), res  );
+
+[<Test>]
+let testHandler8 () =
+    let res = parse "module test
+                     handler msg_handler1 (n:int) =
+                       let f = 10 in f
+    "
+    let decls = [HandlerDef ("msg_handler1",
+                             [("n","int")],
+                             ELet (false, [("f",ENum 10)], EVar "f"))];
     Assert.AreEqual( Some (Module ("test", decls)), res  );

@@ -39,6 +39,9 @@ rule read =
   | "if" { IF }
   | "then" { THEN }
   | "else" { ELSE }
+  | "let"  { LET }
+  | "rec"  { RECURSIVE }
+  | "in"   { IN }
   | ucaseIdentifier  { UIDENT (string (lexeme lexbuf)) }
   | lcaseIdentifier  { LIDENT (string (lexeme lexbuf)) }
   | identifier { IDENT (string (lexeme lexbuf)) }
