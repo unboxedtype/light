@@ -249,6 +249,21 @@ let testLet4 () =
     let decls = [HandlerDef ("msg_handler1",
                              [("n","int")],
                              ELet (false, [("f", EFunc ("x", EAdd (EVar "x", ENum 5)))],
-                              ELet (false, [("g", ENum 1000)], 
+                              ELet (false, [("g", ENum 1000)],
                                EAp (EVar "f", EVar "g"))))]
+    Assert.AreEqual( Some (Module ("test", decls)), res  );
+
+[<Test>]
+let testLetRec1 () =
+    let res = parse "module test
+                     handler msg_handler1 (n:int) =
+                      let rec fact x = fact (x - 1) in
+                      let g = 1000 in
+                      fact g
+                    "
+    let decls = [HandlerDef ("msg_handler1",
+                             [("n", "int")],
+                             ELet (true, [("fact", EFunc ("x", EAp (EVar "fact", ESub (EVar "x", ENum 1))))],
+                              ELet (false, [("g", ENum 1000)],
+                               EAp (EVar "fact", EVar "g"))))]
     Assert.AreEqual( Some (Module ("test", decls)), res  );

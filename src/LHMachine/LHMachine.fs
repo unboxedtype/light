@@ -90,6 +90,7 @@ let rec compile (ast:Expr) (env: Environment) : LHCode =
             | Some n ->
                 [Push n]
             | None ->
+                // a number for the global is assigned in the prelude code
                 [GetGlob v]
     | ENum n ->
         [Integer n]

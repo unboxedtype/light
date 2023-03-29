@@ -10,12 +10,17 @@ open type LHMachine.Expr
 let Setup () =
     ()
 
-let execAndCheck g expected =
+let execAndCheckPrint g expected ifPrint =
     let gs = compileGlobals g
+    if ifPrint then
+        printfn "%A" gs
     let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".fif"
     TVM.dumpFiftScript filename (generateFift gs "" "" "")
     let res = FiftExecutor.runFiftScript filename
     Assert.AreEqual (expected, res)
+
+let execAndCheck g expected =
+    execAndCheckPrint g expected false
 
 [<Test>]
 let testTrivial () =
@@ -325,3 +330,41 @@ let testFunctionLine () =
                    EEval (EAp (EAp (EAp (EVar "fold", folder), ENum 10), EVar "fline")))));
         ]
     execAndCheck g "27"
+
+[<Test>]
+let testLetLet () =
+    let g = [
+        ("main", [],
+         EFunc ("",
+           ELet (false, [("k", ENum 3)],
+            ELet (false, [("t", EVar "k")],
+             ELet (false, [("z", EAdd (EVar "t", EVar "k"))], EVar "z")))))]
+    execAndCheck g "6"
+
+
+[<Test>]
+let testFactLet () =
+    // main =
+    //  let rec fact n = if (n > 1) then n * fact (n - 1) else 1
+    //  fact 5
+
+    let simpleBody =
+        EFunc ("n", ESub (EVar "n", ENum 1))
+    let factBody =
+        EFunc("fact'",
+         EFunc("n",
+          EIf (EGt (EVar "n", ENum 1),
+               EMul (EVar "n",
+                     EEval (EAp (EAp (EVar "fact'", EVar "fact'"), ESub (EVar "n", ENum 1)))),
+               ENum 1)
+         )
+        )
+    let mainBody =
+        EEval (EAp (EAp (EVar "fact", EVar "fact"), EEval (EAp (EVar "simple", ENum 6))))
+
+    let g =
+        [("main", [],
+          EFunc ("",
+           ELet (false, [("fact", factBody)],
+            ELet (false, [("simple", simpleBody)], mainBody))))]
+    execAndCheck g "120"
