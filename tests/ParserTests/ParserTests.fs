@@ -25,46 +25,46 @@ let testTrivial () =
 
 [<Test>]
 let testOne () =
-    let res = parse "module test"
+    let res = parse "contract test"
     Assert.AreEqual( Some (Module ("test", [])), res );
 
 [<Test>]
 let testTwo () =
-    let res = parse "module
+    let res = parse "contract
                         test"
     Assert.AreEqual( Some (Module ("test", [])), res );
 
 [<Test>]
 let testDecl () =
-    let res = parse "module test
+    let res = parse "contract test
                      type State = { }
     "
     Assert.AreEqual( Some (Module ("test", [TypeDef ("State", ProdType [])])), res );
 
 [<Test>]
 let testDecl2 () =
-    let res = parse "module test
+    let res = parse "contract test
                      type State = { x : int }
     "
     Assert.AreEqual( Some (Module ("test", [TypeDef ("State", ProdType [("x","int")])])), res );
 
 [<Test>]
 let testDecl3 () =
-    let res = parse "module test
+    let res = parse "contract test
                      type State = { x : List }
     "
     Assert.AreEqual( Some (Module ("test", [TypeDef ("State", ProdType [("x","List")])])), res );
 
 [<Test>]
 let testDecl4 () =
-    let res = parse "module test
+    let res = parse "contract test
                      type State = { x : List; y : Bool }
     "
     Assert.AreEqual( Some (Module ("test", [TypeDef ("State", ProdType [("x","List"); ("y","Bool")])])), res );
 
 [<Test>]
 let testDecl5 () =
-    let res = parse "module test
+    let res = parse "contract test
                      type UserData = { name : String; balance : Uint }
                      type State = { ud:UserData }
     "
@@ -74,7 +74,7 @@ let testDecl5 () =
 
 [<Test>]
 let testDecl6 () =
-    let res = parse "module test
+    let res = parse "contract test
 
                      type UserData =
                          | Borrower of name:String * amount:Uint
@@ -87,7 +87,7 @@ let testDecl6 () =
 
 [<Test>]
 let testDecl7 () =
-    let res = parse "module test
+    let res = parse "contract test
 
                      type UserData =
                          | Borrower of name:String * amount:Uint
@@ -105,7 +105,7 @@ let testDecl7 () =
 
 [<Test>]
 let testHandler1 () =
-    let res = parse "module test
+    let res = parse "contract test
                      handler test (x:int) =
                           if 1 > 5 then 1 else 0
     "
@@ -116,7 +116,7 @@ let testHandler1 () =
 
 [<Test>]
 let testHandler2 () =
-    let res = parse "module test
+    let res = parse "contract test
                      handler test (x:int) =
                           if x > 5 then 1 else 0
     "
@@ -127,7 +127,7 @@ let testHandler2 () =
 
 [<Test>]
 let testHandler3 () =
-    let res = parse "module test
+    let res = parse "contract test
                      handler test (x:int) =
                           if (x > 5) then 1 else 0
     "
@@ -138,7 +138,7 @@ let testHandler3 () =
 
 [<Test>]
 let testHandler4 () =
-    let res = parse "module test
+    let res = parse "contract test
                      handler test (x:int) =
                           if ( (1 + 1) > 2) then 1 else 0
     "
@@ -150,7 +150,7 @@ let testHandler4 () =
 [<Test>]
 let testHandler5 () =
     // This sample will not pass the typechecker, but shall parse well.
-    let res = parse "module test
+    let res = parse "contract test
                      handler test (x:int) =
                           if (1 + (1 > 2)) then 1 else 0
     "
@@ -161,7 +161,7 @@ let testHandler5 () =
 
 [<Test>]
 let testHandler6 () =
-    let res = parse "module test
+    let res = parse "contract test
                      handler fact (n:int) =
                           if (n > 1) then n * fact (n - 1) else 1
     "
@@ -174,7 +174,7 @@ let testHandler6 () =
 
 [<Test>]
 let testHandler7 () =
-    let res = parse "module test
+    let res = parse "contract test
                      handler msg_handler1 (n:int) =
                           n
                      handler msg_handler2 (n:int) =
@@ -186,7 +186,7 @@ let testHandler7 () =
 
 [<Test>]
 let testLet0 () =
-    let res = parse "module test
+    let res = parse "contract test
                      handler msg_handler1 (n:int) =
                        let f = 10 in f
     "
@@ -197,7 +197,7 @@ let testLet0 () =
 
 [<Test>]
 let testLet1 () =
-    let res = parse "module test
+    let res = parse "contract test
                      handler msg_handler1 (n:int) =
                        let f = 10 in f
     "
@@ -208,7 +208,7 @@ let testLet1 () =
 
 [<Test>]
 let testLet2 () =
-    let res = parse "module test
+    let res = parse "contract test
 
                      handler msg_handler1 (n:int) =
                        let f = 10 in
@@ -225,7 +225,7 @@ let testLet2 () =
 
 [<Test>]
 let testLet3 () =
-    let res = parse "module test
+    let res = parse "contract test
 
                      handler msg_handler1 (n:int) =
                       let f x = x + 5 in
@@ -240,7 +240,7 @@ let testLet3 () =
 
 [<Test>]
 let testLet4 () =
-    let res = parse "module test
+    let res = parse "contract test
                      handler msg_handler1 (n:int) =
                       let f x = x + 5 in
                       let g = 1000 in
@@ -255,7 +255,7 @@ let testLet4 () =
 
 [<Test>]
 let testLetRec1 () =
-    let res = parse "module test
+    let res = parse "contract test
                      handler msg_handler1 (n:int) =
                       let rec fact x = fact (x - 1) in
                       let g = 1000 in
@@ -272,7 +272,7 @@ let testLetRec1 () =
 
 [<Test>]
 let testLetBindings0 () =
-    let res = parse "module test
+    let res = parse "contract test
                      let avg l =
                         let s = sum l in
                         let rec length l = l in
@@ -288,7 +288,7 @@ let testLetBindings0 () =
 
 [<Test>]
 let testLetBindings1 () =
-    let res = parse "module test
+    let res = parse "contract test
                      let c = 10000 ;;
                      let rec fact x = if x > 1 then x * fact (x - 1) else 1 ;;
                      type UserData = { name : String; balance : Uint }

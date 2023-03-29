@@ -22,7 +22,6 @@ let lcase = ['a'-'z']
 let ucaseIdentifier = ucase (lcase | digit | ucase | '_')*
 let lcaseIdentifier = lcase (ucase | digit | lcase | '_')*
 let identifier = lcaseIdentifier | ucaseIdentifier
-let moduleKeyword = "module"
 
 let white = [' ' '\t']+
 let newline = '\r' | '\n' | "\r\n"
@@ -32,7 +31,7 @@ rule read =
   | white    { read lexbuf }
   | newline  { newline lexbuf; read lexbuf }
   | int      { INT (int (lexeme lexbuf)) }
-  | "module" { MODULE }
+  | "contract" { MODULE }
   | "type"   { TYPEDEF }
   | "of"     { OF }
   | "handler" { HANDLER }
