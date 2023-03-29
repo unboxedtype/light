@@ -21,6 +21,7 @@ type TypeDecl =
 type Decl =
     | TypeDef of name:string * t:TypeDecl
     | HandlerDef of name:string * pars:VarDecl list * body:LHMachine.Expr
+    | LetBinding of name:string * recs:bool * body:LHMachine.Expr
 
 type Module =
     | Module of name:string * defs:Decl list

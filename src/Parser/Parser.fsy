@@ -7,8 +7,8 @@ open type LHMachine.Expr
 //   --> EFunc ("x", EFunc ("y", EFunc ("z", body)))
 let rec unfoldFunction args body =
     match args with
-    | [x] ->
-        EFunc (x, body)
+    | [] ->
+        body
     | h :: t ->
         EFunc (h, unfoldFunction t body)
 %}
@@ -20,6 +20,7 @@ let rec unfoldFunction args body =
 %token <string> LIDENT
 %token <string> IDENT
 %token <string> STRING
+%token DSCOLON
 %token MODULE TYPEDEF OF IF THEN ELSE HANDLER LET RECURSIVE IN
 %token EQ GT PLUS MINUS SEMICOLON VBAR STAR COLON COMMA EOF
 %token LEFT_BRACE RIGHT_BRACE LEFT_BRACKET RIGHT_BRACKET
@@ -109,7 +110,7 @@ funcArg:
   | LIDENT  { ($1, "") }
 
 funcArgs:
-  | funcArg   { List.singleton $1 }
+  | { [] }
   | funcArg funcArgs { $1 :: $2 }
 
 // =================================================
@@ -156,7 +157,8 @@ expr:
     ELet (true, [($3, unfoldFunction argNames $6)], $8)
   }
 
-  | expr expr                           { EAp ($1, $2) }
+  | expr expr
+  { EAp ($1, $2) }
 
 exprs:
   | { [] }
@@ -169,9 +171,27 @@ exprs:
 //  etc.
 // =================================================
 decl:
-  | TYPEDEF UIDENT EQ prodType  { TypeDef ($2, $4) }
-  | TYPEDEF UIDENT EQ sumType   { TypeDef ($2, $4) }
-  | HANDLER LIDENT funcArgs EQ expr { HandlerDef ($2, $3, $5) }
+  | TYPEDEF UIDENT EQ prodType
+  { TypeDef ($2, $4) }
+
+  | TYPEDEF UIDENT EQ sumType
+  { TypeDef ($2, $4) }
+
+  | HANDLER LIDENT funcArgs EQ expr
+  { HandlerDef ($2, $3, $5) }
+
+  | LET LIDENT funcArgs EQ expr DSCOLON
+  {
+    let argNames = List.map fst $3
+    LetBinding ($2, false, unfoldFunction argNames $5)
+  }
+
+  | LET RECURSIVE LIDENT funcArgs EQ expr DSCOLON
+  {
+    let argNames = List.map fst $4
+    LetBinding ($3, true, unfoldFunction argNames $6)
+  }
+
 
 // List of declarations
 decls:

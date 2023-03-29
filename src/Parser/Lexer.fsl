@@ -45,6 +45,7 @@ rule read =
   | ucaseIdentifier  { UIDENT (string (lexeme lexbuf)) }
   | lcaseIdentifier  { LIDENT (string (lexeme lexbuf)) }
   | identifier { IDENT (string (lexeme lexbuf)) }
+  | ";;"     { DSCOLON }
   | '"'      { read_string "" false lexbuf }
   | '{'      { LEFT_BRACE }
   | '}'      { RIGHT_BRACE }

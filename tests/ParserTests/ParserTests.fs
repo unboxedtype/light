@@ -261,9 +261,55 @@ let testLetRec1 () =
                       let g = 1000 in
                       fact g
                     "
-    let decls = [HandlerDef ("msg_handler1",
-                             [("n", "int")],
-                             ELet (true, [("fact", EFunc ("x", EAp (EVar "fact", ESub (EVar "x", ENum 1))))],
-                              ELet (false, [("g", ENum 1000)],
-                               EAp (EVar "fact", EVar "g"))))]
+    let decls = [
+        HandlerDef ("msg_handler1",
+                    [("n", "int")],
+                    ELet (true, [("fact", EFunc ("x", EAp (EVar "fact", ESub (EVar "x", ENum 1))))],
+                          ELet (false, [("g", ENum 1000)],
+                                EAp (EVar "fact", EVar "g"))))
+    ]
+    Assert.AreEqual( Some (Module ("test", decls)), res  );
+
+[<Test>]
+let testLetBindings0 () =
+    let res = parse "module test
+                     let avg l =
+                        let s = sum l in
+                        let rec length l = l in
+                            s + length l
+                     ;;
+                    "
+    let decls = [LetBinding ("avg", false,
+                  EFunc ("l",
+                   ELet (false, [("s", EAp (EVar "sum", EVar "l"))],
+                    ELet (true, [("length", EFunc ("l", EVar "l"))],
+                     EAdd (EVar "s", EAp (EVar "length", EVar "l"))))))]
+    Assert.AreEqual( Some (Module ("test", decls)), res  );
+
+[<Test>]
+let testLetBindings1 () =
+    let res = parse "module test
+                     let c = 10000 ;;
+                     let rec fact x = if x > 1 then x * fact (x - 1) else 1 ;;
+                     type UserData = { name : String; balance : Uint }
+                     type State = { ud:UserData }
+                     handler msg_handler1 (n:int) =
+                      let rec fact x = fact (x - 1) in
+                      let g = 1000 in
+                      fact g
+                    "
+    let decls = [
+        LetBinding ("c", false, ENum 10000);
+        LetBinding ("fact", true,
+                    EFunc ("x", EIf ( EGt (EVar "x", ENum 1),
+                                      EMul (EVar "x", EAp (EVar "fact", ESub (EVar "x", ENum 1))),
+                                      ENum 1) ));
+        TypeDef ("UserData", ProdType [("name","String"); ("balance","Uint")]);
+        TypeDef ("State", ProdType [("ud","UserData")]);
+        HandlerDef ("msg_handler1",
+                    [("n", "int")],
+                    ELet (true, [("fact", EFunc ("x", EAp (EVar "fact", ESub (EVar "x", ENum 1))))],
+                          ELet (false, [("g", ENum 1000)],
+                                EAp (EVar "fact", EVar "g"))))
+        ]
     Assert.AreEqual( Some (Module ("test", decls)), res  );
