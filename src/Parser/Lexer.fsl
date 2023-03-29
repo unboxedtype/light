@@ -41,10 +41,13 @@ rule read =
   | "let"  { LET }
   | "rec"  { RECURSIVE }
   | "in"   { IN }
+  | "match" { MATCH }
+  | "with" { WITH }
   | ucaseIdentifier  { UIDENT (string (lexeme lexbuf)) }
   | lcaseIdentifier  { LIDENT (string (lexeme lexbuf)) }
   | identifier { IDENT (string (lexeme lexbuf)) }
   | ";;"     { DSCOLON }
+  | "->"     { RARROW  }
   | '"'      { read_string "" false lexbuf }
   | '{'      { LEFT_BRACE }
   | '}'      { RIGHT_BRACE }

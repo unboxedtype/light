@@ -23,7 +23,8 @@ let rec unfoldFunction args body =
 %token DSCOLON
 %token MODULE TYPEDEF OF IF THEN ELSE HANDLER LET RECURSIVE IN
 %token EQ GT PLUS MINUS SEMICOLON VBAR STAR COLON COMMA EOF
-%token LEFT_BRACE RIGHT_BRACE LEFT_BRACKET RIGHT_BRACKET
+%token LEFT_BRACE RIGHT_BRACE LEFT_BRACKET RIGHT_BRACKET RARROW
+%token MATCH WITH
 
 %type <ParserModule.Module option> start
 
@@ -36,29 +37,49 @@ start:
   | modle { Some $1 }
 
 // =================================================
-// Single variable declaration.
+// Single typed variable declaration.
 // "x : int", "ud : UserData"
 // =================================================
-varDecl:
+typedVarDecl:
   | LIDENT COLON LIDENT    { ($1, $3) }
   | LIDENT COLON UIDENT    { ($1, $3) }
 
 // =================================================
-// Multiple variable declarations.
-// "x : int, ud: UserData"
+// Multiple typed variable declarations, separated by a semicolon
+// "x : int; ud: UserData"
 // =================================================
+typedVarDecls:
+  | { [] }
+  | typedVarDecl { [$1] }
+  | typedVarDecl SEMICOLON typedVarDecls  { $1 :: $3 }
+
+// =================================================
+// Single variable declaration, may not contain type.
+// "y", "x : int", "ud : UserData"
+// =================================================
+varDecl:
+  | LIDENT                 { ($1, "") }
+  | LIDENT COLON UIDENT    { ($1, $3) }
+
+// ====================================================
+// Multiple variable declarations, separated by a comma
+// "x : int, y, z"
+// ====================================================
 varDecls:
-  | varDecl  { List.singleton $1 }
-  | varDecl SEMICOLON varDecls  { $1 :: $3 }
+  | { [] }
+  | varDecl { [$1] }
+  | varDecl COMMA varDecls  { $1 :: $3 }
+
+
 
 // =================================================
 // A single constructor argument.
 // "x : int", "string"
 // =================================================
 ctorArg:
-  | LIDENT COLON UIDENT   { ($1, $3) }
-  | LIDENT                { ("", $1) }
-  | UIDENT                { ("", $1) }
+  | LIDENT COLON UIDENT   { ($1, $3) } // variable : typename
+  | LIDENT                { ("", $1) } // lowercase typename
+  | UIDENT                { ("", $1) } // uppercase typename
 
 // =================================================
 // A series of constructor arguments.
@@ -70,8 +91,8 @@ ctorArgs:
 
 // =================================================
 // A single SumType constructor
-// "| Circle"
-// "| Point int * int * int"
+// "| Circle of int"
+// "| Point of x:int * y:int * z:int"
 // =================================================
 sumtypeCtor:
   | VBAR UIDENT { ($2, []) }
@@ -79,7 +100,7 @@ sumtypeCtor:
 
 // =================================================
 // A series of constructors.
-// "| Circle | Point int * int * int"
+// "| Circle | Point of int * int * int"
 // =================================================
 sumtypeCtors:
   | sumtypeCtor  { List.singleton $1 }
@@ -99,19 +120,27 @@ sumType:
 // =================================================
 prodType:
   | LEFT_BRACE RIGHT_BRACE { ProdType [] }
-  | LEFT_BRACE varDecls RIGHT_BRACE  { ProdType ($2) }
+  | LEFT_BRACE typedVarDecls RIGHT_BRACE  { ProdType ($2) }
 
 // =================================================
 // Function and Handler argument
 // "(x:int)" "y"
 // =================================================
 funcArg:
-  | LEFT_BRACKET varDecl RIGHT_BRACKET { $2 }
+  | LEFT_BRACKET typedVarDecl RIGHT_BRACKET { $2 }
   | LIDENT  { ($1, "") }
 
 funcArgs:
   | { [] }
   | funcArg funcArgs { $1 :: $2 }
+
+matchPattern:
+  | VBAR UIDENT RARROW expr { ($2, [], $4) }
+  | VBAR UIDENT LEFT_BRACKET varDecls RIGHT_BRACKET RARROW expr { ($2, $4, $7) }
+
+matchPatterns:
+  | { [] }
+  | matchPattern matchPatterns { $1 :: $2 }
 
 // =================================================
 // Language expression is a recursive structure that
@@ -155,6 +184,21 @@ expr:
   {
     let argNames = List.map fst $4
     ELet (true, [($3, unfoldFunction argNames $6)], $8)
+  }
+
+  | MATCH expr WITH matchPatterns
+  {
+      let patterns = $4
+      if (List.isEmpty patterns)
+      then failwith "match pattern has to have at least 1 pattern"
+      else
+        let cases =
+            List.map (fun (ctor,args,expr) ->
+                      (hash ctor, // ctor tag is a hash of its name
+                       List.map fst args, // leave only variable names
+                       expr) // case body
+                      ) patterns
+        ECase ($2, cases)
   }
 
   | expr expr
