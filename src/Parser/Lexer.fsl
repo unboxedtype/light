@@ -19,8 +19,8 @@ let int = ['-' '+']? ['0'-'9']+
 let digit = ['0'-'9']
 let ucase = ['A'-'Z']
 let lcase = ['a'-'z']
-let ucaseIdentifier = ucase (lcase | digit | ucase | '_')*
-let lcaseIdentifier = lcase (ucase | digit | lcase | '_')*
+let ucaseIdentifier = ucase (lcase | digit | ucase | '_' | '\'' )*
+let lcaseIdentifier = lcase (ucase | digit | lcase | '_' | '\'' )*
 let identifier = lcaseIdentifier | ucaseIdentifier
 
 let white = [' ' '\t']+
@@ -47,7 +47,8 @@ rule read =
   | lcaseIdentifier  { LIDENT (string (lexeme lexbuf)) }
   | identifier { IDENT (string (lexeme lexbuf)) }
   | ";;"     { DSCOLON }
-  | "->"     { RARROW  }
+  | "->"     { RARROW  }  // function type
+  | "<-"     { LARROW  }  // assignment operator
   | '"'      { read_string "" false lexbuf }
   | '{'      { LEFT_BRACE }
   | '}'      { RIGHT_BRACE }
@@ -55,6 +56,7 @@ rule read =
   | ')'      { RIGHT_BRACKET }
   | '|'      { VBAR }
   | ':'      { COLON }
+  | '.'      { DOT }
   | '*'      { STAR }
   | ','      { COMMA }
   | ';'      { SEMICOLON }

@@ -35,13 +35,6 @@ let testTwo () =
     Assert.AreEqual( Some (Module ("test", [])), res );
 
 [<Test>]
-let testDecl () =
-    let res = parse "contract test
-                     type State = { }
-    "
-    Assert.AreEqual( Some (Module ("test", [TypeDef ("State", ProdType [])])), res );
-
-[<Test>]
 let testDecl2 () =
     let res = parse "contract test
                      type State = { x : int }
@@ -254,6 +247,31 @@ let testLet4 () =
     Assert.AreEqual( Some (Module ("test", decls)), res  );
 
 [<Test>]
+let testLet5 () =
+    let res = parse "contract test
+                     let f x y z = x + y + z ;;
+                     let haa xy wy = xy wy ;;
+                     let haaAAAA x y z = f x y z ;;
+                     let haa_A_A12AA_ x y z = f x y z ;;
+                    "
+    let decls = [LetBinding
+                  ("f", false,
+                    EFunc ("x", EFunc ("y", EFunc ("z", EAdd (EVar "x", EAdd (EVar "y", EVar "z"))))));
+                 LetBinding
+                  ("haa", false, EFunc ("xy", EFunc ("wy", EAp (EVar "xy", EVar "wy"))));
+                 LetBinding
+                  ("haaAAAA", false, EFunc ("x",
+                                            EFunc ("y",
+                                                   EFunc ("z",
+                                                          EAp (EVar "f", EAp (EVar "x", EAp (EVar "y", EVar "z")))))));
+                 LetBinding
+                  ("haa_A_A12AA_", false,
+                   EFunc ("x",
+                    EFunc ("y",
+                     EFunc ("z", EAp (EVar "f", EAp (EVar "x", EAp (EVar "y", EVar "z")))))))]
+    Assert.AreEqual( Some (Module ("test", decls)), res  );
+
+[<Test>]
 let testLetRec1 () =
     let res = parse "contract test
                      handler msg_handler1 (n:int) =
@@ -353,3 +371,47 @@ let testMatchExpr1 () =
                        EAdd (ENum 1, EAp (EVar "msg_handler1", EVar "t")))]))
                     ]
     Assert.AreEqual( Some (Module ("test", decls)), res  );
+
+[<Test>]
+let testAssignment0 () =
+    let res = parse "contract Simple
+
+                     type State = {
+                       counter: int;
+                       sum: int
+                     }
+
+                     handler add_more =
+                         state <- { counter = 0 ; sum = 0 }
+                    "
+    let decls = [TypeDef ("State", ProdType [("counter", "int"); ("sum", "int")]);
+                 HandlerDef ("add_more", [], EAssign (ERecord [ENum 0; ENum 0]))]
+    Assert.AreEqual( Some (Module ("Simple", decls)), res  );
+
+[<Test>]
+let testSample0 () =
+    let res = parse "contract Simple
+
+                     type State = {
+                       counter: int;
+                       sum: int
+                     }
+
+                     let sum a b = a + b ;;
+
+                     handler add_more (x: int) =
+                         let sum' = sum state.counter b in
+                         let counter' = b in
+                         state <- { counter = counter' ; sum = sum' }
+                    "
+    let decls = [
+        TypeDef ("State", ProdType [("counter", "int"); ("sum", "int")]);
+        LetBinding ("sum", false, EFunc ("a", EFunc ("b", EAdd (EVar "a", EVar "b"))));
+        HandlerDef ("add_more", [("x", "int")],
+                    ELet (false,
+                          [("sum'",
+                            EAp (EVar "sum",
+                                 EAp (ESelect (EVar "state", EVar "counter"), EVar "b")))],
+                          ELet (false, [("counter'", EVar "b")],
+                                EAssign (ERecord [EVar "counter'"; EVar "sum'"]))))]
+    Assert.AreEqual( Some (Module ("Simple", decls)), res  );

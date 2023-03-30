@@ -29,8 +29,9 @@ type Instruction =
     | Greater
     | IfElse of t:LHCode * f:LHCode
     | Pack of tag:int * n:int
+    | Record of n:int    // a1 .. an -> { a1, ..., an }
     | Split of n:int
-    | Select of n:int // take the n-th field of the record
+    | Select of n:int    // take the n-th field of the record
     | UpdateRec of n:int // update the n-th field of the record
     | Casejump of (int * LHCode) list
     | DumpStk
@@ -62,7 +63,8 @@ type Expr =
     | EGt of e0:Expr * e1:Expr
     | ECase of c:Expr * cs:CaseAlt list
     | EPack of tag:int * arity:int * args:Expr list
-    | ESelect of e:Expr * n:int
+    | ESelect of e0:Expr * e1:Expr
+    | ERecord of es:Expr list
     | EUpdateRec of e0:Expr * n:int * e1:Expr
     | EAssign of e0:Expr
 and CaseAlt = int * (Name list) * Expr   // case (tag:0) (vars: ["x","y"]) -> x + y
@@ -94,6 +96,13 @@ let rec compile (ast:Expr) (env: Environment) : LHCode =
                 [GetGlob v]
     | ENum n ->
         [Integer n]
+    | ERecord es ->
+        let rec compileExprs l =
+            match l with
+            | [] -> []
+            | h :: t -> (compile h env) @ compileExprs t
+        let n = List.length es
+        (compileExprs es) @ [Record n]
     | EFunc (argName, body) ->
         let env' = (0, argName) :: (argOffset 1 env)
         match body with
@@ -134,8 +143,18 @@ let rec compile (ast:Expr) (env: Environment) : LHCode =
             compileLet defs body env
         | true ->
             compileLetRec defs body env
-    | ESelect (e, n) ->
-        (compile e env) @ [Select n]
+    | ESelect (e0, e1) ->
+        match e1 with
+        | EVar x ->
+            // n = lookup x position in the record definition of
+            // e0
+            // let n = lookupRecVarPos x (typeof e0 t)
+            // (compile e0 env) @ [Select 0]
+            failwith "not implemented"
+        | _ ->
+            failwith "the . dot operator shall be used only in an explicit form, like:
+                      'var.id' , where var is a record-type variable, and id is
+                      the name of the record field you want to access"
     | EUpdateRec (e, n, e1) ->
         (compile e env) @ (compile e1 (argOffset 1 env)) @ [UpdateRec n]
     | EAssign e ->
@@ -228,6 +247,8 @@ let rec instrToTVM (i:Instruction) : string =
     | Select n when n < 16 ->
         " SECOND" + " " +
         (string n) + " INDEX"
+    | Record n when n < 16 ->
+        (string n) + " TUPLE"
     | UpdateRec n when n < 16 ->
         " SWAP" +      // x t
         " 2 UNTUPLE" + // x tag args
