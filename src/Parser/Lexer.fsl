@@ -62,6 +62,7 @@ rule read =
   | '+'      { PLUS }
   | '-'      { MINUS }
   | '>'      { GT }
+  | '_'      { UNDERSCORE }
   | eof      { EOF }
   | _ { raise (Exception (sprintf "SyntaxError: Unexpected char: '%s' Line: %d Column: %d" (lexeme lexbuf) (lexbuf.StartPos.Line+1) lexbuf.StartPos.Column)) }
 

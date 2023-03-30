@@ -24,7 +24,7 @@ let rec unfoldFunction args body =
 %token MODULE TYPEDEF OF IF THEN ELSE HANDLER LET RECURSIVE IN
 %token EQ GT PLUS MINUS SEMICOLON VBAR STAR COLON COMMA EOF
 %token LEFT_BRACE RIGHT_BRACE LEFT_BRACKET RIGHT_BRACKET RARROW
-%token MATCH WITH
+%token MATCH WITH UNDERSCORE
 
 %type <ParserModule.Module option> start
 
@@ -70,7 +70,19 @@ varDecls:
   | varDecl { [$1] }
   | varDecl COMMA varDecls  { $1 :: $3 }
 
+// =================================================
+// Single variable declaration, may not contain type.
+// "y", "x : int", "ud : UserData"
+// =================================================
+patternVarDecl:
+  | LIDENT                 { ($1, "") }
+  | LIDENT COLON UIDENT    { ($1, $3) }
+  | UNDERSCORE             { ("_", "") }
 
+patternVarDecls :
+  | { [] }
+  | patternVarDecl { [$1] }
+  | patternVarDecl COMMA patternVarDecls  { $1 :: $3 }
 
 // =================================================
 // A single constructor argument.
@@ -136,10 +148,10 @@ funcArgs:
 
 matchPattern:
   | VBAR UIDENT RARROW expr { ($2, [], $4) }
-  | VBAR UIDENT LEFT_BRACKET varDecls RIGHT_BRACKET RARROW expr { ($2, $4, $7) }
+  | VBAR UIDENT LEFT_BRACKET patternVarDecls RIGHT_BRACKET RARROW expr { ($2, $4, $7) }
 
 matchPatterns:
-  | { [] }
+  | matchPattern { [$1] }
   | matchPattern matchPatterns { $1 :: $2 }
 
 // =================================================

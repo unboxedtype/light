@@ -330,3 +330,26 @@ let testMatchExpr0 () =
                                       EAdd (ENum 1, EAp (EVar "msg_handler1", EVar "t")))]))
                              ]
     Assert.AreEqual( Some (Module ("test", decls)), res  );
+
+[<Test>]
+let testMatchExpr1 () =
+    let res = parse "contract test
+                     handler msg_handler1 (m:List) (l:List) =
+                      match m with
+                      | Nil ->
+                           ( match l with
+                             | Nil -> 0
+                             | Cons (_, _) -> length l )
+                      | Cons (h, t) -> 1 + msg_handler1 t
+                    "
+    let decls = [HandlerDef ("msg_handler1",
+                  [("m","List"); ("l","List")],
+                   ECase (EVar "m",
+                    [(hash "Nil", [],
+                       ECase (EVar "l",
+                         [(hash "Nil", [], ENum 0);
+                          (hash "Cons", ["_"; "_"], EAp (EVar "length", EVar "l"))]));
+                     (hash "Cons", ["h"; "t"],
+                       EAdd (ENum 1, EAp (EVar "msg_handler1", EVar "t")))]))
+                    ]
+    Assert.AreEqual( Some (Module ("test", decls)), res  );
