@@ -34,8 +34,8 @@ let testStateGet0 () =
                                        ("y", LHTypes.Bool);])]
     let dataCell = "<b 100 256 u, 1 2 u, b>"
     let g = [("state", [], ENum 0);  // this is a stub; will be replaced
-             ("main", [], EFunc ("", EIf (ESelect (EVar "state", 1),
-                                          EMul (ESelect (EVar "state", 0), ENum 2),
+             ("main", [], EFunc ("", EIf (ESelect (EVar "state", EVar "y"),
+                                          EMul (ESelect (EVar "state", EVar "x"), ENum 2),
                                           ENum 0)))]
     execAndCheck g types dataCell "200"
 
@@ -45,7 +45,8 @@ let testStateGet1 () =
                                        ("y", LHTypes.Bool);])]
     let dataCell = "<b 100 256 u, 1 2 u, b>"
     let g = [("state", [], ENum 0);  // this is a stub; will be replaced
-             ("main", [], EFunc ("", ELet (false, [("s", ESelect (EVar "state", 1))], EVar "s")))]
+             ("main", [], EFunc ("",
+                                 ELet (false, [("s", ESelect (EVar "state", EVar "y"))], EVar "s")))]
     execAndCheck g types dataCell "1"
 
 
@@ -58,10 +59,10 @@ let testStateSet0 () =
     let dataCell = "<b 100 64 u, 1 2 u, b>"
     let g = [("state", [], ENum 0);  // this is a stub; will be replaced
              ("update", [], EFunc ("",
-                             EIf (ESelect (EVar "state", 1),
+                             EIf (ESelect (EVar "state", EVar "y"),
                                    EAssign (
                                    EUpdateRec (EVar "state", 0,
-                                               EMul (ESelect (EVar "state", 0), ENum 2))),
+                                               EMul (ESelect (EVar "state", EVar "x"), ENum 2))),
                                   ENull)));
              ("main", [], EFunc ("", ELet (false, ["x", (EEval (EVar "update"))], EVar "state")))]
     execAndCheck g types dataCell "[ 0 [ 200 1 ] ]"
@@ -75,5 +76,5 @@ let testStateFunction0 () =
                                        ("fun", Function (UInt 64, UInt 64))])]
     let dataCell = "<b 100 64 u, 1 2 u, <{ INC }>s s>c ref,  b>"
     let g = [("state", [], ENull);  // this is a stub; will be replaced
-             ("main", [], EFunc ("", EEval (EAp (ESelect (EVar "state", 2), ENum 100))))]
+             ("main", [], EFunc ("", EEval (EAp (ESelect (EVar "state", EVar "fun"), ENum 100))))]
     execAndCheck g types dataCell "101"
