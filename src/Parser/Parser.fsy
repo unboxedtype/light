@@ -257,9 +257,9 @@ exprs:
 
 // =================================================
 // Declaration is one of the following:
-//  datatype definition
-//  handler definition
-//  etc.
+//  * datatype definition
+//  * handler definition
+//  * let binding
 // =================================================
 decl:
   | TYPEDEF UIDENT EQ prodType

@@ -1,3 +1,5 @@
+// For emacs: -*- fsharp -*-
+
 module ParserModule
 
 open LHTypes
@@ -15,7 +17,7 @@ type VarDecl = string * string
 type CtorDecl = string * (VarDecl list)
 
 type TypeDecl =
-    | ProdType of vars:VarDecl list
+    | ProdType of vars: VarDecl list
     | SumType of ctors: CtorDecl list
 
 type Decl =

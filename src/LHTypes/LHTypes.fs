@@ -102,7 +102,7 @@ and TypeList =
 and ProductType =  // to construct it, you shall provide all the fields
     TypeList
 and SumType =      // to construct it, you shall provide only a single field
-    TypeList
+    (Name * (Type list)) list
 
 // Type scheme is a description of all record types in the program.
 // It is represented as a list of mutually recursive record definitions.
