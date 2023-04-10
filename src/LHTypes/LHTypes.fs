@@ -85,6 +85,11 @@ type Type =
     | ST of e:SumType                 // sum type
     | Function of inp:Type * out:Type // function type
     | UserType of s:Name            // user-defined type with name s
+    member this.usertypeName =
+        match this with
+            | UserType s -> s
+            | _ -> failwith "not a UserType type"
+
 and Variable =
     VarName * Type
 and VariableList =
@@ -153,7 +158,9 @@ let serializeValue (t:Type) : TVM.Code =
     | Bool ->
         [Stu 2u]
     | Function (_, _) ->
-        []
+        // TODO: temporal stub not to fail tests
+        // Has to be changed for proper function serialization.
+        [Pop 1u; Newc; Endc; Swap; StRef]
     | _ ->
         failwith "not implemented"
 

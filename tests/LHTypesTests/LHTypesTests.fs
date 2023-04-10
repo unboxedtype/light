@@ -18,7 +18,7 @@ let execAndCheck g types dataCell expected =
         |> List.map TVM.instrToFift
         |> String.concat "\n"
 
-    let gs = LHMachine.compileGlobals g
+    let gs = LHMachine.compileGlobalsWithTypes g types
     let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".fif"
     TVM.dumpFiftScript filename (LHMachine.generateFift gs stReader stWriter dataCell)
     let res = FiftExecutor.runFiftScript filename
@@ -30,7 +30,8 @@ let Setup () =
 
 [<Test>]
 let testStateGet0 () =
-    let types = [("State", LHTypes.PT [("x", (LHTypes.UInt 256));
+    let types = [("state", UserType "State");
+                 ("State", LHTypes.PT [("x", (LHTypes.UInt 256));
                                        ("y", LHTypes.Bool);])]
     let dataCell = "<b 100 256 u, 1 2 u, b>"
     let g = [("state", [], ENum 0);  // this is a stub; will be replaced
@@ -41,7 +42,8 @@ let testStateGet0 () =
 
 [<Test>]
 let testStateGet1 () =
-    let types = [("State", LHTypes.PT [("x", (LHTypes.UInt 256));
+    let types = [("state", UserType "State");
+                 ("State", LHTypes.PT [("x", (LHTypes.UInt 256));
                                        ("y", LHTypes.Bool);])]
     let dataCell = "<b 100 256 u, 1 2 u, b>"
     let g = [("state", [], ENum 0);  // this is a stub; will be replaced
@@ -54,7 +56,8 @@ let testStateGet1 () =
 let testStateSet0 () =
     // update () = if state.y then (updateState ({ state with x = state.x * 2})) else ()
     // main () = let x = update () in state
-    let types = [("State", LHTypes.PT [("x", (LHTypes.UInt 64));
+    let types = [("state", UserType "State");
+                 ("State", LHTypes.PT [("x", (LHTypes.UInt 64));
                                        ("y", LHTypes.Bool)])]
     let dataCell = "<b 100 64 u, 1 2 u, b>"
     let g = [("state", [], ENum 0);  // this is a stub; will be replaced
@@ -71,7 +74,8 @@ let testStateSet0 () =
 let testStateFunction0 () =
     // update () = if state.y then (updateState ({ state with x = state.x * 2})) else ()
     // main () = let x = update () in state
-    let types = [("State", LHTypes.PT [("x", (UInt 64));
+    let types = [("state", LHTypes.UserType "State");
+                 ("State", LHTypes.PT [("x", (UInt 64));
                                        ("y", Bool);
                                        ("fun", Function (UInt 64, UInt 64))])]
     let dataCell = "<b 100 64 u, 1 2 u, <{ INC }>s s>c ref,  b>"

@@ -3,6 +3,7 @@ module LHMachine
 
 open System
 open System.Collections.Generic
+open type LHTypes.Type
 
 exception GMError of string
 
@@ -83,11 +84,11 @@ let compileArgs (defs:BoundVarDefs) (env:Environment) : Environment =
     let names = List.map fst defs
     (List.zip indexes names) @ (argOffset n env)
 
-let rec compile (ast:Expr) (env: Environment) : LHCode =
+let rec compileWithTypes (ast:Expr) (env:Environment) (ty:LHTypes.ProgramTypes) : LHCode =
     match ast with
     | EVar v ->
         let r = List.tryPick (fun (n, v') ->
-                  if v' = v then Some n else None) env
+                              if v' = v then Some n else None) env
         match r with
             | Some n ->
                 [Push n]
@@ -100,122 +101,136 @@ let rec compile (ast:Expr) (env: Environment) : LHCode =
         let rec compileExprs l =
             match l with
             | [] -> []
-            | h :: t -> (compile h env) @ compileExprs t
+            | h :: t -> (compileWithTypes h env ty) @ compileExprs t
         let n = List.length es
         (compileExprs es) @ [Record n]
     | EFunc (argName, body) ->
         let env' = (0, argName) :: (argOffset 1 env)
         match body with
         | EFunc (_, _) ->
-            compile body env'
+            compileWithTypes body env' ty
         | _ ->
-            [Function (compile body env')]
+            [Function (compileWithTypes body env' ty)]
     | ENull ->
         [Null]
     | EEval e ->
-        (compile e env) @ [Execute]
+        (compileWithTypes e env ty) @ [Execute]
     | EAp (e1, e2) ->
-        (compile e2 env) @
-        (compile e1 (argOffset 1 env)) @
+        (compileWithTypes e2 env ty) @
+        (compileWithTypes e1 (argOffset 1 env) ty) @
         [Apply]
     | EIf (e0, t, f) ->
-        (compile e0 env) @ [IfElse (compile t env, compile f env)]
+        (compileWithTypes e0 env ty) @ [IfElse (compileWithTypes t env ty, compileWithTypes f env ty)]
     | EAdd (e0, e1) ->
-        (compile e0 env) @ (compile e1 (argOffset 1 env)) @ [Add]
+        (compileWithTypes e0 env ty) @ (compileWithTypes e1 (argOffset 1 env) ty) @ [Add]
     | ESub (e0, e1) ->
-        (compile e0 env) @ (compile e1 (argOffset 1 env)) @ [Sub]
+        (compileWithTypes e0 env ty) @ (compileWithTypes e1 (argOffset 1 env) ty) @ [Sub]
     | EMul (e0, e1) ->
-        (compile e0 env) @ (compile e1 (argOffset 1 env)) @ [Mul]
+        (compileWithTypes e0 env ty) @ (compileWithTypes e1 (argOffset 1 env) ty) @ [Mul]
     | EEq (e0, e1) ->
-        (compile e0 env) @ (compile e1 (argOffset 1 env)) @ [Equal]
+        (compileWithTypes e0 env ty) @ (compileWithTypes e1 (argOffset 1 env) ty) @ [Equal]
     | EGt (e0, e1) ->
-        (compile e0 env) @ (compile e1 (argOffset 1 env)) @ [Greater]
+        (compileWithTypes e0 env ty) @ (compileWithTypes e1 (argOffset 1 env) ty) @ [Greater]
     | EPack (tag, arity, args) ->
         List.concat
-          (List.map (fun (i, e) -> compile e (argOffset i env))
+          (List.map (fun (i, e) -> compileWithTypes e (argOffset i env) ty)
           (List.indexed args)) @
         [Pack (tag, arity)]
     | ECase (e, alts) ->
-        (compile e env) @ [ Casejump (compileAlts alts env) ]
+        (compileWithTypes e env ty) @ [ Casejump (compileAlts alts env ty) ]
     | ELet (isRec, defs, body) ->
         match isRec with
         | false ->
-            compileLet defs body env
+            compileLet defs body env ty
         | true ->
-            compileLetRec defs body env
+            compileLetRec defs body env ty
     | ESelect (e0, e1) ->
-        match e1 with
-        | EVar x ->
+        match (e0, e1) with
+        | (EVar s, EVar x) ->
             // n = lookup x position in the record definition of e0
             // Currently,the lookup operator '.' is only allowed to be
             // used with records. To compile this expression, we need
             // to find out the index of the "x" field. For that, we need
             // to access type information of e0.
-
-            // Pseudocode:
-            // let n = lookupRecVarPos x (typeof e0 t)
-            // (compile e0 env) @ [Select 0]
-            failwith "not implemented"
+            let stype = LHTypes.findType s ty     // findType "state" [("state",UserType "State"); ...]
+            let ptype = LHTypes.findType stype.usertypeName ty // findType
+            match ptype with
+            | PT pts ->
+                let n =
+                    pts
+                    |> List.indexed
+                    |> List.find (fun (i,e) -> fst e = x)
+                    |> fst
+                (compileWithTypes e0 env ty) @ [Select n]
+            | _ ->
+                failwith "the .dot operator is allowed to be used only on record types"
         | _ ->
             failwith "the . dot operator shall be used only in an explicit form, like:
                       'var.id' , where var is a record-type variable, and id is
                       the name of the record field you want to access"
     | EUpdateRec (e, n, e1) ->
-        (compile e env) @ (compile e1 (argOffset 1 env)) @ [UpdateRec n]
+        (compileWithTypes e env ty) @ (compileWithTypes e1 (argOffset 1 env) ty) @ [UpdateRec n]
     | EAssign e ->
-        (compile e env) @ [SetGlob "2"] @ [Null]
+        (compileWithTypes e env ty) @ [SetGlob "2"] @ [Null]
     | _ ->
         failwith "not implemented"
-and compileAlts alts env =
+and compileAlts alts env ty =
     List.map (fun a ->
                  let (tag, names, body) = a
                  let indexed = List.indexed (List.rev names)
                  let env_len = List.length names
                  let env' = indexed @ (argOffset env_len env)
-                 (tag, compileAlt env_len body env')
+                 (tag, compileAlt env_len body env' ty)
               ) alts
-and compileAlt offset expr env =
-    [Split offset] @ (compile expr env) @ [Slide offset]
-and compileLet (defs: BoundVarDefs) expr env =
+and compileAlt offset expr env ty =
+    [Split offset] @ (compileWithTypes expr env ty) @ [Slide offset]
+and compileLet (defs: BoundVarDefs) expr env ty =
     // inject new definitions into the environment
     let env' = compileArgs defs env
     let n = List.length defs
     // compile the definitions using the old environment
-    (compileLetDefs defs env) @
+    (compileLetDefs defs env ty) @
       // compile the expression using the new environment
-      (compile expr env') @
+      (compileWithTypes expr env' ty) @
       // remove local variables after the evaluation
       [Slide n]
-and compileLetDefs defs env =
+and compileLetDefs defs env ty =
     match defs with
         | [] ->
             []
         | (name, expr) :: defs' ->
-            (compile expr env) @ compileLetDefs defs' (argOffset 1 env)
-and compileLetRec (defs: BoundVarDefs) expr env =
+            (compileWithTypes expr env ty) @ compileLetDefs defs' (argOffset 1 env) ty
+and compileLetRec (defs: BoundVarDefs) expr env ty =
     let env' = compileArgs defs env
     let n = List.length defs
-    [Alloc n] @ (compileLetRecDefs defs env' n) @ (compile expr env') @ [Slide n]
-and compileLetRecDefs defs env n =
+    [Alloc n] @ (compileLetRecDefs defs env' n ty) @ (compileWithTypes expr env' ty) @ [Slide n]
+and compileLetRecDefs defs env n ty =
     match defs with
         | [] ->
             []
         | (name, expr) :: defs' ->
-            (compile expr env) @ [Update n] @ compileLetRecDefs defs' env (n - 1)
+            (compileWithTypes expr env ty) @ [Update n] @ compileLetRecDefs defs' env (n - 1) ty
+
+let compile (ast:Expr) (env: Environment) : LHCode =
+    compileWithTypes ast env []
+
 
 type LHGlobalsDefs = (Name * (string list) * Expr) list
 type LHGlobalsTable = (int * (string * LHCode)) list
 
 let globalsBaseNumber = 2
 
-let compileGlobals (globals: LHGlobalsDefs) : LHGlobalsTable =
+let compileGlobalsWithTypes (globals: LHGlobalsDefs) (ty:LHTypes.ProgramTypes) : LHGlobalsTable =
     globals
     |> List.map
        (fun (name,vars,expr) ->
         let indVars = List.indexed vars
-        (name, (compile expr indVars) @ [Slide 0]))
+        (name, (compileWithTypes expr indVars ty) @ [Slide 0]))
     |> List.indexed
     |> List.map (fun (n,t) -> (n + globalsBaseNumber, t))
+
+let compileGlobals globals =
+    compileGlobalsWithTypes globals []
 
 let rec instrToTVM (i:Instruction) : string =
     match i with
