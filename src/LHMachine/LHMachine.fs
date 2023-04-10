@@ -146,8 +146,13 @@ let rec compile (ast:Expr) (env: Environment) : LHCode =
     | ESelect (e0, e1) ->
         match e1 with
         | EVar x ->
-            // n = lookup x position in the record definition of
-            // e0
+            // n = lookup x position in the record definition of e0
+            // Currently,the lookup operator '.' is only allowed to be
+            // used with records. To compile this expression, we need
+            // to find out the index of the "x" field. For that, we need
+            // to access type information of e0.
+
+            // Pseudocode:
             // let n = lookupRecVarPos x (typeof e0 t)
             // (compile e0 env) @ [Select 0]
             failwith "not implemented"
