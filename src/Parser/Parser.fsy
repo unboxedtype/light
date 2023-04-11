@@ -104,7 +104,8 @@ ctorArgs:
   | ctorArg STAR ctorArgs  { $1 :: $3 }
 
 // =================================================
-// A single SumType constructor
+// A single SumType constructor. Constructor names
+// must be in uppercase.
 // "| Circle of int"
 // "| Point of x:int * y:int * z:int"
 // =================================================
