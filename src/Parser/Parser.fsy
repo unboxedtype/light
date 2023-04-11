@@ -59,6 +59,7 @@ typedVarDecls:
 varDecl:
   | LIDENT                 { ($1, "") }
   | LIDENT COLON UIDENT    { ($1, $3) }
+  | LIDENT COLON LIDENT    { ($1, $3) }
 
 // ====================================================
 // Multiple variable declarations, separated by a comma
@@ -76,6 +77,7 @@ varDecls:
 patternVarDecl:
   | LIDENT                 { ($1, "") }
   | LIDENT COLON UIDENT    { ($1, $3) }
+  | LIDENT COLON LIDENT    { ($1, $3) }
   | UNDERSCORE             { ("_", "") }
 
 patternVarDecls :
@@ -89,6 +91,7 @@ patternVarDecls :
 // =================================================
 ctorArg:
   | LIDENT COLON UIDENT   { ($1, $3) } // variable : typename
+  | LIDENT COLON LIDENT   { ($1, $3) } // variable : typename
   | LIDENT                { ("", $1) } // lowercase typename
   | UIDENT                { ("", $1) } // uppercase typename
 
@@ -121,7 +124,16 @@ sumtypeCtors:
 // A sumtype is a series of constructors.
 // =================================================
 sumType:
-  | sumtypeCtors  { SumType $1 }
+  | sumtypeCtors
+  {
+      let sumC =
+         $1 |> List.map (fun (c,args) ->
+                         (c,
+                          args
+                          |> List.map snd
+                          |> List.map LHTypes.mapType))
+      LHTypes.ST sumC
+  }
 
 // =================================================
 // A product type is defined as a possibly empty list
@@ -130,7 +142,10 @@ sumType:
 // "{ }"    (empty record)
 // =================================================
 prodType:
-  | LEFT_BRACE typedVarDecls RIGHT_BRACE  { ProdType ($2) }
+  | LEFT_BRACE typedVarDecls RIGHT_BRACE
+  {
+      LHTypes.PT ($2 |> List.map (fun (n,t) -> (n, LHTypes.mapType t)))
+  }
 
 // =================================================
 // Function and Handler argument
@@ -269,7 +284,10 @@ decl:
   { TypeDef ($2, $4) }
 
   | HANDLER LIDENT funcArgs EQ expr
-  { HandlerDef ($2, $3, $5) }
+  {
+      let vars = $3 |> List.map (fun (n,t) -> (n, LHTypes.mapType t))
+      HandlerDef ($2, vars, $5)
+  }
 
   | LET LIDENT funcArgs EQ expr DSCOLON
   {

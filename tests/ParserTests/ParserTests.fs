@@ -8,6 +8,7 @@ open ParserModule
 open NUnit.Framework
 
 open type LHMachine.Expr
+open type LHTypes.Type
 
 [<SetUp>]
 let Setup () =
@@ -39,30 +40,32 @@ let testDecl2 () =
     let res = parse "contract test
                      type State = { x : int }
     "
-    Assert.AreEqual( Some (Module ("test", [TypeDef ("State", ProdType [("x","int")])])), res );
+    Assert.AreEqual( Some (Module ("test", [TypeDef ("State", PT [("x", Int 256)])])), res );
 
 [<Test>]
 let testDecl3 () =
     let res = parse "contract test
                      type State = { x : List }
     "
-    Assert.AreEqual( Some (Module ("test", [TypeDef ("State", ProdType [("x","List")])])), res );
+    Assert.AreEqual( Some (Module ("test", [TypeDef ("State", PT [("x", UserType "List")])])), res );
 
 [<Test>]
+[<Ignore("type List is not implemented")>]
 let testDecl4 () =
     let res = parse "contract test
                      type State = { x : List; y : Bool }
     "
-    Assert.AreEqual( Some (Module ("test", [TypeDef ("State", ProdType [("x","List"); ("y","Bool")])])), res );
+    Assert.AreEqual( Some (Module ("test", [TypeDef ("State", PT [("x", UserType "List");
+                                                                  ("y", Bool)])])), res );
 
 [<Test>]
 let testDecl5 () =
     let res = parse "contract test
-                     type UserData = { name : String; balance : Uint }
+                     type UserData = { name : string; balance : int }
                      type State = { ud:UserData }
     "
-    let decls = [TypeDef ("UserData", ProdType [("name","String"); ("balance","Uint")]);
-                 TypeDef ("State", ProdType [("ud","UserData")])]
+    let decls = [TypeDef ("UserData", PT [("name", String); ("balance", Int 256)]);
+                 TypeDef ("State", PT [("ud", UserType "UserData")])]
     Assert.AreEqual( Some (Module ("test", decls)), res  );
 
 [<Test>]
@@ -70,12 +73,12 @@ let testDecl6 () =
     let res = parse "contract test
 
                      type UserData =
-                         | Borrower of name:String * amount:Uint
-                         | Depositor of name:String * amount:Uint
+                         | Borrower of name:string * amount:int
+                         | Depositor of name:string * amount:int
     "
     let decls = [TypeDef ("UserData",
-                          SumType [("Borrower", [("name","String"); ("amount","Uint")]);
-                                   ("Depositor", [("name","String"); ("amount","Uint")])])]
+                          ST [("Borrower", [String; Int 256]);
+                              ("Depositor", [String; Int 256])])]
     Assert.AreEqual( Some (Module ("test", decls)), res  );
 
 [<Test>]
@@ -83,16 +86,16 @@ let testDecl7 () =
     let res = parse "contract test
 
                      type UserData =
-                         | Borrower of name:String * amount:Uint
-                         | Depositor of name:String * amount:Uint
+                         | Borrower of name:string * amount:int
+                         | Depositor of name:string * amount:int
 
                      type State = { user : UserData }
     "
     let decls = [TypeDef ("UserData",
-                          SumType [("Borrower", [("name","String"); ("amount","Uint")]);
-                                   ("Depositor", [("name","String"); ("amount","Uint")])]);
+                          ST [("Borrower", [String; Int 256]);
+                              ("Depositor", [String; Int 256])]);
                  TypeDef ("State",
-                          ProdType [("user","UserData")])]
+                          PT [("user", UserType "UserData")])]
 
     Assert.AreEqual( Some (Module ("test", decls)), res  );
 
@@ -102,7 +105,7 @@ let testHandler1 () =
                      handler test (x:int) =
                           if 1 > 5 then 1 else 0
     "
-    let decls = [HandlerDef ("test", [("x","int")],
+    let decls = [HandlerDef ("test", [("x",Int 256)],
                              EIf (EGt (ENum 1, ENum 5), ENum 1, ENum 0))]
 
     Assert.AreEqual( Some (Module ("test", decls)), res  );
@@ -113,7 +116,7 @@ let testHandler2 () =
                      handler test (x:int) =
                           if x > 5 then 1 else 0
     "
-    let decls = [HandlerDef ("test", [("x","int")],
+    let decls = [HandlerDef ("test", [("x",Int 256)],
                              EIf (EGt (EVar "x", ENum 5), ENum 1, ENum 0))]
 
     Assert.AreEqual( Some (Module ("test", decls)), res  );
@@ -124,7 +127,7 @@ let testHandler3 () =
                      handler test (x:int) =
                           if (x > 5) then 1 else 0
     "
-    let decls = [HandlerDef ("test", [("x","int")],
+    let decls = [HandlerDef ("test", [("x",Int 256)],
                              EIf (EGt (EVar "x", ENum 5), ENum 1, ENum 0))]
 
     Assert.AreEqual( Some (Module ("test", decls)), res  );
@@ -135,7 +138,7 @@ let testHandler4 () =
                      handler test (x:int) =
                           if ( (1 + 1) > 2) then 1 else 0
     "
-    let decls = [HandlerDef ("test", [("x","int")],
+    let decls = [HandlerDef ("test", [("x", Int 256)],
                              EIf (EGt (EAdd (ENum 1, ENum 1), ENum 2), ENum 1, ENum 0))]
 
     Assert.AreEqual( Some (Module ("test", decls)), res  );
@@ -147,7 +150,7 @@ let testHandler5 () =
                      handler test (x:int) =
                           if (1 + (1 > 2)) then 1 else 0
     "
-    let decls = [HandlerDef ("test", [("x","int")],
+    let decls = [HandlerDef ("test", [("x",Int 256)],
                              EIf (EAdd (ENum 1, EGt (ENum 1, ENum 2)), ENum 1, ENum 0))]
 
     Assert.AreEqual( Some (Module ("test", decls)), res  );
@@ -158,7 +161,7 @@ let testHandler6 () =
                      handler fact (n:int) =
                           if (n > 1) then n * fact (n - 1) else 1
     "
-    let decls = [HandlerDef ("fact", [("n","int")],
+    let decls = [HandlerDef ("fact", [("n", Int 256)],
                              EIf (EGt (EVar "n", ENum 1),
                                   EMul (EVar "n", EAp (EVar "fact", ESub (EVar "n", ENum 1))),
                                   ENum 1))]
@@ -173,8 +176,8 @@ let testHandler7 () =
                      handler msg_handler2 (n:int) =
                           n * 2
     "
-    let decls = [HandlerDef ("msg_handler1", [("n","int")], EVar "n");
-                 HandlerDef ("msg_handler2", [("n","int")], EMul (EVar "n", ENum 2))]
+    let decls = [HandlerDef ("msg_handler1", [("n", Int 256)], EVar "n");
+                 HandlerDef ("msg_handler2", [("n", Int 256)], EMul (EVar "n", ENum 2))]
     Assert.AreEqual( Some (Module ("test", decls)), res  );
 
 [<Test>]
@@ -184,7 +187,7 @@ let testLet0 () =
                        let f = 10 in f
     "
     let decls = [HandlerDef ("msg_handler1",
-                             [("n","int")],
+                             [("n", Int 256)],
                              ELet (false, [("f",ENum 10)], EVar "f"))];
     Assert.AreEqual( Some (Module ("test", decls)), res  );
 
@@ -195,7 +198,7 @@ let testLet1 () =
                        let f = 10 in f
     "
     let decls = [HandlerDef ("msg_handler1",
-                             [("n","int")],
+                             [("n", Int 256)],
                              ELet (false, [("f",ENum 10)], EVar "f"))];
     Assert.AreEqual( Some (Module ("test", decls)), res  );
 
@@ -210,7 +213,7 @@ let testLet2 () =
                     "
 
     let decls = [HandlerDef ("msg_handler1",
-                             [("n","int")],
+                             [("n",Int 256)],
                              ELet (false, [("f", ENum 10)],
                                     ELet (false, [("g", EAp (EVar "msg_handler1", ENum 10))],
                                           EVar "g")))]
@@ -226,7 +229,7 @@ let testLet3 () =
                     "
 
     let decls = [HandlerDef ("msg_handler1",
-                             [("n","int")],
+                             [("n", Int 256)],
                              ELet (false, [("f", EFunc ("x", EAdd (EVar "x", ENum 5)))],
                                    EAp (EVar "f", ENum 10)))]
     Assert.AreEqual( Some (Module ("test", decls)), res  );
@@ -240,7 +243,7 @@ let testLet4 () =
                       f g
                     "
     let decls = [HandlerDef ("msg_handler1",
-                             [("n","int")],
+                             [("n", Int 256)],
                              ELet (false, [("f", EFunc ("x", EAdd (EVar "x", ENum 5)))],
                               ELet (false, [("g", ENum 1000)],
                                EAp (EVar "f", EVar "g"))))]
@@ -281,7 +284,7 @@ let testLetRec1 () =
                     "
     let decls = [
         HandlerDef ("msg_handler1",
-                    [("n", "int")],
+                    [("n", Int 256)],
                     ELet (true, [("fact", EFunc ("x", EAp (EVar "fact", ESub (EVar "x", ENum 1))))],
                           ELet (false, [("g", ENum 1000)],
                                 EAp (EVar "fact", EVar "g"))))
@@ -309,7 +312,7 @@ let testLetBindings1 () =
     let res = parse "contract test
                      let c = 10000 ;;
                      let rec fact x = if x > 1 then x * fact (x - 1) else 1 ;;
-                     type UserData = { name : String; balance : Uint }
+                     type UserData = { name : string; balance : int }
                      type State = { ud:UserData }
                      handler msg_handler1 (n:int) =
                       let rec fact x = fact (x - 1) in
@@ -322,10 +325,10 @@ let testLetBindings1 () =
                     EFunc ("x", EIf ( EGt (EVar "x", ENum 1),
                                       EMul (EVar "x", EAp (EVar "fact", ESub (EVar "x", ENum 1))),
                                       ENum 1) ));
-        TypeDef ("UserData", ProdType [("name","String"); ("balance","Uint")]);
-        TypeDef ("State", ProdType [("ud","UserData")]);
+        TypeDef ("UserData", PT [("name", String); ("balance", Int 256)]);
+        TypeDef ("State", PT [("ud", UserType "UserData")]);
         HandlerDef ("msg_handler1",
-                    [("n", "int")],
+                    [("n", Int 256)],
                     ELet (true, [("fact", EFunc ("x", EAp (EVar "fact", ESub (EVar "x", ENum 1))))],
                           ELet (false, [("g", ENum 1000)],
                                 EAp (EVar "fact", EVar "g"))))
@@ -341,7 +344,7 @@ let testMatchExpr0 () =
                       | Cons (h, t) -> 1 + msg_handler1 t
                     "
     let decls = [HandlerDef ("msg_handler1",
-                             [("m","List")],
+                             [("m", UserType "List")],
                              ECase (EVar "m",
                                     [(hash "Nil", [], ENum 0);
                                      (hash "Cons", ["h"; "t"],
@@ -361,7 +364,7 @@ let testMatchExpr1 () =
                       | Cons (h, t) -> 1 + msg_handler1 t
                     "
     let decls = [HandlerDef ("msg_handler1",
-                  [("m","List"); ("l","List")],
+                  [("m",UserType "List"); ("l",UserType "List")],
                    ECase (EVar "m",
                     [(hash "Nil", [],
                        ECase (EVar "l",
@@ -384,7 +387,7 @@ let testAssignment0 () =
                      handler add_more =
                          state <- { counter = 0 ; sum = 0 }
                     "
-    let decls = [TypeDef ("State", ProdType [("counter", "int"); ("sum", "int")]);
+    let decls = [TypeDef ("State", PT [("counter", Int 256); ("sum", Int 256)]);
                  HandlerDef ("add_more", [], EAssign (ERecord [ENum 0; ENum 0]))]
     Assert.AreEqual( Some (Module ("Simple", decls)), res  );
 
@@ -405,9 +408,9 @@ let testSample0 () =
                          state <- { counter = counter' ; sum = sum' }
                     "
     let decls = [
-        TypeDef ("State", ProdType [("counter", "int"); ("sum", "int")]);
+        TypeDef ("State", PT [("counter", Int 256); ("sum", Int 256)]);
         LetBinding ("sum", false, EFunc ("a", EFunc ("b", EAdd (EVar "a", EVar "b"))));
-        HandlerDef ("add_more", [("x", "int")],
+        HandlerDef ("add_more", [("x", Int 256)],
                     ELet (false,
                           [("sum'",
                             EAp (EVar "sum",

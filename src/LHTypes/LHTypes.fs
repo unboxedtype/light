@@ -113,6 +113,16 @@ type ProgramTypes =
 type VariablesMapping =
     Map<Name,int>
 
+// map an LH elementary type into Type
+let mapType (str : string) : Type =
+    match str with
+    | "int" -> Int 256
+    | "string" -> String
+    | "bool" -> Int 2
+    | "unit"
+    | "uint" -> failwith (str + " is not supported currently")
+    | S -> UserType S
+
 // t = PT [("x",Int);("y",List Int);("z",Bool)]
 // stateGlobalsMapping t = Map [("x",1);("y",2);("z",3)]
 let stateGlobalsMapping (t:ProductType) : VariablesMapping =
