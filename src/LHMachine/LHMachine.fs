@@ -1,4 +1,10 @@
 // For emacs: -*- fsharp -*-
+
+// Here we compile AST into LHMachine abstract VM code.
+// Later, that code gets compiled into the TVM code.
+
+// TODO: separate module into two : LHMachine and LHCompiler.
+
 module LHMachine
 
 open System

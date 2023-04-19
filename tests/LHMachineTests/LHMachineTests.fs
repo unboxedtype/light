@@ -33,7 +33,7 @@ let testFactorial () =
                            EIf (EGt (EVar "n", ENum 1),
                                 EMul (EVar "n", EEval (EAp (EVar "fact", ESub (EVar "n", ENum 1)))),
                                       ENum 1)));
-                   ("main", [], EFunc ("", EEval (EAp (EVar "fact", ENum 5))))]
+             ("main", [], EFunc ("", EEval (EAp (EVar "fact", ENum 5))))]
     execAndCheck g "120"
 
 [<Test>]
