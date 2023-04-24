@@ -64,9 +64,9 @@ let testStateSet0 () =
              ("update", [], EFunc ("",
                              EIf (ESelect (EVar "state", EVar "y"),
                                    EAssign (
-                                   EUpdateRec (EVar "state", 0,
-                                               EMul (ESelect (EVar "state", EVar "x"), ENum 2))),
-                                  ENull)));
+                                    EUpdateRec (EVar "state", 0,
+                                                EMul (ESelect (EVar "state", EVar "x"), ENum 2))),
+                                    ENull)));
              ("main", [], EFunc ("", ELet (false, ["x", (EEval (EVar "update"))], EVar "state")))]
     execAndCheck g types dataCell "[ 0 [ 200 1 ] ]"
 

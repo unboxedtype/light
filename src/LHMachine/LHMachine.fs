@@ -104,12 +104,12 @@ let rec compileWithTypes (ast:Expr) (env:Environment) (ty:LHTypes.ProgramTypes) 
     | ENum n ->
         [Integer n]
     | ERecord es ->
-        let rec compileExprs l =
+        let rec compileExprs l env' =
             match l with
             | [] -> []
-            | h :: t -> (compileWithTypes h env ty) @ compileExprs t
+            | h :: t -> (compileWithTypes h env' ty) @ compileExprs t (argOffset 1 env')
         let n = List.length es
-        (compileExprs es) @ [Record n]
+        (compileExprs es env) @ [Record n]
     | EFunc (argName, body) ->
         let env' = (0, argName) :: (argOffset 1 env)
         match body with
@@ -309,14 +309,19 @@ let defineFiftNames (t:LHGlobalsTable) : string list =
     |> List.map (fun (i, (name, _)) ->
                  "{ " + (string i) + " } : " + name)
 
-let generateFift (t:LHGlobalsTable) (stateReader:string) (stateWriter:string) (dataCell:string) : string =
+let generateFiftExt globTable stateReader stateWriter dataCell accBalance msgBalance inMsgCell inMsgBodySlice isExtMsg : string =
     let dataCell' =
         if dataCell <> "" then dataCell
         else "<b b>"
     (List.singleton "\"Asm.fif\" include" @
-     (defineFiftNames t) @
+     (defineFiftNames globTable) @
+     List.singleton accBalance @
+     List.singleton msgBalance @
+     List.singleton inMsgCell @
+     List.singleton inMsgBodySlice @
+     List.singleton isExtMsg @
      List.singleton "<{ " @
-     (t
+     (globTable
       |> List.map snd
       |> List.map mkFiftGlobFunction) @
      (if stateReader <> "" then
@@ -324,7 +329,15 @@ let generateFift (t:LHGlobalsTable) (stateReader:string) (stateWriter:string) (d
          List.singleton "state SETGLOB"
       else []) @
      List.singleton "<{ DEPTH DEC ZERO DEC SETCONTVARARGS }> PUSHCONT 1 SETGLOB" @
-     List.singleton "NULL main GETGLOB 1 1 CALLXARGS" @
+     List.singleton "main GETGLOB 5 1 CALLXARGS" @
      List.singleton stateWriter @
      List.singleton (" }>s " + dataCell' + " 1000000 gasrunvm drop drop .dump cr .dump cr"))
     |> String.concat "\n"
+
+let generateFift (t:LHGlobalsTable) (stateReader:string) (stateWriter:string) (dataCell:string) : string =
+    let accBalance = "0"
+    let msgBalance = "0"
+    let msgCell = "<b b>"
+    let msgBodySlice = "<b b> <s"
+    let isExtMsg = "0"
+    generateFiftExt t stateReader stateWriter dataCell accBalance msgBalance msgCell msgBodySlice isExtMsg

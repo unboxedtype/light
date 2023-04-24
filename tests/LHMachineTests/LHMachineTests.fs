@@ -368,3 +368,24 @@ let testFactLet () =
            ELet (false, [("fact", factBody)],
             ELet (false, [("simple", simpleBody)], mainBody))))]
     execAndCheck g "120"
+
+[<Test>]
+let testContext0 () =
+    // The following environmental variables are set by the
+    // blockchain node runtime, before executing the smart-contract.
+    let g = [
+        ("main", [],
+         EFunc ("accBalance",
+          EFunc ("msgBalance",
+           EFunc ("msgCell",
+            EFunc ("msgBodySlice",
+             EFunc ("isExtMsg",
+              ERecord ([EVar "accBalance"; EVar "msgBalance"; EVar "isExtMsg"])
+             )
+            )
+           )
+          )
+         )
+        )
+    ]
+    execAndCheck g "[ 0 0 0 ]"
