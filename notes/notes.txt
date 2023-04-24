@@ -5,41 +5,75 @@
 // Date:
 //    Jan 2023
 
+Содержимое стека на момент передачи управления в контракт:
+* acc_balance
+* msg_balance
+* in_msg_cell
+* in_msg_body_slice
+* is_ext_msg
 
-type X =
-    | ctor1(param1:T1, param2:T2, ...)
-    | ctor2(param1:T1, ...)   
-Type X is a list of constructors together with their parameters,
-   linked to a single entity.
-Parameters must have types already defined in the scope.   
+Самый последний элемент - признак внешнего сообщения - находится
+на вершине стека.
 
-type TypeDefinition =
-    | Ctors of (
-       (* ctor name *) string *
-       (( (* ctor param name *) string *
-          (* ctor param type *) TypeValue) list)) list
+Код для загрузки нужного обработчика:
 
-1) all ctor names must be unique
-2) some ctors must be terminal
-3) ctor param names must be unique in a scope of a single ctor
-4) ctor param types must be already defined or use 
-   the TypeDef being defined (recursive type)
+OVER               // PUSH 1: msg_body_slice
+LDU 32             // n s'
+SWAP               // s' n
+PUSHINT 32         // s' n 32
+SWAP               // s' 32 n
+handlers GETGLOB   // s' 32 n D
+SWAP               // s' 32 D n
+DICTUGETEXEC       // 
 
-type ListNat = Nil | Cons (a:Nat) (t: ListNat)
-ListNatType = [("Nil",[]), ("Cons",[("a",Nat),("t",ListNatType)])]
-let l:ListNat = Cons 10 (Cons 20 Nil) // [10, 20]
-let r = l // copy
-let a = map (fun x -> x + 1) [1,2,3]
-type Func =
-    Func(name: string,
-         params:
-            (/* name */ string,
-             /* type */ TypeValue) list,
-         body: IRExpr
-    )
+Далее, обработчик загружает и сам парсит аргумент из s' для своего тела.
+Компилятор вставляет текст этого парсера, исходя из типов аргументов,
+принимаемых обработчиком.
+
+** Обработчик отправляет сообщения и изменяет состояние контракта
+
+По-мимо вычислений, обработчик отправляет сообщения и меняет состояние
+контракта. В качестве типа возвращаемого значения указан unit.
+
+** Параметры для обработчика сообщений
+
+Предположим, есть обработчик:
+handler add_more (x:int) =
+  ...
+
+Это  сокращенная форма  записи.  На самом  деле, обработчик  принимает
+такие параметры:
+
+handler add_more (msg:Message) (state:State) (x:int) =
+ ...
+
+или, аналогично,
+
+handler add_more msg state x =
+ ...
+
+Первые две переменные - стандартные для всех обработчиков, поэтому они
+по  умолчанию  скрываются  из  списка параметров.  Их,  однако,  можно
+указать при желании. Тип обработчика отражает параметры:
+
+add_more: Message -> State -> int -> unit
 
 
-[let f = 10,
- let n = fun x -> x + 1,
- n f]
+Альтернативный формат передачи всей этой служебной информации:
+
+add_more: Context -> int -> unit
+
+type Context = {
+  msg: Message;
+  state: State;
+  acc_balance: NanoGrams;
+}
+
+Тогда везде нужно писать:
+ ctx.msg.src;
+ ctx.msg.dest;
+ ctx.acc_balance;
+
+и определить вспомогательные функции:
+ now(), acc_balance() ...
 
