@@ -371,16 +371,91 @@ let testFactLet () =
 
 [<Test>]
 let testContext0 () =
+    let parseExtMessage =
+      EAsm "s2 PUSH
+            CTOS
+            2 LDU
+            SWAP
+            2 INT
+            SUB
+            100 THROWIF
+            DROP
+           "
+    let parseIntMessage =
+      EAsm  "DUMPSTK
+             s2 PUSH
+             CTOS
+             1 LDU          // messageHeaderTag s'
+             SWAP
+             THROWIF 100    // int_msg_info must equal 0
+             1 LDU          // ihr_disabled s'
+             NIP            // s'
+             1 LDU          // bounce s'
+             1 LDU          // bounce bounced s'
+             2 LDU          // bounce bounced addr_std_tag s'
+             SWAP           // bounce bounced s' addr_std_tag
+             2 INT
+             SUB
+             100 THROWIF    // we allow only addr_std messages
+             1 LDU          // maybe Anycast = None
+             100 THROWIF
+             8 LDU          // bounce bounced src_wid s'
+             256 LDU        // bounce bounced src_wid src_addr s'
+             ROTREV         // bounce bounced s' src_wid src_addr
+             2 TUPLE        // bounce bounced s' (src_wid, src_addr)
+             SWAP           // bounce bounced (src_wid, src_addr) s'
+             2 LDU          // bounce bounced (src_wid, src_addr) addr_std_tag s'
+             SWAP
+             2 INT
+             SUB
+             100 THROWIF   // bounce bounced (src_wid, src_addr) s'
+             8 LDU         // bounce bounced (src_wid, src_addr) dst_wid s'
+             256 LDU       // bounce bounced (src_wid, src_addr) dst_wid dst_addr s'
+             ROTREV        // bounce bounced (src_wid, src_addr) s' dst_wid dst_addr
+             2 TUPLE       // bounce bounced (src_wid, src_addr) s' (dst_wid, dst_addr)
+             SWAP          // bounce bounced (src_wid, src_addr) (dst_wid, dst_addr) s'
+             128 LDU       // bounce bounced (srd_wid, src_addr) (dst_wid, dst_addr) value
+             1 LDU
+             SWAP
+             100 THROWIF   // no extra currencies allowed
+             128 LDU         // bounce bounced srd_wid src_addr dst_wid dst_addr value ihr_fee s'
+             128 LDU         // ... fwd_fee s'
+             NIP
+             NIP           // bounce bounced (srd_wid, src_acc) (dst_wid, dst_acc) value s'
+             64 LDU        // bounce bounced (srd_wid, src_acc) (dst_wid, dst_acc) value created_lt s'
+             32 LDU        // bounce bounced src_addr dst_addr value created_lt created_at s'
+             1 LDU
+             NIP           // skip state init
+             1 LDU         // data is expected in a separate cell
+             SWAP
+             100 THROWIF   // bounce bounced src_addr dst_addr value created_lt created_at
+             LDREF
+             ENDS          // bounce bounced src_addr dst_addr value created_lt created_at params_cell
+             7 ROLLREV
+             7 TUPLE       // params_cell (bounce, bounced, src_addr, dst_addr, value, created_lt, created_at)
+             ZERO
+             SWAP
+             2 TUPLE        // params_cell (0, (bounce,bounced,src_addr,...))
+             ZERO
+             1 TUPLE        // params_cell (0, (...)) (0)
+             s4 PUSH        // params_cell (0, (...)) (0) msg_body_slice
+             1 INT
+             SWAP
+             2 TUPLE        // params_cell (0, (...)) (0) (1, msg_body_slice)
+             3 TUPLE        // params_cell ( (0,(...)) (0) (1,msg_body_slice) )
+           "
     // The following environmental variables are set by the
     // blockchain node runtime, before executing the smart-contract.
     let g = [
         ("main", [],
-         EFunc ("accBalance",
-          EFunc ("msgBalance",
-           EFunc ("msgCell",
-            EFunc ("msgBodySlice",
-             EFunc ("isExtMsg",
-              ERecord ([EVar "accBalance"; EVar "msgBalance"; EVar "isExtMsg"])
+         EFunc ("accBalance",       // 4
+          EFunc ("msgBalance",      // 3
+           EFunc ("msgCell",        // 2
+            EFunc ("msgBodySlice",  // 1
+             EFunc ("isExtMsg",     // 0
+              EIf (EEq (EVar "isExtMsg", ENum -1),
+                   parseExtMessage,
+                   parseIntMessage)
              )
             )
            )
@@ -388,4 +463,4 @@ let testContext0 () =
          )
         )
     ]
-    execAndCheck g "[ 0 0 0 ]"
+    execAndCheck g "[ 1 ]"

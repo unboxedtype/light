@@ -38,13 +38,14 @@ type Instruction =
     | Pack of tag:int * n:int
     | Record of n:int    // a1 .. an -> { a1, ..., an }
     | Split of n:int
-    | Select of n:int    // take the n-th field of the record
-    | UpdateRec of n:int // update the n-th field of the record
+    | Select of n:int    // Take the n-th field of the record
+    | UpdateRec of n:int // Update the n-th field of the record
     | Casejump of (int * LHCode) list
     | DumpStk
     | Throw of n:int
-    | Alloc of n:int  // allocate n Null values on the stack
-    | Update of i:int // update the i-th stack value with the one residing on the top
+    | Alloc of n:int  // Allocate n Null values on the stack
+    | Update of i:int // Update the i-th stack value with the one residing on the top
+    | Asm of s:string // Assembler inline code
 and LHCode = Instruction list
 
 // index + variable name
@@ -74,6 +75,7 @@ type Expr =
     | ERecord of es:Expr list
     | EUpdateRec of e0:Expr * n:int * e1:Expr
     | EAssign of e0:Expr
+    | EAsm of s:string
 and CaseAlt = int * (Name list) * Expr   // case (tag:0) (vars: ["x","y"]) -> x + y
 and BoundVarDefs = (Name * Expr) list
 
@@ -178,6 +180,8 @@ let rec compileWithTypes (ast:Expr) (env:Environment) (ty:LHTypes.ProgramTypes) 
         (compileWithTypes e env ty) @ (compileWithTypes e1 (argOffset 1 env) ty) @ [UpdateRec n]
     | EAssign e ->
         (compileWithTypes e env ty) @ [SetGlob "2"] @ [Null]
+    | EAsm s ->
+        [Asm s]
     | _ ->
         failwith "not implemented"
 and compileAlts alts env ty =
@@ -292,6 +296,8 @@ let rec instrToTVM (i:Instruction) : string =
                 compileCasejumpSelector t
         let l' = compileCasejumpSelector l
         "DUP 0 INDEX <{ " + l' + " }> " + " PUSHCONT EXECUTE"
+    | Asm s ->
+        s
     | _ ->
         failwith (sprintf "unimplemented instruction %A"  i)
 and compileToTVM (code:LHCode) : string =
@@ -337,7 +343,33 @@ let generateFiftExt globTable stateReader stateWriter dataCell accBalance msgBal
 let generateFift (t:LHGlobalsTable) (stateReader:string) (stateWriter:string) (dataCell:string) : string =
     let accBalance = "0"
     let msgBalance = "0"
-    let msgCell = "<b b>"
+    // this is a test message
+    let msgCell = "<b
+                    0 1 u,   // int_msg_info (0)
+                    0 1 u,   // ihr_disabled = false
+                    1 1 u,   // bounce = true
+                    0 1 u,   // bounced = false
+                    // src address
+                    2 2 u,   // addr_std message address
+                    0 1 u,   // Maybe Anycast = None
+                    0 8 u,   // workchain_id = 0
+                    111222333 256 u,  // address:bits256
+                    // dest address
+                    2 2 u,   // addr_std message address
+                    0 1 u,   // Maybe Anycast = None
+                    0 8 u,   // workchain_id = 0
+                    0xDEADBEEF 256 u,  // address:bits256
+                    // value:CurrencyCollection
+                    10000000000 128 u, // grams (10 TONs)
+                    0 1 u,   // no extra currencies
+                    0 128 u,  // IHR fee = 0
+                    0 128 u,  // FWD fee = 0
+                    100 64 u, // created_lt = 100
+                    123456 32 u, // created_at = 123456
+                    0 1 u,    // no init data
+                    1 1 u,    // data is put in a separate cell
+                    <b 777 256 u, b> ref,  // append data cell with a single 256-bit uint 777
+                   b>"
     let msgBodySlice = "<b b> <s"
     let isExtMsg = "0"
     generateFiftExt t stateReader stateWriter dataCell accBalance msgBalance msgCell msgBodySlice isExtMsg
