@@ -48,7 +48,8 @@ module Typ =
         | Function (t1, t2) ->
             Function (apply s t1, apply s t2)
         | Int _
-        | Bool ->
+        | Bool
+        | Unit ->
             typ
         | _ -> failwithf "type %A is not supported" typ
 
