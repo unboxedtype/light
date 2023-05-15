@@ -178,8 +178,16 @@ let rec ti (env : TypeEnv) (exp : exp) : Subst * Typ =
         let s3 = unify (Typ.apply s2 t1) (Function (t2, tv))
         Subst.compose (Subst.compose s3 s2) s1, Typ.apply s3 tv
     | EIf (cond, e1, e2) ->
-        let a = newTyVar "a"
-        (Map.empty, Function (Bool, Function(a, Function(a, a))))
+        let _, tc = ti env cond
+        if tc <> Bool then
+            failwith "condition must be boolean"
+        let _, t1 = ti env e1
+        let _, t2 = ti env e2
+        if t1 <> t1 then
+            failwith "conditional branches must return the same type"
+        (Map.empty, t1)
+        // let a = newTyVar "a"
+        // (Map.empty, Function (Bool, Function(a, Function(a, a))))
     | ELet (x, e1, e2) ->
         let s1, t1 = ti env e1
         let env1 = TypeEnv.remove env x
@@ -187,6 +195,12 @@ let rec ti (env : TypeEnv) (exp : exp) : Subst * Typ =
         let env2  =  Map.add x scheme env1
         let s2, t2 = ti (TypeEnv.apply s1 env2 ) e2
         Subst.compose s2 s1, t2
+    | EGt (e1, e2) ->
+        let s1, t1 = ti env e1
+        let s2, t2 = ti env e2
+        if (t1 <> Int 256) || (t2 <> Int 256) then
+            failwithf "both branches must be integers, %A vs %A" t1 t2
+        Map [], t1
     | _ ->
         failwithf "Unsupported expression %A" exp
 
