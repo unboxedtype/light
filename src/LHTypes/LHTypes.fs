@@ -83,6 +83,7 @@ type Type =
     | ST of e:SumType                   // sum type
     | Function of inp:Type * out:Type   // function type
     | UserType of name:Name * typ:Type  // user-defined type with name s
+    | TVar of s:Name // type variable
     member this.usertypeName =
         match this with
             | UserType (s, _) -> s

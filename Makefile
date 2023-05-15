@@ -19,3 +19,6 @@ test_tvm:
 
 test_lht:
 	@dotnet test /m:1 ./tests/LHTypesTests
+
+test_ti:
+	@dotnet test /m:1 ./tests/LHTypeInfer
