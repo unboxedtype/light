@@ -56,13 +56,13 @@ type Environment = (int * Name) list
 
 // AST Expression node
 type Expr =
-    | EFunc of arg:Name * body:Expr     // value of type Function<T1,T2>
-    | EVar of name:Name                 // value of the variable
     | ENum of n:int                     // value of type Int
     | ENull                             // value Null (unit)
+    | EFunc of arg:Name * body:Expr     // value of type Function<T1,T2>
+    | EVar of name:Name                 // value of the variable
     | EEval of e:Expr                   // evaluate saturated function
     | EAp of e1:Expr * e2:Expr
-    | ELet of isRec:bool * defs:BoundVarDefs * body:Expr
+    | ELet of name:Name * bind:Expr * body:Expr
     | EIf of e0:Expr * e1:Expr * e2:Expr
     | EAdd of e0:Expr * e1:Expr
     | ESub of e0:Expr * e1:Expr
@@ -146,12 +146,8 @@ let rec compileWithTypes (ast:Expr) (env:Environment) (ty:LHTypes.ProgramTypes) 
         [Pack (tag, arity)]
     | ECase (e, alts) ->
         (compileWithTypes e env ty) @ [ Casejump (compileAlts alts env ty) ]
-    | ELet (isRec, defs, body) ->
-        match isRec with
-        | false ->
-            compileLet defs body env ty
-        | true ->
-            compileLetRec defs body env ty
+    | ELet (name, def, body) ->
+        compileLetRec [(name,def)] body env ty
     | ESelect (e0, e1) ->
         match (e0, e1) with
         | (EVar s, EVar x) ->
@@ -210,7 +206,10 @@ and compileLetDefs defs env ty =
             []
         | (name, expr) :: defs' ->
             (compileWithTypes expr env ty) @ compileLetDefs defs' (argOffset 1 env) ty
-and compileLetRec (defs: BoundVarDefs) expr env ty =
+// originally, this function was written to do several let-rec compilation at once,
+// but later we switched to more managable "let n = expr in" single variable construct,
+// nevertheless we didn't change the code, it still support multiple bindings
+and compileLetRec defs expr env ty =
     let env' = compileArgs defs env
     let n = List.length defs
     [Alloc n] @ (compileLetRecDefs defs env' n ty) @ (compileWithTypes expr env' ty) @ [Slide n]

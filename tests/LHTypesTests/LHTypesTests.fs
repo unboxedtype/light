@@ -48,7 +48,8 @@ let testStateGet1 () =
     let dataCell = "<b 100 256 u, 1 2 u, b>"
     let g = [("state", [], ENum 0);  // this is a stub; will be replaced
              ("main", [], EFunc ("",
-                                 ELet (false, [("s", ESelect (EVar "state", EVar "y"))], EVar "s")))]
+                           ELet ("s", ESelect (EVar "state", EVar "y"), EVar "s")))
+            ]
     execAndCheck g types dataCell "1"
 
 
@@ -67,7 +68,8 @@ let testStateSet0 () =
                                     EUpdateRec (EVar "state", 0,
                                                 EMul (ESelect (EVar "state", EVar "x"), ENum 2))),
                                     ENull)));
-             ("main", [], EFunc ("", ELet (false, ["x", (EEval (EVar "update"))], EVar "state")))]
+             ("main", [], EFunc ("", ELet ("x", EEval (EVar "update"), EVar "state")))
+    ]
     execAndCheck g types dataCell "[ 0 [ 200 1 ] ]"
 
 [<Test>]

@@ -1,3 +1,5 @@
+// For emacs: -*- fsharp -*-
+
 module TVMTests
 
 open NUnit.Framework

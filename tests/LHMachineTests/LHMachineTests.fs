@@ -6,10 +6,6 @@ open NUnit.Framework
 open LHMachine
 open type LHMachine.Expr
 
-[<SetUp>]
-let Setup () =
-    ()
-
 let execAndCheckPrint g expected ifPrint =
     let gs = compileGlobals g
     if ifPrint then
@@ -190,14 +186,14 @@ let testMapList () =
 [<Test>]
 let testLet1 () =
     let  g = [
-        ("main", [], EFunc ("", ELet (false, [("t", ENum 3)], (EVar "t"))))
+        ("main", [], EFunc ("", ELet ("t", ENum 3, EVar "t")))
     ]
     execAndCheck g "3"
 
 [<Test>]
 let testLet2 () =
     let g = [
-        ("main", [], EFunc ("", ELet (false, [("k", ENum 3); ("t", ENum 4)], EVar "t")))
+        ("main", [], EFunc ("", ELet ("k", ENum 3, ELet ("t", ENum 4, EVar "t"))))
     ]
     execAndCheck g "4"
 
@@ -207,7 +203,7 @@ let testLet3 () =
         ("func", [],
           EFunc ("x",
            EFunc ("y",
-            ELet (false, [("a", EVar "x"); ("b", EVar "y")], EAdd (EVar "a", EVar "b")))));
+            ELet ("a", EVar "x", ELet ("b", EVar "y", EAdd (EVar "a", EVar "b"))))));
         ("main", [], EFunc ("", EEval (EAp (EAp (EVar "func", ENum 10), ENum 20))))
     ]
     execAndCheck g "30"
@@ -215,7 +211,7 @@ let testLet3 () =
 [<Test>]
 let testLetRec1 () =
     let g = [
-        ("main", [], EFunc ("", ELet (true, [("k", ENum 3); ("t", EVar "k")], EVar "t")))
+        ("main", [], EFunc ("", ELet ("k", ENum 3, ELet ("t", EVar "k", EVar "t"))))
     ]
     execAndCheck g "3"
 
@@ -223,9 +219,10 @@ let testLetRec1 () =
 let testLetRec2 () =
     let g = [
         ("main", [],
-         EFunc ("", ELet (true, [("k", ENum 3);
-                      ("t", EVar "k");
-                      ("z", EAdd (EVar "t", EVar "k"))], EVar "z")))
+         EFunc ("",
+          ELet ("k", ENum 3,
+           ELet ("t", EVar "k",
+            ELet ("z", EAdd (EVar "t", EVar "k"), EVar "z")))))
     ]
     execAndCheck g "6"
 
@@ -235,11 +232,12 @@ let testLetRec3 () =
         ("func1", [], ENum 3);
         ("func2", [], EFunc ("x", EAdd (EVar "x", ENum 10)));
         ("main", [],
-         EFunc ("", ELet (true,
-                          [("k", EEval (EAp (EVar "func2", EVar "func1")));
-                           ("t", EVar "k");
-                           ("z", EAdd (EVar "t", EVar "k"))],
-                          EVar "z")))]
+         EFunc ("",
+          ELet ("k",
+           EEval (EAp (EVar "func2", EVar "func1")),
+            ELet ("t", EVar "k",
+             ELet ("z", EAdd (EVar "t", EVar "k"), EVar "z")))))
+    ]
     execAndCheck g "26"
 
 [<Test>]
@@ -309,8 +307,7 @@ let testFunctionLine () =
     let TNil = EPack (1, 0, [])
     let TCons x y = EPack (2, 2, [x; y])
 
-    let fLine = ("fline",
-                   TCons (EVar "add5") (TCons (EVar "mul2") (TCons (EVar "sub3") TNil)))
+    let fLine = TCons (EVar "add5") (TCons (EVar "mul2") (TCons (EVar "sub3") TNil))
     let folder = EFunc ("acc", EFunc ("x", EEval (EAp (EVar "x", EVar "acc"))))
     let g = [("add5", [], EFunc ("x", EAdd (EVar "x", ENum 5)));
              ("mul2", [], EFunc ("x", EMul (EVar "x", ENum 2)));
@@ -326,8 +323,8 @@ let testFunctionLine () =
                        EEval (EAp (EAp (EAp (EVar "fold", EVar "f"), acc'), EVar "t"))))])))));
              ("main", [],
                EFunc ("",
-                ELet (false, [fLine],
-                   EEval (EAp (EAp (EAp (EVar "fold", folder), ENum 10), EVar "fline")))));
+                ELet ("fline", fLine,
+                   EEval (EAp (EAp (EAp (EVar "fold", folder), ENum 10), EVar "fline")))))
         ]
     execAndCheck g "27"
 
@@ -336,18 +333,16 @@ let testLetLet () =
     let g = [
         ("main", [],
          EFunc ("",
-           ELet (false, [("k", ENum 3)],
-            ELet (false, [("t", EVar "k")],
-             ELet (false, [("z", EAdd (EVar "t", EVar "k"))], EVar "z")))))]
+           ELet ("k", ENum 3, 
+            ELet ("t", EVar "k",
+             ELet ("z", EAdd (EVar "t", EVar "k"), EVar "z")))))]
     execAndCheck g "6"
-
 
 [<Test>]
 let testFactLet () =
     // main =
     //  let rec fact n = if (n > 1) then n * fact (n - 1) else 1
     //  fact 5
-
     let simpleBody =
         EFunc ("n", ESub (EVar "n", ENum 1))
     let factBody =
@@ -365,102 +360,52 @@ let testFactLet () =
     let g =
         [("main", [],
           EFunc ("",
-           ELet (false, [("fact", factBody)],
-            ELet (false, [("simple", simpleBody)], mainBody))))]
+           ELet ("fact", factBody,
+            ELet ("simple", simpleBody, mainBody))))]
     execAndCheck g "120"
 
 [<Test>]
-let testContext0 () =
-    let parseExtMessage =
-      EAsm "s2 PUSH
-            CTOS
-            2 LDU
-            SWAP
-            2 INT
-            SUB
-            100 THROWIF
-            DROP
-           "
-    let parseIntMessage =
-      EAsm  "DUMPSTK
-             s2 PUSH
-             CTOS
-             1 LDU          // messageHeaderTag s'
-             SWAP
-             THROWIF 100    // int_msg_info must equal 0
-             1 LDU          // ihr_disabled s'
-             NIP            // s'
-             1 LDU          // bounce s'
-             1 LDU          // bounce bounced s'
-             2 LDU          // bounce bounced addr_std_tag s'
-             SWAP           // bounce bounced s' addr_std_tag
-             2 INT
-             SUB
-             100 THROWIF    // we allow only addr_std messages
-             1 LDU          // maybe Anycast = None
-             100 THROWIF
-             8 LDU          // bounce bounced src_wid s'
-             256 LDU        // bounce bounced src_wid src_addr s'
-             ROTREV         // bounce bounced s' src_wid src_addr
-             2 TUPLE        // bounce bounced s' (src_wid, src_addr)
-             SWAP           // bounce bounced (src_wid, src_addr) s'
-             2 LDU          // bounce bounced (src_wid, src_addr) addr_std_tag s'
-             SWAP
-             2 INT
-             SUB
-             100 THROWIF   // bounce bounced (src_wid, src_addr) s'
-             8 LDU         // bounce bounced (src_wid, src_addr) dst_wid s'
-             256 LDU       // bounce bounced (src_wid, src_addr) dst_wid dst_addr s'
-             ROTREV        // bounce bounced (src_wid, src_addr) s' dst_wid dst_addr
-             2 TUPLE       // bounce bounced (src_wid, src_addr) s' (dst_wid, dst_addr)
-             SWAP          // bounce bounced (src_wid, src_addr) (dst_wid, dst_addr) s'
-             128 LDU       // bounce bounced (srd_wid, src_addr) (dst_wid, dst_addr) value
-             1 LDU
-             SWAP
-             100 THROWIF   // no extra currencies allowed
-             128 LDU         // bounce bounced srd_wid src_addr dst_wid dst_addr value ihr_fee s'
-             128 LDU         // ... fwd_fee s'
-             NIP
-             NIP           // bounce bounced (srd_wid, src_acc) (dst_wid, dst_acc) value s'
-             64 LDU        // bounce bounced (srd_wid, src_acc) (dst_wid, dst_acc) value created_lt s'
-             32 LDU        // bounce bounced src_addr dst_addr value created_lt created_at s'
-             1 LDU
-             NIP           // skip state init
-             1 LDU         // data is expected in a separate cell
-             SWAP
-             100 THROWIF   // bounce bounced src_addr dst_addr value created_lt created_at
-             LDREF
-             ENDS          // bounce bounced src_addr dst_addr value created_lt created_at params_cell
-             7 ROLLREV
-             7 TUPLE       // params_cell (bounce, bounced, src_addr, dst_addr, value, created_lt, created_at)
-             ZERO
-             SWAP
-             2 TUPLE        // params_cell (0, (bounce,bounced,src_addr,...))
-             ZERO
-             1 TUPLE        // params_cell (0, (...)) (0)
-             s4 PUSH        // params_cell (0, (...)) (0) msg_body_slice
-             1 INT
-             SWAP
-             2 TUPLE        // params_cell (0, (...)) (0) (1, msg_body_slice)
-             3 TUPLE        // params_cell ( (0,(...)) (0) (1,msg_body_slice) )
-           "
-    // The following environmental variables are set by the
-    // blockchain node runtime, before executing the smart-contract.
-    let g = [
-        ("main", [],
-         EFunc ("accBalance",       // 4
-          EFunc ("msgBalance",      // 3
-           EFunc ("msgCell",        // 2
-            EFunc ("msgBodySlice",  // 1
-             EFunc ("isExtMsg",     // 0
-              EIf (EEq (EVar "isExtMsg", ENum -1),
-                   parseExtMessage,
-                   parseIntMessage)
-             )
-            )
-           )
-          )
-         )
-        )
-    ]
-    execAndCheck g "[ 1 ]"
+[<Ignore("not ready")>]
+let testEval1 () =
+    let g = [("f", [], EFunc ("x", ESub (EVar "x", ENum 1)));
+             ("main", [], EFunc ("", EAp (EVar "f", ENum 5)))]
+    execAndCheck g "4"
+
+[<Test>]
+[<Ignore("not ready")>]
+let testEval2 () =
+    // const = fun x -> fun _ -> x
+    // main = (const 100) 1   ---> evals to 100
+    let g = [("const", [], EFunc ("x", EFunc ("", EVar "x")));
+             ("main", [], EFunc ("", EAp (EAp (EVar "const", ENum 100), ENum 1)))]
+    execAndCheck g "100"
+
+[<Test>]
+[<Ignore("not ready")>]
+let testEval3 () =
+    let g = [("fact", [], EFunc ("n",
+                           EIf (EGt (EVar "n", ENum 1),
+                                EMul (EVar "n", EAp (EVar "fact", ESub (EVar "n", ENum 1))),
+                                      ENum 1)));
+             ("main", [], EFunc ("", EAp (EVar "fact", ENum 5)))]
+    execAndCheck g "120"
+
+[<Test>]
+[<Ignore("not ready")>]
+let testEval4 () =
+    // let sum n m = if (n > 0) then (n + sum (n - 1) m) else m
+    let g = [("sum", [], EFunc ("n",
+                          EFunc ("m",
+                           EIf (EGt (EVar "n", ENum 0),
+                                EAdd (EVar "n", EAp (EAp (EVar "sum", ESub (EVar "n", ENum 1)), EVar "m")),
+                                EVar "m"))));
+             ("main", [], EFunc ("", EAp (EAp (EVar "sum", ENum 5), ENum 10)))]
+    execAndCheck g "25"
+
+[<Test>]
+[<Ignore("not ready")>]
+let testEval5 () =
+    let g = [("f", [], EFunc ("func", EFunc ("x", EAp (EVar "func", EVar "x"))));
+             ("inc", [], EFunc ("y", EAdd (EVar "y", ENum 1)));
+             ("main", [], EFunc ("_", EAp (EAp (EVar "f", EVar "inc"), ENum 1)))]
+    execAndCheck g "2"

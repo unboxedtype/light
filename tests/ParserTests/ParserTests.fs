@@ -188,7 +188,7 @@ let testLet0 () =
     "
     let decls = [HandlerDef ("msg_handler1",
                              [("n", Int 256)],
-                             ELet (false, [("f",ENum 10)], EVar "f"))];
+                             ELet ("f", ENum 10, EVar "f"))]
     Assert.AreEqual( Some (Module ("test", decls)), res  );
 
 [<Test>]
@@ -199,7 +199,7 @@ let testLet1 () =
     "
     let decls = [HandlerDef ("msg_handler1",
                              [("n", Int 256)],
-                             ELet (false, [("f",ENum 10)], EVar "f"))];
+                             ELet ("f",ENum 10, EVar "f"))]
     Assert.AreEqual( Some (Module ("test", decls)), res  );
 
 [<Test>]
@@ -214,9 +214,8 @@ let testLet2 () =
 
     let decls = [HandlerDef ("msg_handler1",
                              [("n",Int 256)],
-                             ELet (false, [("f", ENum 10)],
-                                    ELet (false, [("g", EAp (EVar "msg_handler1", ENum 10))],
-                                          EVar "g")))]
+                             ELet ("f", ENum 10,
+                               ELet ("g", EAp (EVar "msg_handler1", ENum 10), EVar "g")))]
     Assert.AreEqual( Some (Module ("test", decls)), res  );
 
 [<Test>]
@@ -227,11 +226,10 @@ let testLet3 () =
                       let f x = x + 5 in
                       f 10
                     "
-
     let decls = [HandlerDef ("msg_handler1",
                              [("n", Int 256)],
-                             ELet (false, [("f", EFunc ("x", EAdd (EVar "x", ENum 5)))],
-                                   EAp (EVar "f", ENum 10)))]
+                             ELet ("f", EFunc ("x", EAdd (EVar "x", ENum 5)),
+                              EAp (EVar "f", ENum 10)))]
     Assert.AreEqual( Some (Module ("test", decls)), res  );
 
 [<Test>]
@@ -244,8 +242,8 @@ let testLet4 () =
                     "
     let decls = [HandlerDef ("msg_handler1",
                              [("n", Int 256)],
-                             ELet (false, [("f", EFunc ("x", EAdd (EVar "x", ENum 5)))],
-                              ELet (false, [("g", ENum 1000)],
+                             ELet ("f", EFunc ("x", EAdd (EVar "x", ENum 5)),
+                              ELet ("g", ENum 1000,
                                EAp (EVar "f", EVar "g"))))]
     Assert.AreEqual( Some (Module ("test", decls)), res  );
 
@@ -285,9 +283,9 @@ let testLetRec1 () =
     let decls = [
         HandlerDef ("msg_handler1",
                     [("n", Int 256)],
-                    ELet (true, [("fact", EFunc ("x", EAp (EVar "fact", ESub (EVar "x", ENum 1))))],
-                          ELet (false, [("g", ENum 1000)],
-                                EAp (EVar "fact", EVar "g"))))
+                       ELet ("fact", EFunc ("x", EAp (EVar "fact", ESub (EVar "x", ENum 1))),
+                        ELet ("g", ENum 1000,
+                         EAp (EVar "fact", EVar "g"))))
     ]
     Assert.AreEqual( Some (Module ("test", decls)), res  );
 
@@ -302,8 +300,8 @@ let testLetBindings0 () =
                     "
     let decls = [LetBinding ("avg", false,
                   EFunc ("l",
-                   ELet (false, [("s", EAp (EVar "sum", EVar "l"))],
-                    ELet (true, [("length", EFunc ("l", EVar "l"))],
+                   ELet ("s", EAp (EVar "sum", EVar "l"),
+                    ELet ("length", EFunc ("l", EVar "l"),
                      EAdd (EVar "s", EAp (EVar "length", EVar "l"))))))]
     Assert.AreEqual( Some (Module ("test", decls)), res  );
 
@@ -329,9 +327,9 @@ let testLetBindings1 () =
         TypeDef ("State", PT [("ud", UserType "UserData")]);
         HandlerDef ("msg_handler1",
                     [("n", Int 256)],
-                    ELet (true, [("fact", EFunc ("x", EAp (EVar "fact", ESub (EVar "x", ENum 1))))],
-                          ELet (false, [("g", ENum 1000)],
-                                EAp (EVar "fact", EVar "g"))))
+                       ELet ("fact", EFunc ("x", EAp (EVar "fact", ESub (EVar "x", ENum 1))),
+                        ELet ("g", ENum 1000,
+                         EAp (EVar "fact", EVar "g"))))
         ]
     Assert.AreEqual( Some (Module ("test", decls)), res  );
 
@@ -411,10 +409,10 @@ let testSample0 () =
         TypeDef ("State", PT [("counter", Int 256); ("sum", Int 256)]);
         LetBinding ("sum", false, EFunc ("a", EFunc ("b", EAdd (EVar "a", EVar "b"))));
         HandlerDef ("add_more", [("x", Int 256)],
-                    ELet (false,
-                          [("sum'",
-                            EAp (EVar "sum",
-                                 EAp (ESelect (EVar "state", EVar "counter"), EVar "b")))],
-                          ELet (false, [("counter'", EVar "b")],
-                                EAssign (ERecord [EVar "counter'"; EVar "sum'"]))))]
+                    ELet ("sum'",
+                      EAp (EVar "sum",
+                       EAp (ESelect (EVar "state", EVar "counter"), EVar "b")),
+                        ELet ("counter'", EVar "b",
+                         EAssign (ERecord [EVar "counter'"; EVar "sum'"]))))
+    ]
     Assert.AreEqual( Some (Module ("Simple", decls)), res  );

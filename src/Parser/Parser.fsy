@@ -207,18 +207,18 @@ expr:
   { EIf ($2, $4, $6) }
 
   | LET LIDENT EQ expr IN expr
-  { ELet (false, [($2, $4)], $6) }
+  { ELet ($2, $4, $6) }
 
   | LET LIDENT funcArgs EQ expr IN expr
   {
     let argNames = List.map fst $3
-    ELet (false, [($2, unfoldFunction argNames $5)], $7)
+    ELet ($2, unfoldFunction argNames $5, $7)
   }
 
   | LET RECURSIVE LIDENT funcArgs EQ expr IN expr
   {
     let argNames = List.map fst $4
-    ELet (true, [($3, unfoldFunction argNames $6)], $8)
+    ELet ($3, unfoldFunction argNames $6, $8)
   }
 
   | MATCH expr WITH matchPatterns
