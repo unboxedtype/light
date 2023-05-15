@@ -157,7 +157,12 @@ let rec compileWithTypes (ast:Expr) (env:Environment) (ty:LHTypes.ProgramTypes) 
             // to find out the index of the "x" field. For that, we need
             // to access type information of e0.
             let stype = LHTypes.findType s ty     // findType "state" [("state",UserType "State"); ...]
-            let ptype = LHTypes.findType stype.usertypeName ty // findType
+            let ptype =
+                match stype with
+                | UserType (n, ty') ->
+                    ty'
+                | _ ->
+                    stype
             match ptype with
             | PT pts ->
                 let n =

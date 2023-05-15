@@ -57,7 +57,7 @@ type VarName =
     Name
 
 // Type id is a unique type identifier; built-in
-// types has it defined initially, and user
+// types have it defined initially, and user
 // data types are assigned their own typeid
 // during the compilation.
 type TypeId =
@@ -79,15 +79,13 @@ type Type =
     | Int of n:int    // n = bit length; 1 <= n <= 256
     | UInt of n:int   // n = bit length  1 <= n <= 256
     | String
-    | List of e:Type                  // list of values of type e
-    | Pair of l:Type * r:Type         // pair of values a * b
-    | PT of e:ProductType             // product type
-    | ST of e:SumType                 // sum type
-    | Function of inp:Type * out:Type // function type
-    | UserType of s:Name            // user-defined type with name s
+    | PT of e:ProductType               // product type
+    | ST of e:SumType                   // sum type
+    | Function of inp:Type * out:Type   // function type
+    | UserType of name:Name * typ:Type  // user-defined type with name s
     member this.usertypeName =
         match this with
-            | UserType s -> s
+            | UserType (s, _) -> s
             | _ -> failwith "not a UserType type"
 
 and Variable =
@@ -119,9 +117,8 @@ let mapType (str : string) : Type =
     | "int" -> Int 256
     | "string" -> String
     | "bool" -> Int 2
-    | "unit"
-    | "uint" -> failwith (str + " is not supported currently")
-    | S -> UserType S
+    | _ -> failwith (str + " is not supported currently")
+    // | S -> UserType S
 
 // t = PT [("x",Int);("y",List Int);("z",Bool)]
 // stateGlobalsMapping t = Map [("x",1);("y",2);("z",3)]
@@ -139,7 +136,12 @@ let findType (typename:string) (pr:ProgramTypes) : Type =
     |> snd
 
 let findStateType (pr:ProgramTypes) : Type =
-    findType "State" pr
+    let t = findType "state" pr
+    match t with
+    | UserType ("State", typ) ->
+        typ
+    | _ ->
+        t
 
 
 // constructs the stack object from the cell
