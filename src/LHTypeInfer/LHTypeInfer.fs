@@ -27,7 +27,7 @@ let mapUnion m1 m2 =
 
 let mapSingleton k v =
     Map.ofList ([k, v])
-    
+
 module Typ =
     let rec ftv (typ: Typ) =
         match typ with
@@ -38,7 +38,7 @@ module Typ =
         | Bool -> Set.empty
         | Function (t1, t2) -> Set.union (ftv t1) (ftv t2)
         | _ -> failwithf "type %A is not supported" typ
-    
+
     let rec apply s typ =
         match typ with
         | TVar n ->
@@ -55,7 +55,7 @@ module Typ =
 
     let parens s =
         sprintf "( %s )" s
-        
+
     let braces s =
         sprintf "{ %s }" s
     let rec toString ty =
@@ -89,7 +89,7 @@ module Scheme =
 module TypeEnv =
      let remove (env: TypeEnv) (var : string)=
          Map.remove var env
-    
+
      let ftv (typEnv: TypeEnv) =
         Seq.foldBack (fun (KeyValue(_key ,v)) state ->
             Set.union state (Scheme.ftv v)) typEnv Set.empty
@@ -107,7 +107,7 @@ module Subst =
 let generalize (env : TypeEnv) (t : Typ) =
     let variables =
        Set.difference (Typ.ftv t) (TypeEnv.ftv env)
-       |> Set.toList 
+       |> Set.toList
     Scheme(variables, t)
 
 let private currentId = ref 0
@@ -151,39 +151,46 @@ let rec unify (t1 : Typ) (t2 : Typ) : Subst =
 
 let rec ti (env : TypeEnv) (exp : exp) : Subst * Typ =
     match exp with
-    | EVar name ->
-        match Map.tryFind name env with
-        | None -> failwithf "Unbound variable: %s" name
-        | Some sigma ->
-            let t = instantiate sigma
-            Map.empty, t
     | ENum n ->
-        (Map.empty, Int 256)
-    | EAdd (e1, e2) ->
-        // TODO: check that both es are integers
-        // and do have same arity
         (Map.empty, Int 256)
     | ENull  ->
         (Map.empty, Unit)
+    | EVar name ->
+        match Map.tryFind name env with
+        | None ->
+            failwithf "Unbound variable: %s" name
+        | Some sigma ->
+            let t = instantiate sigma
+            (Map.empty, t)
+    | EAdd (e1, e2)
+    | EMul (e1, e2)
+    | ESub (e1, e2) ->
+        // The '+' operator impose constraints on its arguments,
+        // both of them must be Integers.
+        let _, t1 = ti env e1
+        let _, t2 = ti env e2
+        let s1 = unify t1 (Int 256)
+        let s2 = unify t2 (Int 256)
+        (Subst.compose s1 s2, Int 256)
     | EFunc (n, e) ->
         let tv = newTyVar "a"
         let env1 = TypeEnv.remove env n
         let env2 = mapUnion env1 (mapSingleton n (Scheme([], tv) ))
         let (s1, t1) = ti env2 e
-        s1, Function ( Typ.apply s1 tv, t1)
+        (s1, Function (Typ.apply s1 tv, t1))
     | EAp (e1, e2) ->
         let s1, t1 = ti env e1
         let s2, t2 = ti (TypeEnv.apply s1 env) e2
         let tv = newTyVar "a"
         let s3 = unify (Typ.apply s2 t1) (Function (t2, tv))
-        Subst.compose (Subst.compose s3 s2) s1, Typ.apply s3 tv
+        (Subst.compose (Subst.compose s3 s2) s1, Typ.apply s3 tv)
     | EIf (cond, e1, e2) ->
         let _, tc = ti env cond
         if tc <> Bool then
-            failwith "condition must be boolean"
-        let _, t1 = ti env e1
-        let _, t2 = ti env e2
-        if t1 <> t1 then
+            failwithf "condition must be boolean, it is %A" tc
+        let s1, t1 = ti env e1
+        let s2, t2 = ti (TypeEnv.apply s1 env) e2
+        if t1 <> t2 then
             failwith "conditional branches must return the same type"
         (Map.empty, t1)
         // let a = newTyVar "a"
@@ -194,13 +201,13 @@ let rec ti (env : TypeEnv) (exp : exp) : Subst * Typ =
         let scheme = generalize (TypeEnv.apply s1 env) t1
         let env2  =  Map.add x scheme env1
         let s2, t2 = ti (TypeEnv.apply s1 env2 ) e2
-        Subst.compose s2 s1, t2
+        (Subst.compose s2 s1, t2)
     | EGt (e1, e2) ->
-        let s1, t1 = ti env e1
-        let s2, t2 = ti env e2
-        if (t1 <> Int 256) || (t2 <> Int 256) then
-            failwithf "both branches must be integers, %A vs %A" t1 t2
-        Map [], t1
+        let _, t1 = ti env e1
+        let _, t2 = ti env e2
+        let s1 = unify t1 (Int 256)
+        let s2 = unify t2 (Int 256)
+        (Subst.compose s1 s2, Bool)
     | _ ->
         failwithf "Unsupported expression %A" exp
 
