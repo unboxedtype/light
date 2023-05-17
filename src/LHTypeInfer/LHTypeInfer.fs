@@ -39,7 +39,10 @@ module Typ =
         | Function (t1, t2) -> Set.union (ftv t1) (ftv t2)
         | _ -> failwithf "type %A is not supported" typ
 
-    let rec apply s typ =
+    // apply substitution s to type t.
+    // basically, it is about substituting type variables
+    // with discovered types stored in s.
+    let rec apply s typ : Typ =
         match typ with
         | TVar n ->
             match Map.tryFind n s with
@@ -69,7 +72,7 @@ module Typ =
             | Int n -> "int" + (string n)
             | Bool -> "bool"
             | Function (t, s) ->
-                (parenType t) + " -> " + (toString s)
+                "(" + (parenType t) + " -> " + (toString s) + ")"
             | _ ->
                 failwithf "type %A is not supported" ty
 
@@ -89,12 +92,10 @@ module Scheme =
 module TypeEnv =
      let remove (env: TypeEnv) (var : string)=
          Map.remove var env
-
      let ftv (typEnv: TypeEnv) =
         Seq.foldBack (fun (KeyValue(_key ,v)) state ->
             Set.union state (Scheme.ftv v)) typEnv Set.empty
-
-     let apply (s : Subst) (env: TypeEnv) =
+     let apply (s : Subst) (env: TypeEnv) : TypeEnv =
         Map.map (fun _k v -> Scheme.apply s v) env
 
 module Subst =
@@ -152,8 +153,10 @@ let rec unify (t1 : Typ) (t2 : Typ) : Subst =
 let rec ti (env : TypeEnv) (exp : exp) : Subst * Typ =
     match exp with
     | ENum n ->
+        printfn "%A : s' = %A" exp.Name Map.empty
         (Map.empty, Int 256)
     | ENull  ->
+        printfn "%A : s' = %A" exp.Name Map.empty
         (Map.empty, Unit)
     | EVar name ->
         match Map.tryFind name env with
@@ -161,56 +164,87 @@ let rec ti (env : TypeEnv) (exp : exp) : Subst * Typ =
             failwithf "Unbound variable: %s" name
         | Some sigma ->
             let t = instantiate sigma
+            printfn "%A : s' = %A" exp.Name Map.empty
             (Map.empty, t)
     | EAdd (e1, e2)
     | EMul (e1, e2)
     | ESub (e1, e2) ->
         // The '+' operator impose constraints on its arguments,
         // both of them must be Integers.
-        let _, t1 = ti env e1
-        let _, t2 = ti env e2
-        let s1 = unify t1 (Int 256)
-        let s2 = unify t2 (Int 256)
-        (Subst.compose s1 s2, Int 256)
+        let s1, t1 = ti env e1
+        let s2, t2 = ti env e2
+        let st1 = unify t1 (Int 256)
+        let st2 = unify t2 (Int 256)
+        let s' = Subst.compose (Subst.compose s1 s2) (Subst.compose st1 st2)
+        printfn "%A : s' = %A" exp.Name  s'
+        (s', Int 256)
     | EFunc (n, e) ->
         let tv = newTyVar "a"
         let env1 = TypeEnv.remove env n
         let env2 = mapUnion env1 (mapSingleton n (Scheme([], tv) ))
-        let (s1, t1) = ti env2 e
-        (s1, Function (Typ.apply s1 tv, t1))
+        let (s', t1) = ti env2 e
+        printfn "%A : s' = %A" exp.Name  s'
+        (s', Function (Typ.apply s' tv, t1))
     | EAp (e1, e2) ->
         let s1, t1 = ti env e1
         let s2, t2 = ti (TypeEnv.apply s1 env) e2
         let tv = newTyVar "a"
         let s3 = unify (Typ.apply s2 t1) (Function (t2, tv))
-        (Subst.compose (Subst.compose s3 s2) s1, Typ.apply s3 tv)
+        let s' = Subst.compose s3 (Subst.compose s2 s1)
+        printfn "%A : s' = %A" exp.Name  s'
+        (s', Typ.apply s3 tv)
     | EIf (cond, e1, e2) ->
-        let _, tc = ti env cond
-        if tc <> Bool then
-            failwithf "condition must be boolean, it is %A" tc
+        let t' = newTyVar "a"       // if expression type, fresh var
+        let sc, tc = ti env cond
         let s1, t1 = ti env e1
-        let s2, t2 = ti (TypeEnv.apply s1 env) e2
-        if t1 <> t2 then
-            failwith "conditional branches must return the same type"
-        (Map.empty, t1)
-        // let a = newTyVar "a"
-        // (Map.empty, Function (Bool, Function(a, Function(a, a))))
+        let s2, t2 = ti env e2
+        let scond = unify tc Bool   // Conditional must be a boolean.
+        let s1' = unify (Typ.apply scond t1) (Typ.apply scond t2)
+        // The type of if branch must equal the type of else branch.
+        let s2' = unify t' t1
+        let s3' = unify t' t2
+        let s' = Subst.compose scond
+                  (Subst.compose (Subst.compose sc s1')
+                                 (Subst.compose
+                                   (Subst.compose s1 s2)
+                                   (Subst.compose s2' s3')))
+        printfn "%A : s' = %A" exp.Name  s'
+        (s', t')
     | ELet (x, e1, e2) ->
         let s1, t1 = ti env e1
         let env1 = TypeEnv.remove env x
         let scheme = generalize (TypeEnv.apply s1 env) t1
         let env2  =  Map.add x scheme env1
         let s2, t2 = ti (TypeEnv.apply s1 env2 ) e2
-        (Subst.compose s2 s1, t2)
+        let s' = Subst.compose s2 s1
+        printfn "%A : s' = %A" exp.Name  s'
+        (s', t2)
+    | ELetRec (x, e1, e2) ->
+        let (s', t') = ti env (ELet (x, EFix (EFunc (x, e1)), e2))
+        printfn "%A : s' = %A" exp.Name  s'
+        (s', t')
+    | EFix e ->
+        let (s', t) = ti env e
+        // printfn "%A : t = %A, s' = %A, env = %A" exp.Name t s' env
+        let t' =
+          match (Typ.apply s' t) with
+          | Function (t1, t2) when t1 = t2 -> t1
+          | _ ->
+              failwithf "Unexpected type for a fix point argument: %A" t
+        printfn "%A : s' = %A" exp.Name  s'
+        (s', t')
     | EGt (e1, e2) ->
-        let _, t1 = ti env e1
-        let _, t2 = ti env e2
-        let s1 = unify t1 (Int 256)
-        let s2 = unify t2 (Int 256)
-        (Subst.compose s1 s2, Bool)
+        let s1, t1 = ti env e1
+        let s2, t2 = ti env e2
+        let s1' = unify t1 (Int 256)
+        let s2' = unify t2 (Int 256)
+        let s' = Subst.compose (Subst.compose s1 s2) (Subst.compose s1' s2')
+        printfn "%A : s' = %A" exp.Name  s'
+        (s', Bool)
     | _ ->
         failwithf "Unsupported expression %A" exp
 
 let typeInference env e =
   let s, t = ti env e
+  printfn "t = %A, s = %A" t s
   Typ.apply s t

@@ -63,6 +63,9 @@ type Expr =
     | EEval of e:Expr                   // evaluate saturated function
     | EAp of e1:Expr * e2:Expr
     | ELet of name:Name * bind:Expr * body:Expr
+    | ELetRec of name:Name * bind:Expr * body:Expr
+    | EFix of e0:Expr   // needed to properly derive type of fixpoint (letrec)
+                        // not used during the evaluation
     | EIf of e0:Expr * e1:Expr * e2:Expr
     | EAdd of e0:Expr * e1:Expr
     | ESub of e0:Expr * e1:Expr
@@ -76,6 +79,24 @@ type Expr =
     | EUpdateRec of e0:Expr * n:int * e1:Expr
     | EAssign of e0:Expr
     | EAsm of s:string
+    member this.Name =
+        match this with
+        | ENum n -> sprintf "%A" this
+        | ENull -> "ENull"
+        | EFunc (arg, body) -> sprintf "EFunc (%A, ...) " arg
+        | EVar n -> sprintf "%A" this
+        | EAp (e1, e2) -> "EAp"
+        | ELet (name, _, _) -> sprintf "ELet (%A, ...)" name
+        | ELetRec (name, _, _) -> sprintf "ELetRec (%A, ...)" name
+        | EIf (_, _, _) -> "EIf"
+        | EAdd (_, _) -> "EAdd"
+        | ESub (_, _) -> "ESub"
+        | EMul (_, _) -> "EMul"
+        | EGt (_, _) -> "EGt"
+        | EEq (_, _) -> "EEq"
+        | EFix _ -> "EFix"
+        | _ -> failwithf "undefined term: %A" this
+
 and CaseAlt = int * (Name list) * Expr   // case (tag:0) (vars: ["x","y"]) -> x + y
 and BoundVarDefs = (Name * Expr) list
 
@@ -147,6 +168,8 @@ let rec compileWithTypes (ast:Expr) (env:Environment) (ty:LHTypes.ProgramTypes) 
     | ECase (e, alts) ->
         (compileWithTypes e env ty) @ [ Casejump (compileAlts alts env ty) ]
     | ELet (name, def, body) ->
+        compileLetRec [(name,def)] body env ty
+    | ELetRec (name, def, body) ->
         compileLetRec [(name,def)] body env ty
     | ESelect (e0, e1) ->
         match (e0, e1) with
