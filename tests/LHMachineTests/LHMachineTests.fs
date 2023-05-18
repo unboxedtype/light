@@ -333,7 +333,7 @@ let testLetLet () =
     let g = [
         ("main", [],
          EFunc ("",
-           ELet ("k", ENum 3, 
+           ELet ("k", ENum 3,
             ELet ("t", EVar "k",
              ELet ("z", EAdd (EVar "t", EVar "k"), EVar "z")))))]
     execAndCheck g "6"
@@ -342,7 +342,7 @@ let testLetLet () =
 let testFactLet () =
     // main =
     //  let rec fact n = if (n > 1) then n * fact (n - 1) else 1
-    //  fact 5
+    //  in fact 5
     let simpleBody =
         EFunc ("n", ESub (EVar "n", ENum 1))
     let factBody =
@@ -368,7 +368,7 @@ let testFactLet () =
 [<Ignore("not ready")>]
 let testEval1 () =
     let g = [("f", [], EFunc ("x", ESub (EVar "x", ENum 1)));
-             ("main", [], EFunc ("", EAp (EVar "f", ENum 5)))]
+             ("main", [], EFunc ("_", EAp (EVar "f", ENum 5)))]
     execAndCheck g "4"
 
 [<Test>]

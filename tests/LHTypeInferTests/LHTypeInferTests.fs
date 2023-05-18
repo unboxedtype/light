@@ -142,3 +142,47 @@ let testRecFunc3 () =
     let env = Map []
     Assert.AreEqual(Int 256,
                     LHTypeInfer.typeInference env ast);
+
+[<Test>]
+let testEval1 () =
+    // f x = x - 1  : Int -> Int
+    // main _ = (f 5) : Int
+    let ast = ELet ("f", EFunc ("x", ESub (EVar "x", ENum 1)),
+                 ELet ("main", EAp (EVar "f", ENum 5), EVar "main"))
+    let env = Map []
+    Assert.AreEqual(Int 256,
+                    LHTypeInfer.typeInference env ast);
+[<Test>]
+let testEvalCurry1 () =
+    // f = \f1 -> \f2 -> \x -> \y -> f2 (f1 x) (f1 y)
+    let f cont =
+        ELet ("f",
+          EFunc ("f1",
+           EFunc ("f2",
+            EFunc ("x",
+             EFunc ("y", EAp (EAp (EVar "f2", EAp (EVar "f1", EVar "x")),
+                                    EAp (EVar "f1", EVar "y")))))), cont)
+    // sum = \x -> \y -> x + y
+    let sum cont =
+        ELet ("sum",
+          EFunc ("x",
+           EFunc ("y",
+            EAdd (EVar "x", EVar "y"))), cont)
+    // let inc = \x -> x + 1
+    let inc cont =
+        ELet ("inc",
+          EFunc ("x",
+           EAdd (EVar "x", ENum 1)), cont)
+
+    // main = f inc sum 10 20 = sum (inc 10) (inc 20) : Int
+    let main = ELet ("main",
+                EAp (EAp (EAp (EAp (EVar "f", EVar "inc"), EVar "sum"), ENum 10), ENum 20),
+                EVar "main")
+    let ast = f (sum (inc main))
+    let env = Map []
+    Assert.AreEqual(Int 256,
+                    LHTypeInfer.typeInference env ast);
+
+[<Test>]
+let testLet4 () =
+    let ast = ELet ("k", ENum 3, ELet ("t", ENum 4, EVar "t"))))
