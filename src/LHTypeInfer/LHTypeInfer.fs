@@ -5,13 +5,13 @@ module LHTypeInfer
 open System
 
 open LHTypes
-open type LHMachine.Expr
+open LHExpr
 
 type name = string
 type label = string
 
 type exp =
-    LHMachine.Expr
+    LHExpr.Expr
 
 type Typ = LHTypes.Type
 

@@ -3,12 +3,16 @@
 module ParserModule
 
 open LHTypes
-open type LHMachine.Expr
+open LHExpr
+
+
+type Expr =
+    LHExpr.Expr
 
 type Decl =
     | TypeDef of name:string * t:LHTypes.Type
-    | HandlerDef of name:string * pars:LHTypes.VariableList * body:LHMachine.Expr
-    | LetBinding of name:string * recs:bool * body:LHMachine.Expr
+    | HandlerDef of name:string * pars:LHTypes.VariableList * body:Expr
+    | LetBinding of name:string * recs:bool * body:Expr
     member this.unboxTypeDef =
         match this with
         | TypeDef (n, t) -> (n, t)

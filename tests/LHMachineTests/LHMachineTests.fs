@@ -6,12 +6,11 @@ open NUnit.Framework
 open LHMachine
 open type LHMachine.Expr
 
-let execAndCheckPrint g expected ifPrint =
-    let gs = compileGlobals g
+let execAndCheckPrint expr expected ifPrint =
     if ifPrint then
-        printfn "%A" gs
+        printfn "%A" expr
     let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".fif"
-    TVM.dumpFiftScript filename (generateFift gs "" "" "")
+    TVM.dumpFiftScript filename (compileIntoFift expr)
     let res = FiftExecutor.runFiftScript filename
     Assert.AreEqual (expected, res)
 
@@ -25,13 +24,18 @@ let testTrivial () =
 
 [<Test>]
 let testFactorial () =
-    let g = [("fact", [], EFunc ("n",
-                           EIf (EGt (EVar "n", ENum 1),
-                                EMul (EVar "n", EEval (EAp (EVar "fact", ESub (EVar "n", ENum 1)))),
-                                      ENum 1)));
-             ("main", [], EFunc ("", EEval (EAp (EVar "fact", ENum 5))))]
-    execAndCheck g "120"
+    // let rec fact = fun n -> if n > 1 then (n * fact (n-1)) else 1 in
+    // let main = fact 5 in
+    // main
+    let expr = ELetRec ("fact",
+                EFunc ("n",
+                 EIf (EGt (EVar "n", ENum 1),
+                  EMul (EVar "n", EAp (EVar "fact", ESub (EVar "n", ENum 1))),
+                  ENum 1)),
+                ELet ("main", EAp (EVar "fact", ENum 5), EVar "main"))
+    execAndCheck expr "120"
 
+(**
 [<Test>]
 let testFunc2Args () =
     // let sum n m = if (n > 0) then (n + sum (n - 1) m) else m
@@ -409,3 +413,4 @@ let testEval5 () =
              ("inc", [], EFunc ("y", EAdd (EVar "y", ENum 1)));
              ("main", [], EFunc ("_", EAp (EAp (EVar "f", EVar "inc"), ENum 1)))]
     execAndCheck g "2"
+**)

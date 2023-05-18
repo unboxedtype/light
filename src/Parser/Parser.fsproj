@@ -19,7 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/LHTypes/LHTypes.fsproj" />
-    <ProjectReference Include="../../src/LHMachine/LHMachine.fsproj" />
+    <ProjectReference Include="../../src/LHExpr/LHExpr.fsproj" />
   </ItemGroup>
 
   <ItemGroup>

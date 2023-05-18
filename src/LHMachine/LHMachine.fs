@@ -10,6 +10,7 @@ module LHMachine
 open System
 open System.Collections.Generic
 open type LHTypes.Type
+open LHExpr
 
 exception GMError of string
 
@@ -56,52 +57,10 @@ type Environment = (int * Name) list
 
 // AST Expression node
 type Expr =
-    | ENum of n:int                     // value of type Int
-    | ENull                             // value Null (unit)
-    | EFunc of arg:Name * body:Expr     // value of type Function<T1,T2>
-    | EVar of name:Name                 // value of the variable
-    | EEval of e:Expr                   // evaluate saturated function
-    | EAp of e1:Expr * e2:Expr
-    | ELet of name:Name * bind:Expr * body:Expr
-    | ELetRec of name:Name * bind:Expr * body:Expr
-    | EFix of e0:Expr   // needed to properly derive type of fixpoint (letrec)
-                        // not used during the evaluation
-    | EIf of e0:Expr * e1:Expr * e2:Expr
-    | EAdd of e0:Expr * e1:Expr
-    | ESub of e0:Expr * e1:Expr
-    | EMul of e0:Expr * e1:Expr
-    | EEq of e0:Expr * e1:Expr
-    | EGt of e0:Expr * e1:Expr
-    | ECase of c:Expr * cs:CaseAlt list
-    | EPack of tag:int * arity:int * args:Expr list
-    | ESelect of e0:Expr * e1:Expr
-    | ERecord of es:Expr list
-    | EUpdateRec of e0:Expr * n:int * e1:Expr
-    | EAssign of e0:Expr
-    | EAsm of s:string
-    member this.Name =
-        match this with
-        | ENum n -> sprintf "%A" this
-        | ENull -> "ENull"
-        | EFunc (arg, body) -> sprintf "EFunc (%A, ...) " arg
-        | EVar n -> sprintf "%A" this
-        | EAp (e1, e2) -> "EAp"
-        | ELet (name, _, _) -> sprintf "ELet (%A, ...)" name
-        | ELetRec (name, _, _) -> sprintf "ELetRec (%A, ...)" name
-        | EIf (_, _, _) -> "EIf"
-        | EAdd (_, _) -> "EAdd"
-        | ESub (_, _) -> "ESub"
-        | EMul (_, _) -> "EMul"
-        | EGt (_, _) -> "EGt"
-        | EEq (_, _) -> "EEq"
-        | EFix _ -> "EFix"
-        | _ -> failwithf "undefined term: %A" this
+    LHExpr.Expr
 
-and CaseAlt = int * (Name list) * Expr   // case (tag:0) (vars: ["x","y"]) -> x + y
-and BoundVarDefs = (Name * Expr) list
-
-// combinator name, number of arguments (arity), code
-type LHCompiledSC = Name * int * LHCode
+type BoundVarDefs =
+    (Name * Expr) list
 
 // shift all indexes on m places
 let argOffset (m:int) (env: Environment) =
@@ -113,6 +72,7 @@ let compileArgs (defs:BoundVarDefs) (env:Environment) : Environment =
     let names = List.map fst defs
     (List.zip indexes names) @ (argOffset n env)
 
+// ty is collection of types defined in the actor code
 let rec compileWithTypes (ast:Expr) (env:Environment) (ty:LHTypes.ProgramTypes) : LHCode =
     match ast with
     | EVar v ->
@@ -251,24 +211,6 @@ and compileLetRecDefs defs env n ty =
 let compile (ast:Expr) (env: Environment) : LHCode =
     compileWithTypes ast env []
 
-
-type LHGlobalsDefs = (Name * (string list) * Expr) list
-type LHGlobalsTable = (int * (string * LHCode)) list
-
-let globalsBaseNumber = 2
-
-let compileGlobalsWithTypes (globals: LHGlobalsDefs) (ty:LHTypes.ProgramTypes) : LHGlobalsTable =
-    globals
-    |> List.map
-       (fun (name,vars,expr) ->
-        let indVars = List.indexed vars
-        (name, (compileWithTypes expr indVars ty) @ [Slide 0]))
-    |> List.indexed
-    |> List.map (fun (n,t) -> (n + globalsBaseNumber, t))
-
-let compileGlobals globals =
-    compileGlobalsWithTypes globals []
-
 let rec instrToTVM (i:Instruction) : string =
     match i with
     | Null -> "NULL"
@@ -334,69 +276,12 @@ and compileToTVM (code:LHCode) : string =
 and mkFiftCell (body: string) : string =
     "<{ " + body + "}>c "
 
-let mkFiftGlobFunction (name:string, code:LHCode) : string =
-    (compileToTVM code) + name + " SETGLOB"
-
-let defineFiftNames (t:LHGlobalsTable) : string list =
-    t
-    |> List.map (fun (i, (name, _)) ->
-                 "{ " + (string i) + " } : " + name)
-
-let generateFiftExt globTable stateReader stateWriter dataCell accBalance msgBalance inMsgCell inMsgBodySlice isExtMsg : string =
-    let dataCell' =
-        if dataCell <> "" then dataCell
-        else "<b b>"
-    (List.singleton "\"Asm.fif\" include" @
-     (defineFiftNames globTable) @
-     List.singleton accBalance @
-     List.singleton msgBalance @
-     List.singleton inMsgCell @
-     List.singleton inMsgBodySlice @
-     List.singleton isExtMsg @
-     List.singleton "<{ " @
-     (globTable
-      |> List.map snd
-      |> List.map mkFiftGlobFunction) @
-     (if stateReader <> "" then
-         List.singleton stateReader @
-         List.singleton "state SETGLOB"
-      else []) @
-     List.singleton "<{ DEPTH DEC ZERO DEC SETCONTVARARGS }> PUSHCONT 1 SETGLOB" @
-     List.singleton "main GETGLOB 5 1 CALLXARGS" @
-     List.singleton stateWriter @
-     List.singleton (" }>s " + dataCell' + " 1000000 gasrunvm drop drop .dump cr .dump cr"))
+let compileIntoFift ast : string =
+    let ast' = astToTyped ast // typed AST
+    let ast'' = astInsertEval ast' // AST with EEval nodes inserted into the right places 
+    List.singleton "\"Asm.fif\" include" @
+    List.singleton "<{ " @
+    List.singleton   "<{ DEPTH DEC ZERO DEC SETCONTVARARGS }> PUSHCONT 1 SETGLOB" @
+    List.singleton   (compileToTVM (compile ast'' [])) @
+    List.singleton " }>s 1000000 gasrunvmcode drop drop .dump cr"
     |> String.concat "\n"
-
-let generateFift (t:LHGlobalsTable) (stateReader:string) (stateWriter:string) (dataCell:string) : string =
-    let accBalance = "0"
-    let msgBalance = "0"
-    // this is a test message
-    let msgCell = "<b
-                    0 1 u,   // int_msg_info (0)
-                    0 1 u,   // ihr_disabled = false
-                    1 1 u,   // bounce = true
-                    0 1 u,   // bounced = false
-                    // src address
-                    2 2 u,   // addr_std message address
-                    0 1 u,   // Maybe Anycast = None
-                    0 8 u,   // workchain_id = 0
-                    111222333 256 u,  // address:bits256
-                    // dest address
-                    2 2 u,   // addr_std message address
-                    0 1 u,   // Maybe Anycast = None
-                    0 8 u,   // workchain_id = 0
-                    0xDEADBEEF 256 u,  // address:bits256
-                    // value:CurrencyCollection
-                    10000000000 128 u, // grams (10 TONs)
-                    0 1 u,   // no extra currencies
-                    0 128 u,  // IHR fee = 0
-                    0 128 u,  // FWD fee = 0
-                    100 64 u, // created_lt = 100
-                    123456 32 u, // created_at = 123456
-                    0 1 u,    // no init data
-                    1 1 u,    // data is put in a separate cell
-                    <b 777 256 u, b> ref,  // append data cell with a single 256-bit uint 777
-                   b>"
-    let msgBodySlice = "<b b> <s"
-    let isExtMsg = "0"
-    generateFiftExt t stateReader stateWriter dataCell accBalance msgBalance msgCell msgBodySlice isExtMsg

@@ -1,6 +1,6 @@
 %{
 open ParserModule
-open type LHMachine.Expr
+open type LHExpr.Expr
 
 // EFunc of arg:Name * body:Expr
 // ["x","y","z"], body ->

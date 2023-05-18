@@ -12,6 +12,7 @@
   <ItemGroup>
     <ProjectReference Include="../../src/TVM/TVM.fsproj" />
     <ProjectReference Include="../../src/LHTypes/LHTypes.fsproj" />
+    <ProjectReference Include="../../src/LHExpr/LHExpr.fsproj" />
   </ItemGroup>
 
 </Project>

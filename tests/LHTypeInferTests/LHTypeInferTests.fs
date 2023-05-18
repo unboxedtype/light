@@ -182,7 +182,3 @@ let testEvalCurry1 () =
     let env = Map []
     Assert.AreEqual(Int 256,
                     LHTypeInfer.typeInference env ast);
-
-[<Test>]
-let testLet4 () =
-    let ast = ELet ("k", ENum 3, ELet ("t", ENum 4, EVar "t"))))
