@@ -12,6 +12,10 @@ open System.Collections.Generic
 open type LHTypes.Type
 open LHExpr
 
+type LHType = LHTypes.Type
+
+open LHTypeInfer
+
 exception GMError of string
 
 // Incomplete pattern matches on this expression.
@@ -58,9 +62,11 @@ type Environment = (int * Name) list
 // AST Expression node
 type Expr =
     LHExpr.Expr
+type ASTNode =
+    LHExpr.ASTNode
 
 type BoundVarDefs =
-    (Name * Expr) list
+    (Name * ASTNode) list
 
 // shift all indexes on m places
 let argOffset (m:int) (env: Environment) =
@@ -73,8 +79,8 @@ let compileArgs (defs:BoundVarDefs) (env:Environment) : Environment =
     (List.zip indexes names) @ (argOffset n env)
 
 // ty is collection of types defined in the actor code
-let rec compileWithTypes (ast:Expr) (env:Environment) (ty:LHTypes.ProgramTypes) : LHCode =
-    match ast with
+let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:LHTypes.ProgramTypes) : LHCode =
+    match ast.Expr with
     | EVar v ->
         let r = List.tryPick (fun (n, v') ->
                               if v' = v then Some n else None) env
@@ -95,7 +101,7 @@ let rec compileWithTypes (ast:Expr) (env:Environment) (ty:LHTypes.ProgramTypes) 
         (compileExprs es env) @ [Record n]
     | EFunc (argName, body) ->
         let env' = (0, argName) :: (argOffset 1 env)
-        match body with
+        match body.Expr with
         | EFunc (_, _) ->
             compileWithTypes body env' ty
         | _ ->
@@ -132,7 +138,7 @@ let rec compileWithTypes (ast:Expr) (env:Environment) (ty:LHTypes.ProgramTypes) 
     | ELetRec (name, def, body) ->
         compileLetRec [(name,def)] body env ty
     | ESelect (e0, e1) ->
-        match (e0, e1) with
+        match (e0.Expr, e1.Expr) with
         | (EVar s, EVar x) ->
             // n = lookup x position in the record definition of e0
             // Currently,the lookup operator '.' is only allowed to be
@@ -205,10 +211,10 @@ and compileLetRecDefs defs env n ty =
     match defs with
         | [] ->
             []
-        | (name, expr) :: defs' ->
-            (compileWithTypes expr env ty) @ [Update n] @ compileLetRecDefs defs' env (n - 1) ty
+        | (name, node) :: defs' ->
+            (compileWithTypes node env ty) @ [Update n] @ compileLetRecDefs defs' env (n - 1) ty
 
-let compile (ast:Expr) (env: Environment) : LHCode =
+let compile (ast:ASTNode) (env: Environment) : LHCode =
     compileWithTypes ast env []
 
 let rec instrToTVM (i:Instruction) : string =
@@ -276,9 +282,37 @@ and compileToTVM (code:LHCode) : string =
 and mkFiftCell (body: string) : string =
     "<{ " + body + "}>c "
 
+let rec astInsertEval (ast:ASTNode) (ty:Map<int,LHType>) : ASTNode =
+    match ast.Expr with
+    | EAp (e1, e2) ->
+        let t = ty.[ast.Id]
+        if (t = LHTypes.Int 256 ||
+            t = LHTypes.Bool ||
+            t = LHTypes.String) then
+              ASTNode (ASTNode.newId (), EEval ast)
+        else ast
+    | EFunc (arg, body) ->
+        ASTNode (ast.Id, EFunc (arg, astInsertEval body ty))
+    | ELet (name, bind, body) ->
+        ASTNode (ast.Id, ELet (name, astInsertEval bind ty, astInsertEval body ty))
+    | ELetRec (name, bind, body) ->
+        ASTNode (ast.Id, ELetRec (name, astInsertEval bind ty, astInsertEval body ty))
+    | EFix e ->
+        failwith "EFix shall not appear here"
+    | EIf (e0, e1, e2) ->
+        ASTNode (ast.Id, EIf (astInsertEval e0 ty, astInsertEval e1 ty, astInsertEval e2 ty))
+    | EAdd (e0, e1) ->
+        ASTNode (ast.Id, EAdd (astInsertEval e0 ty, astInsertEval e1 ty))
+    | ESub (e0, e1) ->
+        ASTNode (ast.Id, ESub (astInsertEval e0 ty, astInsertEval e1 ty))
+    | EMul (e0, e1) ->
+        ASTNode (ast.Id, EMul (astInsertEval e0 ty, astInsertEval e1 ty))
+    | _ ->
+        failwithf "Unsupported ast node = %A" ast
+
 let compileIntoFift ast : string =
-    let ast' = astToTyped ast // typed AST
-    let ast'' = astInsertEval ast' // AST with EEval nodes inserted into the right places 
+    let ty = LHTypeInfer.typeInference (Map []) ast // get types for all AST nodes
+    let ast'' = astInsertEval ast ty // AST with EEval nodes inserted into the right places
     List.singleton "\"Asm.fif\" include" @
     List.singleton "<{ " @
     List.singleton   "<{ DEPTH DEC ZERO DEC SETCONTVARARGS }> PUSHCONT 1 SETGLOB" @

@@ -1,16 +1,23 @@
 %{
 open ParserModule
 open type LHExpr.Expr
+open LHExpr
+
+
+let mkAST (e:Expr) : ASTNode =
+    ASTNode (ASTNode.newId (), e)
 
 // EFunc of arg:Name * body:Expr
 // ["x","y","z"], body ->
 //   --> EFunc ("x", EFunc ("y", EFunc ("z", body)))
+// [], body ->
+//   --> body
 let rec unfoldFunction args body =
     match args with
     | [] ->
         body
     | h :: t ->
-        EFunc (h, unfoldFunction t body)
+        mkAST (EFunc (h, unfoldFunction t body))
 %}
 
 %start start
@@ -183,42 +190,42 @@ varEquations:
 // =================================================
 expr:
   | INT
-  { ENum ( $1 |> int ) }
+  { ASTNode (ASTNode.newId (), ENum ( $1 |> int )) }
 
   | LIDENT
-  { EVar $1 }
+  { ASTNode (ASTNode.newId (), EVar $1) }
 
   | LEFT_BRACKET expr RIGHT_BRACKET
   { $2 }
 
   | expr GT expr
-  { EGt ($1, $3)  }
+  { ASTNode (ASTNode.newId (), EGt ($1, $3))  }
 
   | expr PLUS expr
-  { EAdd ($1, $3) }
+  { ASTNode (ASTNode.newId (), EAdd ($1, $3)) }
 
   | expr MINUS expr
-  { ESub ($1, $3) }
+  { ASTNode (ASTNode.newId (), ESub ($1, $3)) }
 
   | expr STAR expr
-  { EMul ($1, $3) }
+  { ASTNode (ASTNode.newId (), EMul ($1, $3)) }
 
   | IF expr THEN expr ELSE expr
-  { EIf ($2, $4, $6) }
+  { ASTNode (ASTNode.newId (), EIf ($2, $4, $6)) }
 
   | LET LIDENT EQ expr IN expr
-  { ELet ($2, $4, $6) }
+  { ASTNode (ASTNode.newId (), ELet ($2, $4, $6)) }
 
   | LET LIDENT funcArgs EQ expr IN expr
   {
     let argNames = List.map fst $3
-    ELet ($2, unfoldFunction argNames $5, $7)
+    ASTNode (ASTNode.newId (), ELet ($2, unfoldFunction argNames $5, $7))
   }
 
   | LET RECURSIVE LIDENT funcArgs EQ expr IN expr
   {
     let argNames = List.map fst $4
-    ELet ($3, unfoldFunction argNames $6, $8)
+    ASTNode (ASTNode.newId (), ELet ($3, unfoldFunction argNames $6, $8))
   }
 
   | MATCH expr WITH matchPatterns
@@ -233,7 +240,7 @@ expr:
                        List.map fst args, // leave only variable names
                        expr) // case body
                       ) patterns
-        ECase ($2, cases)
+        ASTNode (ASTNode.newId (), ECase ($2, cases))
   }
 
   | LEFT_BRACE varEquations RIGHT_BRACE
@@ -245,25 +252,27 @@ expr:
     // correct order.
     let recNameValPairs = $2
     let recValues = recNameValPairs |> List.map snd
-    ERecord recValues
+    ASTNode (ASTNode.newId (), ERecord recValues)
   }
 
   | expr LARROW expr
   {
-    if $1 = EVar "state" then EAssign ($3)
+    if ($1).Expr = (EVar "state") then mkAST (EAssign ($3))
     else failwith "assignment operator is permited only for 'state' variable currently"
   }
 
   | expr expr
   {
-    EAp ($1, $2)
+    ASTNode (ASTNode.newId (), EAp ($1, $2))
   }
 
   | LIDENT DOT LIDENT
   {
     // Here, we shall translate the field identifier into its index.
     // This is done after the type of the field $1 is known.
-    ESelect (EVar $1, EVar $3)
+    let left = mkAST (EVar $1)
+    let right = mkAST (EVar $3)
+    ASTNode (ASTNode.newId (), ESelect (left, right))
   }
 
 

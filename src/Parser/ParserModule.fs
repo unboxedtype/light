@@ -11,8 +11,8 @@ type Expr =
 
 type Decl =
     | TypeDef of name:string * t:LHTypes.Type
-    | HandlerDef of name:string * pars:LHTypes.VariableList * body:Expr
-    | LetBinding of name:string * recs:bool * body:Expr
+    | HandlerDef of name:string * pars:LHTypes.VariableList * body:ASTNode
+    | LetBinding of name:string * recs:bool * body:ASTNode
     member this.unboxTypeDef =
         match this with
         | TypeDef (n, t) -> (n, t)

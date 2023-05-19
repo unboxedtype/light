@@ -13,11 +13,14 @@ type label = string
 type exp =
     LHExpr.Expr
 
-type Typ = LHTypes.Type
+type Typ =
+    LHTypes.Type
 
 type Scheme = Scheme of name list * Typ
 type TypeEnv = Map<string, Scheme>
 type Subst = Map<name,Typ>
+
+type NodeTypeMap = Map<int,Typ>
 
 // Map.union is missing? This is just a throw-away stub
 let mapUnion m1 m2 =
@@ -150,54 +153,61 @@ let rec unify (t1 : Typ) (t2 : Typ) : Subst =
     | Bool, Bool -> Map.empty
     | _ -> failwithf "Types do not unify: %A vs %A" t1 t2
 
-let rec ti (env : TypeEnv) (exp : exp) : Subst * Typ =
-    match exp with
+let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) : Subst * Typ * NodeTypeMap =
+    match node.Expr with
     | ENum n ->
-        printfn "%A : s' = %A" exp.Name Map.empty
-        (Map.empty, Int 256)
+        // printfn "%A : s' = %A" exp.Name Map.empty
+        let tm' = Map.add node.Id (Int 256) tm
+        (Map.empty, Int 256, tm')
     | ENull  ->
-        printfn "%A : s' = %A" exp.Name Map.empty
-        (Map.empty, Unit)
+        // printfn "%A : s' = %A" exp.Name Map.empty
+        let tm' = Map.add node.Id Unit tm
+        (Map.empty, Unit, tm')
     | EVar name ->
         match Map.tryFind name env with
         | None ->
             failwithf "Unbound variable: %s" name
         | Some sigma ->
             let t = instantiate sigma
-            printfn "%A : s' = %A" exp.Name Map.empty
-            (Map.empty, t)
+            // printfn "%A : s' = %A" exp.Name Map.empty
+            let tm' = Map.add node.Id t tm
+            (Map.empty, t, tm')
     | EAdd (e1, e2)
     | EMul (e1, e2)
     | ESub (e1, e2) ->
         // The '+' operator impose constraints on its arguments,
         // both of them must be Integers.
-        let s1, t1 = ti env e1
-        let s2, t2 = ti env e2
+        let s1, t1, tm' = ti env e1 tm
+        let s2, t2, tm'' = ti env e2 tm'
         let st1 = unify t1 (Int 256)
         let st2 = unify t2 (Int 256)
         let s' = Subst.compose (Subst.compose s1 s2) (Subst.compose st1 st2)
-        printfn "%A : s' = %A" exp.Name  s'
-        (s', Int 256)
+        let tme = Map.add node.Id t2 tm''
+        // printfn "%A : s' = %A" exp.Name  s'
+        (s', Int 256, tme)
     | EFunc (n, e) ->
         let tv = newTyVar "a"
         let env1 = TypeEnv.remove env n
         let env2 = mapUnion env1 (mapSingleton n (Scheme([], tv) ))
-        let (s', t1) = ti env2 e
-        printfn "%A : s' = %A" exp.Name  s'
-        (s', Function (Typ.apply s' tv, t1))
+        let (s', t1, tm') = ti env2 e tm
+        let tm'' = Map.add node.Id t1 tm'
+        // printfn "%A : s' = %A" exp.Name  s'
+        (s', Function (Typ.apply s' tv, t1), tm'')
     | EAp (e1, e2) ->
-        let s1, t1 = ti env e1
-        let s2, t2 = ti (TypeEnv.apply s1 env) e2
+        let s1, t1, tm' = ti env e1 tm
+        let s2, t2, tm'' = ti (TypeEnv.apply s1 env) e2 tm'
         let tv = newTyVar "a"
         let s3 = unify (Typ.apply s2 t1) (Function (t2, tv))
         let s' = Subst.compose s3 (Subst.compose s2 s1)
-        printfn "%A : s' = %A" exp.Name  s'
-        (s', Typ.apply s3 tv)
+        // printfn "%A : s' = %A" exp.Name  s'
+        let t' = Typ.apply s3 tv
+        let tme = Map.add node.Id t' tm''
+        (s', t', tme)
     | EIf (cond, e1, e2) ->
         let t' = newTyVar "a"       // if expression type, fresh var
-        let sc, tc = ti env cond
-        let s1, t1 = ti env e1
-        let s2, t2 = ti env e2
+        let sc, tc, tm1 = ti env cond tm
+        let s1, t1, tm2 = ti env e1 tm1
+        let s2, t2, tm3 = ti env e2 tm2
         let scond = unify tc Bool   // Conditional must be a boolean.
         let s1' = unify (Typ.apply scond t1) (Typ.apply scond t2)
         // The type of if branch must equal the type of else branch.
@@ -208,43 +218,51 @@ let rec ti (env : TypeEnv) (exp : exp) : Subst * Typ =
                                  (Subst.compose
                                    (Subst.compose s1 s2)
                                    (Subst.compose s2' s3')))
-        printfn "%A : s' = %A" exp.Name  s'
-        (s', t')
+        // printfn "%A : s' = %A" exp.Name  s'
+        let tm4 = Map.add node.Id t' tm3
+        (s', t', tm4)
     | ELet (x, e1, e2) ->
-        let s1, t1 = ti env e1
+        let s1, t1, tm1 = ti env e1 tm
         let env1 = TypeEnv.remove env x
         let scheme = generalize (TypeEnv.apply s1 env) t1
         let env2  =  Map.add x scheme env1
-        let s2, t2 = ti (TypeEnv.apply s1 env2 ) e2
+        let s2, t2, tm2 = ti (TypeEnv.apply s1 env2 ) e2 tm1
         let s' = Subst.compose s2 s1
-        printfn "%A : s' = %A" exp.Name  s'
-        (s', t2)
+        // printfn "%A : s' = %A" exp.Name  s'
+        let tm3 = Map.add node.Id t2 tm2
+        (s', t2, tm3)
     | ELetRec (x, e1, e2) ->
-        let (s', t') = ti env (ELet (x, EFix (EFunc (x, e1)), e2))
-        printfn "%A : s' = %A" exp.Name  s'
-        (s', t')
+        let node1 = ASTNode (ASTNode.newId (), EFunc (x, e1))
+        let node2 = ASTNode (ASTNode.newId (), EFix node1)
+        let node3 = ASTNode (ASTNode.newId (), ELet (x, node2, e2))
+        let (s', t', tm1) = ti env node3 tm
+        // printfn "%A : s' = %A" exp.Name  s'
+        let tm2 = Map.add node.Id t' tm1
+        (s', t', tm2)
     | EFix e ->
-        let (s', t) = ti env e
+        let (s', t, tm1) = ti env e tm
         // printfn "%A : t = %A, s' = %A, env = %A" exp.Name t s' env
         let t' =
           match (Typ.apply s' t) with
           | Function (t1, t2) when t1 = t2 -> t1
           | _ ->
               failwithf "Unexpected type for a fix point argument: %A" t
-        printfn "%A : s' = %A" exp.Name  s'
-        (s', t')
+        // printfn "%A : s' = %A" exp.Name  s'
+        let tm2 = Map.add node.Id t' tm1
+        (s', t', tm2)
     | EGt (e1, e2) ->
-        let s1, t1 = ti env e1
-        let s2, t2 = ti env e2
+        let s1, t1, tm1 = ti env e1 tm
+        let s2, t2, tm2 = ti env e2 tm1
         let s1' = unify t1 (Int 256)
         let s2' = unify t2 (Int 256)
         let s' = Subst.compose (Subst.compose s1 s2) (Subst.compose s1' s2')
-        printfn "%A : s' = %A" exp.Name  s'
-        (s', Bool)
+        // printfn "%A : s' = %A" exp.Name  s'
+        let tm3 = Map.add node.Id Bool tm2
+        (s', Bool, tm3)
     | _ ->
         failwithf "Unsupported expression %A" exp
 
-let typeInference env e =
-  let s, t = ti env e
-  printfn "t = %A, s = %A" t s
-  Typ.apply s t
+let typeInference env (e:ASTNode) : NodeTypeMap =
+  let s, t, ty = ti env e (Map [])
+  // printfn "t = %A, s = %A" t s
+  Map.add e.Id (Typ.apply s t) ty

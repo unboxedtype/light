@@ -63,12 +63,14 @@ type VarName =
 type TypeId =
     int
 
-// Unit        = 0001  // terminal type
-// Bool        = 0010  // terminal type
-// UInt        = 0100  // terminal type
-// String      = 1000  // terminal type
+// Basic types:
+// Unit        = 0001
+// Bool        = 0010
+// UInt        = 0100
+// String      = 1000
 
-// List<Int>.Cons     = 1001  // compound type
+// Compound types:
+// List<Int>.Cons     = 1001
 // List<Int>.Nil      = 1011
 // Map<T1,T2>         = 1100
 // Function<T1,T2>    = 1101
