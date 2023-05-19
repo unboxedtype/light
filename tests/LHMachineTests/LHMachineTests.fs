@@ -2,10 +2,19 @@
 
 module LHMachineTests
 
-open NUnit.Framework
+open FSharp.Text.Lexing
 open LHMachine
-open type LHExpr.ASTNode
+open ParserModule
+open Parser
+open NUnit.Framework
+
+open LHExpr
 open type LHMachine.Expr
+
+let parse source =
+    let lexbuf = LexBuffer<char>.FromString source
+    let res = Parser.start Lexer.read lexbuf
+    res
 
 let execAndCheckPrint expr expected ifPrint =
     if ifPrint then
@@ -22,20 +31,44 @@ let execAndCheck g expected =
 let testTrivial () =
     let code = compile (ASTNode (ASTNode.newId (), ENum 0)) []
     Assert.AreEqual( [Integer 0], code );
+
+let getLetAst (m:Module) (n:int) =
+    m.Decls.[n].letBinding
+    |> (function | (_, _, c) -> c)
+
 (**
+[<Test>]
+let testFactorial () =
+    let res = parse "contract test
+                     let main x =
+                       let rec factorial n =
+                          if (n > 1) then (n * factorial (n - 1)) else 1 in
+                       factorial 10 ;;
+    "
+    let resAst = getLetAst res.Value 0
+    printfn "%A" (compileIntoFift resAst)
+   **)
+
+[<Test>]
+let testVal () =
+    // let main = 5 in
+    // main
+    let expr = SLet ("main", SNum 5, SVar "main")
+    execAndCheck (toAST expr) "5"
+
 [<Test>]
 let testFactorial () =
     // let rec fact = fun n -> if n > 1 then (n * fact (n-1)) else 1 in
     // let main = fact 5 in
     // main
-    let expr = ELetRec ("fact",
-                EFunc ("n",
-                 EIf (EGt (EVar "n", ENum 1),
-                  EMul (EVar "n", EAp (EVar "fact", ESub (EVar "n", ENum 1))),
-                  ENum 1)),
-                ELet ("main", EAp (EVar "fact", ENum 5), EVar "main"))
-    execAndCheck expr "120"
-**)
+    let expr = SLetRec ("fact",
+                SFunc ("n",
+                 SIf (SGt (SVar "n", SNum 1),
+                  SMul (SVar "n", SAp (SVar "fact", SSub (SVar "n", SNum 1))),
+                  SNum 1)),
+                SLet ("main", SAp (SVar "fact", SNum 5), SVar "main"))
+    execAndCheck (toAST expr) "120"
+
 (**
 [<Test>]
 let testFunc2Args () =

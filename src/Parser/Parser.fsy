@@ -3,10 +3,6 @@ open ParserModule
 open type LHExpr.Expr
 open LHExpr
 
-
-let mkAST (e:Expr) : ASTNode =
-    ASTNode (ASTNode.newId (), e)
-
 // EFunc of arg:Name * body:Expr
 // ["x","y","z"], body ->
 //   --> EFunc ("x", EFunc ("y", EFunc ("z", body)))
@@ -225,7 +221,7 @@ expr:
   | LET RECURSIVE LIDENT funcArgs EQ expr IN expr
   {
     let argNames = List.map fst $4
-    ASTNode (ASTNode.newId (), ELet ($3, unfoldFunction argNames $6, $8))
+    ASTNode (ASTNode.newId (), ELetRec ($3, unfoldFunction argNames $6, $8))
   }
 
   | MATCH expr WITH matchPatterns

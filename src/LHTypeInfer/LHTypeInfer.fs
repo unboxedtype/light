@@ -163,6 +163,10 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) : Subst * Typ * N
         // printfn "%A : s' = %A" exp.Name Map.empty
         let tm' = Map.add node.Id Unit tm
         (Map.empty, Unit, tm')
+    // | EEval e ->
+    //     let s, t, tm' = ti env e tm
+    //     let tm' = Map.add node.Id t tm // does not change type
+    //     (s, t, tm')
     | EVar name ->
         match Map.tryFind name env with
         | None ->
@@ -264,5 +268,17 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) : Subst * Typ * N
 
 let typeInference env (e:ASTNode) : NodeTypeMap =
   let s, t, ty = ti env e (Map [])
-  // printfn "t = %A, s = %A" t s
-  Map.add e.Id (Typ.apply s t) ty
+  // apply all found derived types to the type mapping,
+  // so it becomes full and actual
+  let m = Map.add e.Id (Typ.apply s t) ty
+  let m' =
+      Map.map (fun k v ->
+               match v with
+               // substitute type variable for the actual type
+               | TVar n ->  
+                 match (Map.tryFind n s) with
+                 | Some v' -> v'
+                 | _ -> v
+               | _ -> v
+              ) m
+  m'

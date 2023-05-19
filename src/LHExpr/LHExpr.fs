@@ -11,6 +11,33 @@ let private currentId = ref 0
 
 type Name = string
 
+// Simplified Expression. This variant is more suitable
+// for testing purposes, while ASTNode is for real compilation.
+type SExpr =
+    | SNum of n:int                     // value of type Int
+    | SNull                             // value Null (unit)
+    | SFunc of arg:Name * body:SExpr     // value of type Function<T1,T2>
+    | SVar of name:Name                 // value of the variable
+    | SEval of e:SExpr                   // evaluate saturated function
+    | SAp of e1:SExpr * e2:SExpr
+    | SLet of name:Name * bind:SExpr * body:SExpr
+    | SLetRec of name:Name * bind:SExpr * body:SExpr
+    | SFix of e0:SExpr   // needed to properly derive type of fixpoint (letrec)
+                        // not used during the evaluation
+    | SIf of e0:SExpr * e1:SExpr * e2:SExpr
+    | SAdd of e0:SExpr * e1:SExpr
+    | SSub of e0:SExpr * e1:SExpr
+    | SMul of e0:SExpr * e1:SExpr
+    | SEq of e0:SExpr * e1:SExpr
+    | SGt of e0:SExpr * e1:SExpr
+    | SCase of c:SExpr * cs:(int * (Name list) * SExpr) list
+    | SPack of tag:int * arity:int * args:SExpr list
+    | SSelect of e0:SExpr * e1:SExpr
+    | SRecord of es:SExpr list
+    | SUpdateRec of e0:SExpr * n:int * e1:SExpr
+    | SAssign of e0:SExpr
+    | SAsm of s:string
+
 // AST Expression
 type Expr =
     | ENum of n:int                     // value of type Int
@@ -64,7 +91,44 @@ and ASTNode =
         match this with
         | ASTNode (_, expr) -> expr
         | _ -> failwithf "unsupported AST node type"
+    member this.toSExpr () =
+        match this.Expr with
+        | ENum n -> SNum n
+        | ENull -> SNull
+        | EFunc (arg,body) -> SFunc (arg, body.toSExpr ())
+        | EVar name -> SVar name
+        | EEval e -> SEval (e.toSExpr ())
+        | EAp (e1, e2) -> SAp (e1.toSExpr (), e2.toSExpr ())
+        | ELet (name, bind, body) -> SLet (name, bind.toSExpr(), body.toSExpr())
+        | ELetRec (name, bind, body) -> SLetRec (name, bind.toSExpr(), body.toSExpr())
+        | EIf (e0, e1, e2) -> SIf (e0.toSExpr(), e1.toSExpr(), e2.toSExpr())
+        | EAdd (e0, e1) -> SAdd (e0.toSExpr(), e1.toSExpr())
+        | ESub (e0, e1) -> SSub (e0.toSExpr(), e1.toSExpr())
+        | EMul (e0, e1) -> SMul (e0.toSExpr(), e1.toSExpr())
+        | EGt (e0, e1) -> SGt (e0.toSExpr(), e1.toSExpr())
+        | _ -> failwithf "unsupported expr : %A" this.Expr
+
     static member newId () =
         let id = !currentId
         currentId := id + 1
         id
+
+let mkAST (e:Expr) : ASTNode =
+    ASTNode (ASTNode.newId (), e)
+
+let rec toAST sexp =
+    match sexp with
+    | SFunc (arg, body) -> mkAST (EFunc (arg, toAST body))
+    | SEval e -> mkAST (EEval (toAST e))
+    | SAp (e1, e2) -> mkAST (EAp (toAST e1, toAST e2))
+    | SLet (name, bind, body) -> mkAST (ELet (name, toAST bind, toAST body))
+    | SLetRec (name, bind, body) -> mkAST (ELetRec (name, toAST bind, toAST body))
+    | SFix e0 -> mkAST (EFix (toAST e0))
+    | SIf (e0, e1, e2) -> mkAST (EIf (toAST e0, toAST e1, toAST e2))
+    | SAdd (e0, e1) -> mkAST (EAdd (toAST e0, toAST e1))
+    | SSub (e0, e1) -> mkAST (ESub (toAST e0, toAST e1))
+    | SMul (e0, e1) -> mkAST (EMul (toAST e0, toAST e1))
+    | SGt (e0, e1) -> mkAST (EGt (toAST e0, toAST e1))
+    | SVar n -> mkAST (EVar n)
+    | SNum n -> mkAST (ENum n)
+    | _ -> failwithf "unexpected term: %A" sexp

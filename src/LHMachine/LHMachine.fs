@@ -285,7 +285,10 @@ and mkFiftCell (body: string) : string =
 let rec astInsertEval (ast:ASTNode) (ty:Map<int,LHType>) : ASTNode =
     match ast.Expr with
     | EAp (e1, e2) ->
-        let t = ty.[ast.Id]
+        let t =
+            match (Map.tryFind ast.Id ty) with
+            | Some v -> v
+            | None -> failwithf "failed to find type for %A" ast
         if (t = LHTypes.Int 256 ||
             t = LHTypes.Bool ||
             t = LHTypes.String) then
@@ -307,15 +310,27 @@ let rec astInsertEval (ast:ASTNode) (ty:Map<int,LHType>) : ASTNode =
         ASTNode (ast.Id, ESub (astInsertEval e0 ty, astInsertEval e1 ty))
     | EMul (e0, e1) ->
         ASTNode (ast.Id, EMul (astInsertEval e0 ty, astInsertEval e1 ty))
+    | EGt (e0, e1) ->
+        ASTNode (ast.Id, EGt (astInsertEval e0 ty, astInsertEval e1 ty))
+    | EVar _
+    | ENum _
+    | ENull ->
+        ast
+    | EEval e ->
+        mkAST (EEval (astInsertEval e ty))
     | _ ->
         failwithf "Unsupported ast node = %A" ast
+
+let printDict d =
+    printfn "%A" (Map.toList d)
 
 let compileIntoFift ast : string =
     let ty = LHTypeInfer.typeInference (Map []) ast // get types for all AST nodes
     let ast'' = astInsertEval ast ty // AST with EEval nodes inserted into the right places
+    // printfn "%O" (ast''.toSExpr())
     List.singleton "\"Asm.fif\" include" @
     List.singleton "<{ " @
     List.singleton   "<{ DEPTH DEC ZERO DEC SETCONTVARARGS }> PUSHCONT 1 SETGLOB" @
     List.singleton   (compileToTVM (compile ast'' [])) @
-    List.singleton " }>s 1000000 gasrunvmcode drop drop .dump cr"
+    List.singleton " }>s 1000000 gasrunvmcode drop .dump cr .dump cr"
     |> String.concat "\n"

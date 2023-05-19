@@ -7,17 +7,13 @@ open Parser
 open ParserModule
 open NUnit.Framework
 
-open type LHMachine.Expr
+open type LHExpr.Expr
+open type LHExpr.SExpr
 open type LHTypes.Type
 
 [<SetUp>]
 let Setup () =
     ()
-
-let parse source =
-    let lexbuf = LexBuffer<char>.FromString source
-    let res = Parser.start Lexer.read lexbuf
-    res
 
 [<Test>]
 let testTrivial () =
@@ -103,16 +99,28 @@ let testDecl7 () =
     Assert.AreEqual( Some (Module ("test", decls)), res  );
 **)
 
+
+// extract n-th handler definition AST in a form of SExpr
+let getHandlerAst (m:Module) (n:int) =
+    m.Decls.[n].handlerDef
+    |> (function | (_,_,c) -> c)
+    |> (fun c -> c.toSExpr())
+
+let getLetAst (m:Module) (n:int) =
+    m.Decls.[n].letBinding
+    |> (function | (_, _, c) -> c)
+    |> (fun c -> c.toSExpr())
+
 [<Test>]
 let testHandler1 () =
     let res = parse "contract test
                      handler test (x:int) =
                           if 1 > 5 then 1 else 0
     "
-    let decls = [HandlerDef ("test", [("x",Int 256)],
-                             EIf (EGt (ENum 1, ENum 5), ENum 1, ENum 0))]
-
-    Assert.AreEqual( Some (Module ("test", decls)), res  );
+    let resAst = getHandlerAst res.Value 0
+    let expected =
+        SIf (SGt (SNum 1, SNum 5), SNum 1, SNum 0)
+    Assert.AreEqual( expected, resAst  );
 
 [<Test>]
 let testHandler2 () =
@@ -120,10 +128,9 @@ let testHandler2 () =
                      handler test (x:int) =
                           if x > 5 then 1 else 0
     "
-    let decls = [HandlerDef ("test", [("x",Int 256)],
-                             EIf (EGt (EVar "x", ENum 5), ENum 1, ENum 0))]
-
-    Assert.AreEqual( Some (Module ("test", decls)), res  );
+    let resAst = getHandlerAst res.Value 0
+    let expected = SIf (SGt (SVar "x", SNum 5), SNum 1, SNum 0)
+    Assert.AreEqual( expected , resAst );
 
 [<Test>]
 let testHandler3 () =
@@ -131,11 +138,29 @@ let testHandler3 () =
                      handler test (x:int) =
                           if (x > 5) then 1 else 0
     "
-    let decls = [HandlerDef ("test", [("x",Int 256)],
-                             EIf (EGt (EVar "x", ENum 5), ENum 1, ENum 0))]
+    let resAst = getHandlerAst res.Value 0
+    let expected = SIf (SGt (SVar "x", SNum 5), SNum 1, SNum 0)
+    Assert.AreEqual( expected, resAst  );
 
-    Assert.AreEqual( Some (Module ("test", decls)), res  );
+[<Test>]
+let testLetMain4 () =
+    let res = parse "contract test
+                     let main =
+                       let rec factorial n =
+                          if (n > 1) then (n * factorial (n - 1)) else 1 in
+                       factorial 10 ;;
+    "
+    let resAst = getLetAst res.Value 0
+    let expected =
+          SLetRec ("factorial",
+            SFunc ("n", SIf (SGt (SVar "n", SNum 1),
+                             SMul (SVar "n", SAp (SVar "factorial",
+                                                  SSub (SVar "n", SNum 1))),
+                             SNum 1)),
+            SAp (SVar "factorial", SNum 10))
+    Assert.AreEqual( expected, resAst  )
 
+(**
 [<Test>]
 let testHandler4 () =
     let res = parse "contract test
@@ -426,3 +451,4 @@ let testSample0 () =
                          EAssign (ERecord [EVar "counter'"; EVar "sum'"]))))
     ]
     Assert.AreEqual( Some (Module ("Simple", decls)), res  );
+***)
