@@ -36,6 +36,58 @@ let getLetAst (m:Module) (n:int) =
     m.Decls.[n].letBinding
     |> (function | (_, _, c) -> c)
 
+[<Test>]
+let testVal () =
+    // let main = 5 in
+    // main
+    let expr = SLet ("main", SNum 5, SVar "main")
+    execAndCheck (toAST expr) "5"
+
+[<Test>]
+let testAdd () =
+    // let main = 5 in
+    // main
+    let expr = SLet ("main", SAdd (SNum 5, SNum 1000), SVar "main")
+    execAndCheck (toAST expr) "1005"
+
+[<Test>]
+let testLet1 () =
+    // let main = \n -> n + 1000 in
+    // main 2000
+    let expr = SLet ("main", SFunc ("n", SAdd (SVar "n", SNum 1000)), SAp (SVar "main", SNum 2000))
+    execAndCheck (toAST expr) "3000"
+
+[<Test>]
+let testLet2 () =
+    // let main = \n ->
+      // let add = \x -> x + 1000
+      // in add n
+    // in main 1000
+    let expr = SLet ("main",
+                 SFunc ("n",
+                   SLet ("add",
+                     SFunc ("x", SAdd (SVar "x", SNum 1000)),
+                   SAp (SVar "add", SVar "n"))),
+                 SAp (SVar "main", SNum 1000))
+    execAndCheck (toAST expr) "2000"
+
+[<Test>]
+let testFactorial () =
+    // let main =
+    //   let rec fact = fun n -> if n > 1 then (n * fact (n-1)) else 1 in
+    //     fact 5 
+    // main
+    let expr = SLet ("main",
+                SLetRec ("fact",
+                 SFunc ("n",
+                  SIf (SGt (SVar "n", SNum 1),
+                    SMul (SVar "n", SAp (SVar "fact", SSub (SVar "n", SNum 1))),
+                    SNum 1)),
+                  SAp (SVar "fact", SNum 5)),
+                SVar "main")
+    execAndCheck (toAST expr) "120"
+
+(**
 (**
 [<Test>]
 let testFactorial () =
@@ -49,27 +101,7 @@ let testFactorial () =
     printfn "%A" (compileIntoFift resAst)
    **)
 
-[<Test>]
-let testVal () =
-    // let main = 5 in
-    // main
-    let expr = SLet ("main", SNum 5, SVar "main")
-    execAndCheck (toAST expr) "5"
 
-[<Test>]
-let testFactorial () =
-    // let rec fact = fun n -> if n > 1 then (n * fact (n-1)) else 1 in
-    // let main = fact 5 in
-    // main
-    let expr = SLetRec ("fact",
-                SFunc ("n",
-                 SIf (SGt (SVar "n", SNum 1),
-                  SMul (SVar "n", SAp (SVar "fact", SSub (SVar "n", SNum 1))),
-                  SNum 1)),
-                SLet ("main", SAp (SVar "fact", SNum 5), SVar "main"))
-    execAndCheck (toAST expr) "120"
-
-(**
 [<Test>]
 let testFunc2Args () =
     // let sum n m = if (n > 0) then (n + sum (n - 1) m) else m
