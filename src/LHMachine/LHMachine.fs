@@ -31,6 +31,7 @@ type Instruction =
     | SetGlob of name: Name
     | Integer of v: int
     | Function of c:LHCode
+    | Fixpoint
     | Apply
     | Push of n: int
     | Pop of n: int
@@ -101,19 +102,23 @@ let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:LHTypes.ProgramType
         (compileExprs es env) @ [Record n]
     | EFunc (argName, body) ->
         let env' = (0, argName) :: (argOffset 1 env)
+        // If  it is a function of a single argument, then
+        // pack it directly into a lamda abstraction; otherwise,
+        // recursively descend one level down with one env index shifted.
         match body.Expr with
-        | EFunc (_, _) ->
+        | EFunc (_, body') ->
             compileWithTypes body env' ty
         | _ ->
             [Function (compileWithTypes body env' ty)]
     | ENull ->
         [Null]
-    | EEval e ->
-        (compileWithTypes e env ty) @ [Execute]
     | EAp (e1, e2) ->
         (compileWithTypes e2 env ty) @
         (compileWithTypes e1 (argOffset 1 env) ty) @
         [Apply]
+    | EFix f ->
+        (compileWithTypes f env ty) @
+        [Fixpoint]
     | EIf (e0, t, f) ->
         (compileWithTypes e0 env ty) @ [IfElse (compileWithTypes t env ty, compileWithTypes f env ty)]
     | EAdd (e0, e1) ->
@@ -136,7 +141,12 @@ let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:LHTypes.ProgramType
     | ELet (name, def, body) ->
         compileLet [(name,def)] body env ty
     | ELetRec (name, def, body) ->
-        compileLetRec [(name,def)] body env ty
+        // compileLetRec [(name,def)] body env ty
+        // let rec fact = \n -> n * fact (n-1)
+        //  ---> let fact = fixpoint (\fact . \n . n * fact (n - 1))
+        // fact 5 --> fixpoint (fact 5)
+        let expr = mkAST (ELet (name, mkAST (EFix (mkAST (EFunc (name, def)))), body))
+        compileWithTypes expr env ty
     | ESelect (e0, e1) ->
         match (e0.Expr, e1.Expr) with
         | (EVar s, EVar x) ->
@@ -221,7 +231,7 @@ let rec instrToTVM (i:Instruction) : string =
     match i with
     | Null -> "NULL"
     | Alloc n -> String.concat " " [for i in [1..n] -> "NULL"]
-    | Apply ->  "1 GETGLOB 2 1 CALLXARGS" // inject one argument and receive a new function in return
+    | Apply ->  "1 1 CALLXARGS"
     | Update i -> "s0 s" + (string i) + " XCHG DROP"
     | GetGlob n -> n + " GETGLOB"
     | SetGlob n -> n + " SETGLOB"
@@ -230,7 +240,8 @@ let rec instrToTVM (i:Instruction) : string =
     | Pop n -> "s" + (string n) + " POP"
     | Slide n -> String.concat " " [for i in [1..n] -> "NIP"]
     | Function b -> "<{ " + (compileToTVM b) + " }> PUSHCONT"
-    | Execute -> " 0 1 CALLXARGS" // execute a saturated function
+    | Fixpoint -> " 2 GETGLOB 1 1 CALLXARGS"
+    // | Execute -> " 0 1 CALLXARGS" // execute a saturated function
     | Add -> "ADD"
     | Sub -> "SUB"
     | Mul -> "MUL"
@@ -324,13 +335,37 @@ let rec astInsertEval (ast:ASTNode) (ty:Map<int,LHType>) : ASTNode =
 let printDict d =
     printfn "%A" (Map.toList d)
 
+let fixpointImpl = "
+ <{
+   <{
+     s2 PUSH
+     s2 PUSH
+     DUP
+     2 -1 SETCONTARGS
+     s0 s2 XCHG
+     DROP
+     s1 s2 XCHG
+     3 2 BLKPUSH
+     SWAP
+     2 1 CALLXARGS
+     3 ROLLREV
+     3 BLKDROP
+   }> PUSHCONT
+   DUP
+   2 -1 SETCONTARGS
+ }> PUSHCONT
+ 2 SETGLOB"
+
 let compileIntoFift ast : string =
     let ty = LHTypeInfer.typeInference (Map []) ast // get types for all AST nodes
-    let ast'' = astInsertEval ast ty // AST with EEval nodes inserted into the right places
+    let ast'' = ast // stInsertEval ast ty // AST with EEval nodes inserted into the right places
     // printfn "%O" (ast''.toSExpr())
+    let ir = compile ast'' []
+    printfn "IR = %A" ir ;
     List.singleton "\"Asm.fif\" include" @
     List.singleton "<{ " @
     List.singleton   "<{ DEPTH DEC ZERO DEC SETCONTVARARGS }> PUSHCONT 1 SETGLOB" @
-    List.singleton   (compileToTVM (compile ast'' [])) @
+    List.singleton   fixpointImpl @
+    List.singleton   (compileToTVM ir) @
     List.singleton " }>s 1000000 gasrunvmcode drop .dump cr .dump cr"
     |> String.concat "\n"
