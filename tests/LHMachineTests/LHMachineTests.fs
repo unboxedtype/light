@@ -16,9 +16,9 @@ let parse source =
     let res = Parser.start Lexer.read lexbuf
     res
 
-let execAndCheckPrint expr expected ifPrint =
+let execAndCheckPrint (expr:ASTNode) expected ifPrint =
     if ifPrint then
-        printfn "%A" expr
+        printfn "%A" (expr.toSExpr ())
     let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".fif"
     TVM.dumpFiftScript filename (compileIntoFift expr)
     let res = FiftExecutor.runFiftScript filename
@@ -92,6 +92,17 @@ let testFactorialParse () =
     "
     let resAst = getLetAst res.Value 0
     execAndCheck resAst "120"
+
+[<Test>]
+let testFunc2Args () =
+    // let rec sum n m = if (n > 0) then (n + sum (n - 1) m) else m
+    let res = parse "contract test
+                     let main =
+                       let rec sum n m =
+                           if (n > 0) then (n + ((sum (n - 1)) m)) else m
+                       in ( (sum 5) 10 ) ;;"
+    let resAst = getLetAst res.Value 0
+    execAndCheckPrint resAst "25" true
 
 (**
 [<Test>]
