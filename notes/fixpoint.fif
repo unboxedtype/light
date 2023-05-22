@@ -42,8 +42,7 @@
      3 BLKDROP
    }> PUSHCONT      // f g
    DUP              // f g g
-   1 GETGLOB        // f g g bind
-   3 1 CALLXARGS    // g' (g is put into g stack)
+   2 -1 SETCONTARGS  // g' (f g is put on the stack of g')
  }> PUSHCONT
  2 SETGLOB    // global[2] = FIX operator
 
