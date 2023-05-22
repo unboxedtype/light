@@ -38,16 +38,11 @@
      s1 s2 XCHG     // g f x               
      DUP            // g f x x
      s3 PUSH        // g f x x g
-     // Notice:
-     // If we evaluate (g x) directly here, we run into
-     // an infinite loop. What we really need, is a bind operator here.
-     // This allows us to delay the execution of (g x).
-     1 GETGLOB      // g f x x g bind
-     2 1 CALLXARGS  // g f x [g x]
-     s2 PUSH        // g f x [g x] f
-     2 1 CALLXARGS  // (f [g x] x)
+     s3 PUSH        // g f x x g f
+     2 1 CALLXARGS  // g f x (f g x)
      NIP
      NIP            // (f (g x) x)
+     NIP
    }> PUSHCONT      // f g
    DUP              // f g g
    1 GETGLOB        // f g g bind
@@ -57,19 +52,34 @@
  
  // let rec sub n = if n > 1 then sub (n-1) else 1
  // let sub = fix (\sub -> \n -> if n > 1 then (sub (n-1)) else 1)
- 10 INT
+ 5 INT
 
- // let inc = \f . \n = f (n + 1)
+ // let rec inc n = inc (n + 1) -->
+ // let inc = \inc . \n . inc (n + 1) 
  <{
     "inc" PRINTSTR 
     DUMPSTK         // n f
     SWAP            // f n
-    INC             // f (n+1)
-    SWAP
-    EXECUTE         // !(f(n+1))
+    s0 PUSH         
+    1 INT
+    GREATER         // f n (n>1?)
+    <{ s0 PUSH      // f n n 
+       s1 PUSH      
+       1 INT
+       SUB          // f n n (n-1)
+       s3 PUSH      // f n n (n-1) f 
+       1 1 CALLXARGS  // f n n (f (n-1))
+       MUL          // f n (n * (f (n - 1)))
+    }> PUSHCONT
+    <{ 1 INT }> PUSHCONT
+    IFELSE
+    NIP
+    NIP
   }> PUSHCONT
 
  // let main = (fix inc) 10
+ // Замена LetRec на Fix (Let ...) происходит в месте вызова функции.
+
  2 GETGLOB     // 10 f fix
  1 1 CALLXARGS // 10 [fix f]
  1 1 CALLXARGS
