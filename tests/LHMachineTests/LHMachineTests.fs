@@ -72,19 +72,47 @@ let testLet2 () =
     execAndCheck (toAST expr) "2000"
 
 [<Test>]
+let testRecur () =
+    // let main =
+    //   let f = \n -> if n > 1 then n * (f (n-1)) else 1
+    //   in fix (f 5)
+    // ---> f ( ... (f (f 5)))
+
+    // Fixpoint operator is a continuation that takes another continuation
+    // as an argument, and executes it.
+
+    // fix f =
+      // <{
+      //  PUSH s0 // f f
+      //  EXECUTE  // f f()
+      //  SWAP     // f() f
+      //  EXECUTE  // f(f())
+      // }> PUSHCONT  // fix
+      // let inc n = print n; n + 1
+      // <{
+      //   DUMPSTK
+      //   INC
+      // }> PUSHCONT  // g
+      // SWAP // g fix
+      // 1 1 CALLXARGS
+    
+// <{ <{ 10 INT }> PUSHCONT <{ s0 PUSH EXECUTE SWAP EXECUTE }> PUSHCONT DUP DUMPSTK 1 1 CALLXARGS  }>s runvmcode
+
+[<Test>]
 let testFactorial () =
     // let main =
     //   let rec fact = fun n -> if n > 1 then (n * fact (n-1)) else 1 in
     //     fact 5 
-    // main
+    // let main =
+    //    let rec fact = \n -> if n > 1 then n * (fact (n - 1)) else 1
+    //    in fact 5
+    //    in main
     let expr = SLet ("main",
                 SLetRec ("fact",
-                 SFunc ("n",
-                  SIf (SGt (SVar "n", SNum 1),
-                    SMul (SVar "n", SAp (SVar "fact", SSub (SVar "n", SNum 1))),
-                    SNum 1)),
-                  SAp (SVar "fact", SNum 5)),
-                SVar "main")
+                  SFunc ("n",
+                    SIf (SGt (SVar "n", SNum 1),
+                         SMul (SVar "n", SAp (SVar "fact", SSub (SVar "n", SNum 1))),
+                         SNum 1)), SAp (SVar "fact", SNum 5)), SVar "main")
     execAndCheck (toAST expr) "120"
 
 (**

@@ -1,0 +1,72 @@
+"Asm.fif" include
+
+<{
+
+ // Bind operator. 
+ // (\x -> t) y ->  [(\x -> t) y]   term is not evaluated at this point.
+ // Technically, the operator injects arguments into continuation's stack.
+ // Returns the newly built continuation.
+ <{
+    DEPTH
+    DEC
+    ZERO
+    DEC
+    SETCONTVARARGS
+ }> PUSHCONT
+
+ 1 SETGLOB   // global[1] = bind operator
+
+ // Fixpoint operator.
+ // let fix f =
+ //   let rec g x = f (g x) x
+ //   in g
+ <{
+   DUMPSTK          // f
+   <{
+     DUMPSTK
+                    // g stack:
+                    // f g x
+     s1 s2 XCHG     // g f x               
+     DUP            // g f x x
+     s3 PUSH        // g f x x g
+     1 GETGLOB      // g f x x g bind
+     2 1 CALLXARGS  // g f x [g x]
+     // 1 1 CALLXARGS  // g f (g x)
+     s2 PUSH        // g f x (g x) f
+     1 GETGLOB      // g f x (g x) f bind
+     3 1 CALLXARGS  // g f [f (g x) x]
+     0 1 CALLXARGS  // g f !(f (g x) x)
+     NIP
+     NIP            // !(f (g x) x)
+   }> PUSHCONT      // f g
+   DUP
+   1 GETGLOB        // f g g bind
+   3 1 CALLXARGS    // g' (g is put into g stack)
+ }> PUSHCONT
+ 2 SETGLOB    // global[2] = FIX operator
+ 
+ // let rec sub n = if n > 1 then sub (n-1) else 1
+ // let sub = fix (\sub -> \n -> if n > 1 then (sub (n-1)) else 1)
+ 10 INT
+
+ // let inc = \f . \n = f (n + 1)
+ <{
+    "inc" PRINTSTR 
+    DUMPSTK         // n f
+    SWAP
+    DUP   
+    INC             // f n (n+1)
+    s2 PUSH         // f n (n+1) f
+    1 1 CALLXARGS   // f n (f (n+1))
+    NIP
+    NIP   // (f (n+1))
+  }> PUSHCONT
+ 
+ 2 GETGLOB     // 10 f fix
+ // 1 1 CALLXARGS // 10 f fix 
+ // 1 GETGLOB     // 10 f fix bind
+ 1 1 CALLXARGS // 10 [fix f]
+ // 1 1 CALLXARGS
+ DUMPSTK
+ 1 1 CALLXARGS
+}>s runvmcode .s 

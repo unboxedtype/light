@@ -134,7 +134,7 @@ let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:LHTypes.ProgramType
     | ECase (e, alts) ->
         (compileWithTypes e env ty) @ [ Casejump (compileAlts alts env ty) ]
     | ELet (name, def, body) ->
-        compileLetRec [(name,def)] body env ty
+        compileLet [(name,def)] body env ty
     | ELetRec (name, def, body) ->
         compileLetRec [(name,def)] body env ty
     | ESelect (e0, e1) ->
