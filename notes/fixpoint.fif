@@ -38,9 +38,8 @@
      SWAP           // g f x g x
      s3 PUSH        // g f x g x f
      2 1 CALLXARGS  // g f x (f g x)
-     NIP
-     NIP            // (f g x)
-     NIP
+     3 ROLLREV
+     3 BLKDROP
    }> PUSHCONT      // f g
    DUP              // f g g
    1 GETGLOB        // f g g bind
