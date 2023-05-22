@@ -23,9 +23,7 @@
  // [g x] is a delayed execution of g(x)
  // It will be used inside f.
  <{
-   DUMPSTK          // f
    <{
-     DUMPSTK
                     // g stack:
                     // f g' x     // g' does not contain f on stack
      s2 PUSH        // f g' x f   // so we need to setup the g stack properly
@@ -38,10 +36,11 @@
      s1 s2 XCHG     // g f x               
      DUP            // g f x x
      s3 PUSH        // g f x x g
-     s3 PUSH        // g f x x g f
-     2 1 CALLXARGS  // g f x (f g x)
+     SWAP           //  <<--- test g f x g x
+     s3 PUSH        // g f x g x f
+     2 1 CALLXARGS  // g f x (f x g)
      NIP
-     NIP            // (f (g x) x)
+     NIP            // (f g x)
      NIP
    }> PUSHCONT      // f g
    DUP              // f g g
@@ -52,14 +51,13 @@
  
  // let rec sub n = if n > 1 then sub (n-1) else 1
  // let sub = fix (\sub -> \n -> if n > 1 then (sub (n-1)) else 1)
- 5 INT
+ 10 INT
 
  // let rec inc n = inc (n + 1) -->
  // let inc = \inc . \n . inc (n + 1) 
  <{
-    "inc" PRINTSTR 
-    DUMPSTK         // n f
-    SWAP            // f n
+    // "inc" PRINTSTR
+    DUMPSTK
     s0 PUSH         
     1 INT
     GREATER         // f n (n>1?)
