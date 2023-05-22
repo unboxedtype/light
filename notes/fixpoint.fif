@@ -2,20 +2,6 @@
 
 <{
 
- // Bind operator.
- // (\x -> t) y ->  [(\x -> t) y]   term is not evaluated at this point.
- // Technically, the operator injects arguments into continuation's stack.
- // Returns the newly built continuation.
- <{
-    DEPTH
-    DEC
-    ZERO
-    DEC
-    SETCONTVARARGS
- }> PUSHCONT
-
- 1 SETGLOB   // global[1] = bind operator
-
  // Fixpoint operator.
  // let fix f =
  //   let rec g x = f [g x] x
