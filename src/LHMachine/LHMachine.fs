@@ -119,6 +119,9 @@ let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:LHTypes.ProgramType
     | EFix f ->
         (compileWithTypes f env ty) @
         [Fixpoint]
+    | EEval f ->
+        (compileWithTypes f env ty) @
+        [Execute]
     | EIf (e0, t, f) ->
         (compileWithTypes e0 env ty) @ [IfElse (compileWithTypes t env ty, compileWithTypes f env ty)]
     | EAdd (e0, e1) ->
@@ -231,7 +234,7 @@ let rec instrToTVM (i:Instruction) : string =
     match i with
     | Null -> "NULL"
     | Alloc n -> String.concat " " [for i in [1..n] -> "NULL"]
-    | Apply ->  "1 1 CALLXARGS"
+    | Apply ->  "1 -1 SETCONTARGS"  // inject a single value into cont stack
     | Update i -> "s0 s" + (string i) + " XCHG DROP"
     | GetGlob n -> n + " GETGLOB"
     | SetGlob n -> n + " SETGLOB"
@@ -241,7 +244,7 @@ let rec instrToTVM (i:Instruction) : string =
     | Slide n -> String.concat " " [for i in [1..n] -> "NIP"]
     | Function b -> "<{ " + (compileToTVM b) + " }> PUSHCONT"
     | Fixpoint -> " 2 GETGLOB 1 1 CALLXARGS"
-    // | Execute -> " 0 1 CALLXARGS" // execute a saturated function
+    | Execute -> " 0 1 CALLXARGS" // execute a saturated function
     | Add -> "ADD"
     | Sub -> "SUB"
     | Mul -> "MUL"
@@ -358,7 +361,7 @@ let fixpointImpl = "
 
 let compileIntoFift ast : string =
     let ty = LHTypeInfer.typeInference (Map []) ast // get types for all AST nodes
-    let ast'' = ast // stInsertEval ast ty // AST with EEval nodes inserted into the right places
+    let ast'' = astInsertEval ast ty // AST with EEval nodes inserted into the right places
     // printfn "%O" (ast''.toSExpr())
     let ir = compile ast'' []
     printfn "IR = %A" ir ;

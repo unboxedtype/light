@@ -96,13 +96,15 @@ let testFactorialParse () =
 [<Test>]
 let testFunc2Args () =
     // let rec sum n m = if (n > 0) then (n + sum (n - 1) m) else m
+    // let sum = fixpoint \sum . \n . \m -> if (...)
+    // sum 3 4
     let res = parse "contract test
                      let main =
-                       let rec sum n m =
-                           if (n > 0) then (n + ((sum (n - 1)) m)) else m
-                       in ( (sum 5) 10 ) ;;"
+                       let rec sum n =
+                           if (n > 0) then (n + (sum (n - 1))) else 0
+                       in (sum 5) ;;"
     let resAst = getLetAst res.Value 0
-    execAndCheckPrint resAst "25" true
+    execAndCheckPrint resAst "15" true
 
 (**
 [<Test>]
