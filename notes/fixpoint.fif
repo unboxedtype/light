@@ -19,10 +19,6 @@
      s0 s2 XCHG     // f g'' x g'
      DROP           // f g'' x   , from now on, we assume g=g''
      s1 s2 XCHG     // g f x
-     // DUP            // g f x x
-     // s3 PUSH        // g f x x g
-     // SWAP           // g f x g x
-     // s3 PUSH        // g f x g x f
      3 2 BLKPUSH    // g f x g f x
      SWAP           // g f x g x f
      2 1 CALLXARGS  // g f x (f g x)
