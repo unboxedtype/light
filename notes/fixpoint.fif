@@ -18,28 +18,38 @@
 
  // Fixpoint operator.
  // let fix f =
- //   let rec g x = f (g x) x
+ //   let rec g x = f [g x] x      
  //   in g
+ // [g x] is a delayed execution of g(x)
+ // It will be used inside f.
  <{
    DUMPSTK          // f
    <{
      DUMPSTK
                     // g stack:
-                    // f g x
+                    // f g' x     // g' does not contain f on stack
+     s2 PUSH        // f g' x f   // so we need to setup the g stack properly
+     s2 PUSH        // f g' x f g'
+     DUP            // f g' x f g' g'
+     1 GETGLOB      // f g' x f g' g' bind
+     3 1 CALLXARGS  // f g' x g''
+     s0 s2 XCHG     // f g'' x g'
+     DROP           // f g'' x   , from now on, we assume g=g''
      s1 s2 XCHG     // g f x               
      DUP            // g f x x
      s3 PUSH        // g f x x g
+     // Notice:
+     // If we evaluate (g x) directly here, we run into
+     // an infinite loop. What we really need, is a bind operator here.
+     // This allows us to delay the execution of (g x).
      1 GETGLOB      // g f x x g bind
      2 1 CALLXARGS  // g f x [g x]
-     // 1 1 CALLXARGS  // g f (g x)
-     s2 PUSH        // g f x (g x) f
-     1 GETGLOB      // g f x (g x) f bind
-     3 1 CALLXARGS  // g f [f (g x) x]
-     0 1 CALLXARGS  // g f !(f (g x) x)
+     s2 PUSH        // g f x [g x] f
+     2 1 CALLXARGS  // (f [g x] x)
      NIP
-     NIP            // !(f (g x) x)
+     NIP            // (f (g x) x)
    }> PUSHCONT      // f g
-   DUP
+   DUP              // f g g
    1 GETGLOB        // f g g bind
    3 1 CALLXARGS    // g' (g is put into g stack)
  }> PUSHCONT
@@ -53,20 +63,14 @@
  <{
     "inc" PRINTSTR 
     DUMPSTK         // n f
+    SWAP            // f n
+    INC             // f (n+1)
     SWAP
-    DUP   
-    INC             // f n (n+1)
-    s2 PUSH         // f n (n+1) f
-    1 1 CALLXARGS   // f n (f (n+1))
-    NIP
-    NIP   // (f (n+1))
+    EXECUTE         // !(f(n+1))
   }> PUSHCONT
- 
+
+ // let main = (fix inc) 10
  2 GETGLOB     // 10 f fix
- // 1 1 CALLXARGS // 10 f fix 
- // 1 GETGLOB     // 10 f fix bind
  1 1 CALLXARGS // 10 [fix f]
- // 1 1 CALLXARGS
- DUMPSTK
  1 1 CALLXARGS
 }>s runvmcode .s 
