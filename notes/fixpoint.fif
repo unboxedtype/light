@@ -29,8 +29,7 @@
      s2 PUSH        // f g' x f   // so we need to setup the g stack properly
      s2 PUSH        // f g' x f g'
      DUP            // f g' x f g' g'
-     1 GETGLOB      // f g' x f g' g' bind
-     3 1 CALLXARGS  // f g' x g''
+     2 -1 SETCONTARGS
      s0 s2 XCHG     // f g'' x g'
      DROP           // f g'' x   , from now on, we assume g=g''
      s1 s2 XCHG     // g f x               
