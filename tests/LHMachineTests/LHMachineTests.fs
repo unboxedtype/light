@@ -63,38 +63,37 @@ let testLet2 () =
       // let add = \x -> x + 1000
       // in add n
     // in main 1000
-    let expr = SLet ("main", SNum 1000, SVar "main")
+    let expr = SLet ("main",
+                SFunc ("n",
+                 SLet ("add",
+                  SFunc ("x",
+                   SAdd (SVar "x", SNum 1000)), SAp (SVar "add", SVar "n"))),
+                     SAp (SVar "main", SNum 1000))
     execAndCheck (toAST expr) "2000"
 
 [<Test>]
 let testFactorial () =
-    // let main =
-    //    let rec fact = \n -> if n > 1 then n * (fact (n - 1)) else 1
-    //    in fact 5
-    //    in main
-    let expr = // SLet ("main",
-                SLetRec ("fact",
+    // let rec fact = \n -> if n > 1 then n * (fact (n - 1)) else 1
+    // in fact 5
+    let expr = SLetRec ("fact",
                   SFunc ("n",
                     SIf (SGt (SVar "n", SNum 1),
                          SMul (SVar "n", SAp (SVar "fact", SSub (SVar "n", SNum 1))),
-                         SNum 1)), SAp (SVar "fact", SNum 5)) //, SVar "main")
+                         SNum 1)), SAp (SVar "fact", SNum 5))
     execAndCheck (toAST expr) "120"
 
-(**
-(**
 [<Test>]
-let testFactorial () =
+let testFactorialParse () =
     let res = parse "contract test
-                     let main x =
+                     let main =
                        let rec factorial n =
                           if (n > 1) then (n * factorial (n - 1)) else 1 in
-                       factorial 10 ;;
+                       factorial 5 ;;
     "
     let resAst = getLetAst res.Value 0
-    printfn "%A" (compileIntoFift resAst)
-   **)
+    execAndCheck resAst "120"
 
-
+(**
 [<Test>]
 let testFunc2Args () =
     // let sum n m = if (n > 0) then (n + sum (n - 1) m) else m

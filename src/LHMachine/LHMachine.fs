@@ -106,7 +106,7 @@ let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:LHTypes.ProgramType
         // pack it directly into a lamda abstraction; otherwise,
         // recursively descend one level down with one env index shifted.
         match body.Expr with
-        | EFunc (_, body') ->
+        | EFunc (_, _) ->
             compileWithTypes body env' ty
         | _ ->
             [Function (compileWithTypes body env' ty)]
