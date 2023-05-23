@@ -131,4 +131,5 @@ let rec toAST sexp =
     | SGt (e0, e1) -> mkAST (EGt (toAST e0, toAST e1))
     | SVar n -> mkAST (EVar n)
     | SNum n -> mkAST (ENum n)
+    | SNull -> mkAST ENull
     | _ -> failwithf "unexpected term: %A" sexp

@@ -20,7 +20,7 @@ let execAndCheckPrint (expr:ASTNode) expected ifPrint =
     if ifPrint then
         printfn "%A" (expr.toSExpr ())
     let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".fif"
-    TVM.dumpFiftScript filename (compileIntoFift expr)
+    TVM.dumpFiftScript filename (compileIntoFiftDebug expr ifPrint)
     let res = FiftExecutor.runFiftScript filename
     Assert.AreEqual (expected, res)
 
@@ -117,6 +117,16 @@ let testGlobals () =
                        in ((sum nArg) mArg) ;;"
     let resAst = getLetAst res.Value 0
     execAndCheck resAst "75"
+
+[<Test>]
+let testCurry1 () =
+    let res = parse "contract test
+                     let main =
+                       let apply func x = (func x) in
+                       let inc x = x + 1 in
+                       ((apply inc) 1) ;;"
+    let resAst = getLetAst res.Value 0
+    execAndCheckPrint resAst "2" true
 
 (**
 [<Test>]

@@ -363,15 +363,21 @@ let fixpointImpl = "
  }> PUSHCONT
  2 SETGLOB"
 
-let compileIntoFift ast : string =
+let compileIntoFiftDebug ast debug : string =
     let ty = LHTypeInfer.typeInference (Map []) ast // get types for all AST nodes
     let ast'' = astInsertEval ast ty // AST with EEval nodes inserted into the right places
-    // printfn "%O" (ast''.toSExpr())
     let ir = compile ast'' []
-    // printfn "IR = %A" ir ;
+    if debug then
+        printfn "FullAST = %O" ast ;
+        printfn "AST = %O" (ast''.toSExpr()) ;
+        printfn "Types = %A" (Map.toList ty) ;
+        printfn "IR = %A" ir
     List.singleton "\"Asm.fif\" include" @
     List.singleton "<{ " @
     List.singleton   fixpointImpl @
     List.singleton   (compileToTVM ir) @
     List.singleton " }>s 1000000 gasrunvmcode drop .dump cr .dump cr"
     |> String.concat "\n"
+
+let compileIntoFift ast =
+    compileIntoFiftDebug ast false
