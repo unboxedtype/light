@@ -187,14 +187,15 @@ let testCurryInc () =
   // let main =
   //  let apply func x = (func x) in
   //  let inc x = x + 1 in
-  //     ((apply inc) 1) ;;"
+  //     (apply inc) ;;"
   let sexpr =
       SLet ("apply",
         SFunc ("func",
           SFunc ("x", SAp (SVar "func", SVar "x"))),
         SLet ("inc",
           SFunc ("x", SAdd (SVar "x", SNum 1)),
-            SAp (SAp (SVar "apply", SVar "inc"), SNum 1)))
+            SAp (SVar "apply", SVar "inc")))
   let env = Map []
   let ast = (toAST sexpr)
-  Assert.AreEqual(Int 256, fst (LHTypeInfer.typeInference env ast))
+  Assert.AreEqual(Function (Int 256, Int 256),
+                  fst (LHTypeInfer.typeInference env ast))

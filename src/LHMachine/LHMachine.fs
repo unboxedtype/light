@@ -364,13 +364,13 @@ let fixpointImpl = "
  2 SETGLOB"
 
 let compileIntoFiftDebug ast debug : string =
-    let ty = LHTypeInfer.typeInference (Map []) ast // get types for all AST nodes
-    let ast'' = astInsertEval ast ty // AST with EEval nodes inserted into the right places
+    let (ty, nodeTypeMap) = LHTypeInfer.typeInference (Map []) ast // get types for all AST nodes
+    let ast'' = astInsertEval ast nodeTypeMap // AST with EEval nodes inserted into the right places
     let ir = compile ast'' []
     if debug then
         printfn "FullAST = %O" ast ;
         printfn "AST = %O" (ast''.toSExpr()) ;
-        printfn "Types = %A" (Map.toList ty) ;
+        printfn "Types = %A" (Map.toList nodeTypeMap) ;
         printfn "IR = %A" ir
     List.singleton "\"Asm.fif\" include" @
     List.singleton "<{ " @
