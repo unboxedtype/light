@@ -341,6 +341,9 @@ let printDict d =
 let fixpointImpl = "
  <{
    <{
+     DEPTH
+     -2 ADDCONST
+     TUPLEVAR
      s2 PUSH
      s2 PUSH
      DUP
@@ -348,11 +351,12 @@ let fixpointImpl = "
      s0 s2 XCHG
      DROP
      s1 s2 XCHG
-     3 2 BLKPUSH
-     SWAP
-     2 1 CALLXARGS
-     3 ROLLREV
-     3 BLKDROP
+     15 EXPLODE
+     ROLLX
+     DEPTH
+     DEC
+     TRUE
+     CALLXVARARGS
    }> PUSHCONT
    DUP
    2 -1 SETCONTARGS
@@ -364,10 +368,9 @@ let compileIntoFift ast : string =
     let ast'' = astInsertEval ast ty // AST with EEval nodes inserted into the right places
     // printfn "%O" (ast''.toSExpr())
     let ir = compile ast'' []
-    printfn "IR = %A" ir ;
+    // printfn "IR = %A" ir ;
     List.singleton "\"Asm.fif\" include" @
     List.singleton "<{ " @
-    List.singleton   "<{ DEPTH DEC ZERO DEC SETCONTVARARGS }> PUSHCONT 1 SETGLOB" @
     List.singleton   fixpointImpl @
     List.singleton   (compileToTVM ir) @
     List.singleton " }>s 1000000 gasrunvmcode drop .dump cr .dump cr"

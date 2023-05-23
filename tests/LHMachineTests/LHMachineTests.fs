@@ -97,33 +97,28 @@ let testFactorialParse () =
 let testFunc2Args () =
     // let rec sum n m = if (n > 0) then (n + sum (n - 1) m) else m
     // let sum = fixpoint \sum . \n . \m -> if (...)
-    // sum 3 4
+    // sum 10 20
     let res = parse "contract test
                      let main =
-                       let rec sum n =
-                           if (n > 0) then (n + (sum (n - 1))) else 0
-                       in (sum 5) ;;"
+                       let rec sum n m =
+                           if (n > 0) then (n + ((sum (n - 1)) m)) else m
+                       in ((sum 10) 20) ;;"
     let resAst = getLetAst res.Value 0
-    execAndCheckPrint resAst "15" true
-
-(**
-[<Test>]
-let testFunc2Args () =
-    // let sum n m = if (n > 0) then (n + sum (n - 1) m) else m
-    let g = [("sum", [], EFunc ("n",
-                          EFunc ("m",
-                           EIf (EGt (EVar "n", ENum 0),
-                                EAdd (EVar "n", EEval (EAp (EAp (EVar "sum", ESub (EVar "n", ENum 1)), EVar "m"))),
-                                EVar "m"))));
-             ("main", [], EFunc ("", EEval (EAp (EAp (EVar "sum", ENum 5), ENum 10))))]
-    execAndCheck g "25"
+    execAndCheck resAst "75"
 
 [<Test>]
 let testGlobals () =
-    let g = [("f", [], EFunc ("x", ESub (EVar "x", ENum 1)));
-             ("main", [], EFunc ("", EEval (EAp (EVar "f", ENum 5))))]
-    execAndCheck g "4"
+    let res = parse "contract test
+                     let main =
+                       let mArg = 20 in
+                       let nArg = 10 in
+                       let rec sum n m =
+                           if (n > 0) then (n + ((sum (n - 1)) m)) else m
+                       in ((sum nArg) mArg) ;;"
+    let resAst = getLetAst res.Value 0
+    execAndCheck resAst "75"
 
+(**
 [<Test>]
 let testCurry1 () =
     let g = [("f", [], EFunc ("func", EFunc ("x", EEval (EAp (EVar "func", EVar "x")))));

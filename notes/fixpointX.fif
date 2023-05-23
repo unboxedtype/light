@@ -1,8 +1,9 @@
+// Fixpoint operator implementation for a function with arbitrary
+// number of arguments.
+
 "Asm.fif" include
 
 <{
-
- // Fixpoint operator.
  // let fix f =
  //   let rec g x1 .. xn = f g x1 .. xn
  //   in g
@@ -13,7 +14,6 @@
  // (f g x1 .. xn)  i.e. result of applying f to g and x1 .. xn
  <{
    <{
-     DUMPSTK
                     // g stack:
                     // f g' x1 .. xn   // g' does not contain f on stack
      DEPTH          // f g' x1 .. xn n+2
@@ -28,14 +28,11 @@
      s0 s2 XCHG     // f g'' x g'
      DROP           // f g'' x   , from now on, we assume g=g''
      s1 s2 XCHG     // g f x
-     DUMPSTK
      15 EXPLODE     // g f x1 .. xn n
-     DUMPSTK
      ROLLX          // g x1 .. xn f
      DEPTH          // g x1 .. xn f n+2
      DEC            // g x1 .. xn f n+1     (f takes (g x1 .. xn) as arguments)
      TRUE           // g x1 .. xn f n+2 -1  (f may return something)
-     DUMPSTK
      CALLXVARARGS  // (f g x1 .. xn)
    }> PUSHCONT      // f g
    DUP              // f g g
@@ -43,31 +40,39 @@
  }> PUSHCONT
  2 SETGLOB    // global[2] = FIX operator
 
- // let rec sub n = if n > 1 then sub (n-1) else 1
- // let sub = fix (\sub -> \n -> if n > 1 then (sub (n-1)) else 1)
- 10 INT
- 20 INT
+ // Here, we show an example of using the operator on a function
+ // consuming two arguments.
 
- // sum f n m = f (n+1) (m+1)
- <{
-    // "inc" PRINTSTR
-    DUMPSTK      // f n m
-    s1 PUSH      // f n m
-    1 INT
-    ADD          // f n (n+1)
-    s1 PUSH
-    1 INT
-    ADD          // f n m (n+1) (m+1)
-    s4 PUSH      // f n m (n+1) (m+1) f
-    DUMPSTK
-    2 1 CALLXARGS  // f n m (f (n+1) (m+1))
-    NIP
-    NIP
+ 20 INT
+ 10 INT
+ // let rec sum n m = if (n > 0) then (n + sum (n - 1) m) else m
+ // let sum = fixpoint \sum . \n . \m -> if (...)
+ // s0 = sum
+ // s1 = n
+ // s2 = m
+ <{ s1 PUSH
+    0 INT
+    GREATER
+   <{
+      s1 PUSH
+      s1 PUSH
+      s3 PUSH
+      1 INT
+      SUB
+      s5 PUSH
+      1 -1 SETCONTARGS
+      1 -1 SETCONTARGS
+      0 1 CALLXARGS
+      ADD
+   }> PUSHCONT
+   <{ s0 PUSH }> PUSHCONT
+   IFELSE
  }> PUSHCONT
 
- // let main = (fix inc) 10
- // Замена LetRec на Fix (Let ...) происходит в месте вызова функции.
- 2 GETGLOB     // f' fix
- 1 1 CALLXARGS // [fix f']
- 2 1 CALLXARGS
-}>s runvmcode .s
+ // let main = sum 10 20
+ 2 GETGLOB     // 10 20 f' fix
+ 1 1 CALLXARGS // 10 20 (fix f')
+ 1 -1 SETCONTARGS // 10 ((fix f) 20)
+ 1 -1 SETCONTARGS // ((fix f) 20 10)
+ 0 1 CALLXARGS // eval
+}>s 1000000 gasrunvmcode .s
