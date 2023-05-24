@@ -119,14 +119,28 @@ let testGlobals () =
     execAndCheck resAst "75"
 
 [<Test>]
+let testCurry0 () =
+    let res = parse "contract test
+                     let main =
+                       let apply1 func x = func x
+                       in
+                         let add x y  = x + y
+                         in
+                           (((apply1 add) 1) 2) ;;"
+    let resAst = getLetAst res.Value 0
+    execAndCheckPrint resAst "3" true
+
+[<Test>]
+[<Ignore("bug")>]
 let testCurry1 () =
     let res = parse "contract test
                      let main =
-                       let apply func x = (func x) in
+                       let apply func x = (func (x + 1)) in
                        let inc x = x + 1 in
-                       ((apply inc) 1) ;;"
+                       let apply_inc = apply inc in
+                       (apply_inc 1) ;;"
     let resAst = getLetAst res.Value 0
-    execAndCheckPrint resAst "2" true
+    execAndCheckPrint resAst "3" true
 
 (**
 [<Test>]

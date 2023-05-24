@@ -266,8 +266,10 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) : Subst * Typ * N
     | _ ->
         failwithf "Unsupported expression %A" exp
 
-let typeInference env (e:ASTNode) : Typ * NodeTypeMap =
+let typeInferenceDebug env (e:ASTNode) (debug:bool) : Typ * (NodeTypeMap * NodeTypeMap) =
   let s, t, ty = ti env e (Map [])
+  if debug then
+      printfn "Derived types = %A" s
   // apply all found derived types to the type mapping,
   // so it becomes full and actual
   let exprType = Typ.apply s t
@@ -282,4 +284,8 @@ let typeInference env (e:ASTNode) : Typ * NodeTypeMap =
                  | _ -> v
                | _ -> v
               ) m
-  (exprType, m')
+  (exprType, (m, m'))
+  
+let typeInference env (e:ASTNode) =
+    typeInferenceDebug env e false
+

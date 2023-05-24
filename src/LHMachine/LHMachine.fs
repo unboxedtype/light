@@ -97,7 +97,9 @@ let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:LHTypes.ProgramType
         let rec compileExprs l env' =
             match l with
             | [] -> []
-            | h :: t -> (compileWithTypes h env' ty) @ compileExprs t (argOffset 1 env')
+            | h :: t ->
+                (compileWithTypes h env' ty) @
+                compileExprs t (argOffset 1 env')
         let n = List.length es
         (compileExprs es env) @ [Record n]
     | EFunc (argName, body) ->
@@ -180,9 +182,9 @@ let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:LHTypes.ProgramType
                       'var.id' , where var is a record-type variable, and id is
                       the name of the record field you want to access"
     | EUpdateRec (e, n, e1) ->
-        (compileWithTypes e env ty) @ (compileWithTypes e1 (argOffset 1 env) ty) @ [UpdateRec n]
-    | EAssign e ->
-        (compileWithTypes e env ty) @ [SetGlob "2"] @ [Null]
+        (compileWithTypes e env ty) @
+        (compileWithTypes e1 (argOffset 1 env) ty) @
+        [UpdateRec n]
     | EAsm s ->
         [Asm s]
     | _ ->
@@ -296,6 +298,62 @@ and compileToTVM (code:LHCode) : string =
 and mkFiftCell (body: string) : string =
     "<{ " + body + "}>c "
 
+let rec astReducer (ast:ASTNode) (f: ASTNode -> ASTNode) arg : ASTNode =
+    match ast.Expr with
+    | EFunc (arg, body) ->
+        mkAST (EFunc (arg, f body))
+    | ELet (name, bind, body) ->
+        mkAST (ELet (name, f bind, f body))
+    | ELetRec (name, bind, body) ->
+        mkAST (ELetRec (name, f bind, f body))
+    | EIf (e0, e1, e2) ->
+        mkAST (EIf (f e0, f e1, f e2))
+    | EAdd (e0, e1) ->
+        mkAST (EAdd (f e0, f e1))
+    | ESub (e0, e1) ->
+        mkAST (ESub (f e0, f e1))
+    | EMul (e0, e1) ->
+        mkAST (EMul (f e0, f e1))
+    | EGt (e0, e1) ->
+        mkAST (EGt (f e0, f e1))
+    | EEq (e0, e1) ->
+        mkAST (EEq (f e0, f e1))
+    | _ ->
+        f ast
+
+
+let rec etaReduction (ast:ASTNode) : ASTNode =
+    astReducer ast
+      (fun node ->
+       match node.Expr with
+       |
+    match ast.Expr with
+        // \x . f x ===> f
+    | EFunc (arg, EAp (e1, e2)) when e2.Expr = (EVar arg) ->
+        e1
+    | ELet (name, bind, body) ->
+        mkAST (ELet (name, etaReduction bind, etaReduction body))
+    | ELetRec (name, bind, body) ->
+        mkAST (ELetRec (name, etaReduction bind, etaReduction body))
+    | EIf (e0, e1, e2) ->
+        mkAST (EIf (etaReduction e0, etaReduction e1, etaReduction e2))
+    | EAdd (e0, e1) ->
+        mkAST (EAdd (etaReduction e0, etaReduction e1))
+    | ESub (e0, e1) ->
+        mkAST (ESub (etaReduction e0, etaReduction e1))
+    | EMul (e0, e1) ->
+        mkAST (EMul (etaReduction e0, etaReduction e1))
+    | EGt (e0, e1) ->
+        mkAST (EGt (etaReduction e0, etaReduction e1))
+    | EVar _
+    | ENum _
+    | ENull ->
+        ast
+    | _ ->
+        failwithf "Unsupported ast node = %A" ast
+
+
+
 let rec astInsertEval (ast:ASTNode) (ty:Map<int,LHType>) : ASTNode =
     match ast.Expr with
     | EAp (e1, e2) ->
@@ -306,38 +364,41 @@ let rec astInsertEval (ast:ASTNode) (ty:Map<int,LHType>) : ASTNode =
         if (t = LHTypes.Int 256 ||
             t = LHTypes.Bool ||
             t = LHTypes.String) then
-              ASTNode (ASTNode.newId (), EEval ast)
-        else ast
+              mkAST (EEval ast)
+        else
+            mkAST (EAp (astInsertEval e1 ty, astInsertEval e2 ty))
     | EFunc (arg, body) ->
-        ASTNode (ast.Id, EFunc (arg, astInsertEval body ty))
+        mkAST (EFunc (arg, astInsertEval body ty))
     | ELet (name, bind, body) ->
-        ASTNode (ast.Id, ELet (name, astInsertEval bind ty, astInsertEval body ty))
+        mkAST (ELet (name, astInsertEval bind ty, astInsertEval body ty))
     | ELetRec (name, bind, body) ->
-        ASTNode (ast.Id, ELetRec (name, astInsertEval bind ty, astInsertEval body ty))
-    | EFix e ->
-        failwith "EFix shall not appear here"
+        mkAST (ELetRec (name, astInsertEval bind ty, astInsertEval body ty))
     | EIf (e0, e1, e2) ->
-        ASTNode (ast.Id, EIf (astInsertEval e0 ty, astInsertEval e1 ty, astInsertEval e2 ty))
+        mkAST (EIf (astInsertEval e0 ty, astInsertEval e1 ty, astInsertEval e2 ty))
     | EAdd (e0, e1) ->
-        ASTNode (ast.Id, EAdd (astInsertEval e0 ty, astInsertEval e1 ty))
+        mkAST (EAdd (astInsertEval e0 ty, astInsertEval e1 ty))
     | ESub (e0, e1) ->
-        ASTNode (ast.Id, ESub (astInsertEval e0 ty, astInsertEval e1 ty))
+        mkAST (ESub (astInsertEval e0 ty, astInsertEval e1 ty))
     | EMul (e0, e1) ->
-        ASTNode (ast.Id, EMul (astInsertEval e0 ty, astInsertEval e1 ty))
+        mkAST (EMul (astInsertEval e0 ty, astInsertEval e1 ty))
     | EGt (e0, e1) ->
-        ASTNode (ast.Id, EGt (astInsertEval e0 ty, astInsertEval e1 ty))
+        mkAST (EGt (astInsertEval e0 ty, astInsertEval e1 ty))
     | EVar _
     | ENum _
     | ENull ->
         ast
     | EEval e ->
         mkAST (EEval (astInsertEval e ty))
+    | EFix e ->
+        failwith "EFix shall not appear here"
     | _ ->
         failwithf "Unsupported ast node = %A" ast
 
 let printDict d =
     printfn "%A" (Map.toList d)
 
+// Please keep in mind that there is a hard limit of 15 arguments for
+// recursive functions.
 let fixpointImpl = "
  <{
    <{
@@ -361,16 +422,16 @@ let fixpointImpl = "
    DUP
    2 -1 SETCONTARGS
  }> PUSHCONT
- 2 SETGLOB"
+ 2 SETGLOB"  // fixpoint operator is stored in global 2
 
 let compileIntoFiftDebug ast debug : string =
-    let (ty, nodeTypeMap) = LHTypeInfer.typeInference (Map []) ast // get types for all AST nodes
-    let ast'' = astInsertEval ast nodeTypeMap // AST with EEval nodes inserted into the right places
+    let (ty, (oldMap, newMap)) = LHTypeInfer.typeInferenceDebug (Map []) ast debug // get types for all AST nodes
+    let ast'' = astInsertEval ast newMap // AST with EEval nodes inserted into the right places
     let ir = compile ast'' []
     if debug then
         printfn "FullAST = %O" ast ;
         printfn "AST = %O" (ast''.toSExpr()) ;
-        printfn "Types = %A" (Map.toList nodeTypeMap) ;
+        printfn "Types = %A" (Map.toList newMap) ;
         printfn "IR = %A" ir
     List.singleton "\"Asm.fif\" include" @
     List.singleton "<{ " @
