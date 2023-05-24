@@ -298,61 +298,56 @@ and compileToTVM (code:LHCode) : string =
 and mkFiftCell (body: string) : string =
     "<{ " + body + "}>c "
 
-let rec astReducer (ast:ASTNode) (f: ASTNode -> ASTNode) arg : ASTNode =
-    match ast.Expr with
+let rec astReducer (ast:ASTNode) (red: ASTNode -> ASTNode) : ASTNode =
+    let ast' = red ast
+    match ast'.Expr with
     | EFunc (arg, body) ->
-        mkAST (EFunc (arg, f body))
+        mkAST (EFunc (arg, astReducer body red))
     | ELet (name, bind, body) ->
-        mkAST (ELet (name, f bind, f body))
+        mkAST (ELet (name, astReducer bind red, astReducer body red))
     | ELetRec (name, bind, body) ->
-        mkAST (ELetRec (name, f bind, f body))
+        mkAST (ELetRec (name, astReducer bind red, astReducer body red))
+    | EAp (e0, e1) ->
+        mkAST (EAp (astReducer e0 red, astReducer e1 red))
     | EIf (e0, e1, e2) ->
-        mkAST (EIf (f e0, f e1, f e2))
+        mkAST (EIf (astReducer e0 red, astReducer e1 red, astReducer e2 red))
     | EAdd (e0, e1) ->
-        mkAST (EAdd (f e0, f e1))
+        mkAST (EAdd (astReducer e0 red, astReducer e1 red))
     | ESub (e0, e1) ->
-        mkAST (ESub (f e0, f e1))
+        mkAST (ESub (astReducer e0 red, astReducer e1 red))
     | EMul (e0, e1) ->
-        mkAST (EMul (f e0, f e1))
+        mkAST (EMul (astReducer e0 red, astReducer e1 red))
     | EGt (e0, e1) ->
-        mkAST (EGt (f e0, f e1))
+        mkAST (EGt (astReducer e0 red, astReducer e1 red))
     | EEq (e0, e1) ->
-        mkAST (EEq (f e0, f e1))
-    | _ ->
-        f ast
-
-
-let rec etaReduction (ast:ASTNode) : ASTNode =
-    astReducer ast
-      (fun node ->
-       match node.Expr with
-       |
-    match ast.Expr with
-        // \x . f x ===> f
-    | EFunc (arg, EAp (e1, e2)) when e2.Expr = (EVar arg) ->
-        e1
-    | ELet (name, bind, body) ->
-        mkAST (ELet (name, etaReduction bind, etaReduction body))
-    | ELetRec (name, bind, body) ->
-        mkAST (ELetRec (name, etaReduction bind, etaReduction body))
-    | EIf (e0, e1, e2) ->
-        mkAST (EIf (etaReduction e0, etaReduction e1, etaReduction e2))
-    | EAdd (e0, e1) ->
-        mkAST (EAdd (etaReduction e0, etaReduction e1))
-    | ESub (e0, e1) ->
-        mkAST (ESub (etaReduction e0, etaReduction e1))
-    | EMul (e0, e1) ->
-        mkAST (EMul (etaReduction e0, etaReduction e1))
-    | EGt (e0, e1) ->
-        mkAST (EGt (etaReduction e0, etaReduction e1))
+        mkAST (EEq (astReducer e0 red, astReducer e1 red))
     | EVar _
-    | ENum _
-    | ENull ->
-        ast
+    | ENull
+    | ENum _ ->
+        ast'
     | _ ->
-        failwithf "Unsupported ast node = %A" ast
+        failwithf "unrecognised node %A" ast'.Expr
+        ast'
 
+// eta reduction step:
+// (\x -> f x) ==> f
+let rec eta (node:ASTNode) : ASTNode =
+    match node.Expr with
+    | EFunc (arg, body) ->
+        match body.Expr with
+        | EAp (f, f_arg) ->
+            match f_arg.Expr with
+            | EVar arg1 when arg1 = arg ->
+                eta f  // f may be reduced further
+            | _ ->
+                node
+        | _ ->
+            node
+    | _ ->
+        node
 
+let etaRedex node =
+    astReducer node eta
 
 let rec astInsertEval (ast:ASTNode) (ty:Map<int,LHType>) : ASTNode =
     match ast.Expr with
@@ -425,8 +420,9 @@ let fixpointImpl = "
  2 SETGLOB"  // fixpoint operator is stored in global 2
 
 let compileIntoFiftDebug ast debug : string =
-    let (ty, (oldMap, newMap)) = LHTypeInfer.typeInferenceDebug (Map []) ast debug // get types for all AST nodes
-    let ast'' = astInsertEval ast newMap // AST with EEval nodes inserted into the right places
+    let ast' = etaRedex ast
+    let (ty, (oldMap, newMap)) = LHTypeInfer.typeInferenceDebug (Map []) ast' debug // get types for all AST nodes
+    let ast'' = astInsertEval ast' newMap // AST with EEval nodes inserted into the right places
     let ir = compile ast'' []
     if debug then
         printfn "FullAST = %O" ast ;

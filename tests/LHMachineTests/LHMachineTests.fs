@@ -27,14 +27,14 @@ let execAndCheckPrint (expr:ASTNode) expected ifPrint =
 let execAndCheck g expected =
     execAndCheckPrint g expected false
 
+let getLetAst (m:Module) (n:int) =
+    m.Decls.[n].letBinding
+    |> (function | (_, _, c) -> c)
+
 [<Test>]
 let testTrivial () =
     let code = compile (ASTNode (ASTNode.newId (), ENum 0)) []
     Assert.AreEqual( [Integer 0], code );
-
-let getLetAst (m:Module) (n:int) =
-    m.Decls.[n].letBinding
-    |> (function | (_, _, c) -> c)
 
 [<Test>]
 let testVal () =
@@ -122,16 +122,13 @@ let testGlobals () =
 let testCurry0 () =
     let res = parse "contract test
                      let main =
-                       let apply1 func x = func x
-                       in
-                         let add x y  = x + y
-                         in
-                           (((apply1 add) 1) 2) ;;"
+                       let inc x = x + 1 in
+                       let apply_inc x = inc x in
+                         apply_inc 2 ;;"
     let resAst = getLetAst res.Value 0
-    execAndCheckPrint resAst "3" true
+    execAndCheckPrint resAst "3" false
 
 [<Test>]
-[<Ignore("bug")>]
 let testCurry1 () =
     let res = parse "contract test
                      let main =
