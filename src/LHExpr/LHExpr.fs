@@ -116,7 +116,7 @@ and ASTNode =
 let mkAST (e:Expr) : ASTNode =
     ASTNode (ASTNode.newId (), e)
 
-let rec toAST sexp =
+let rec toAST sexp : ASTNode =
     match sexp with
     | SFunc (arg, body) -> mkAST (EFunc (arg, toAST body))
     | SEval e -> mkAST (EEval (toAST e))

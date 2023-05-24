@@ -129,6 +129,61 @@ let testCurry0 () =
     execAndCheckPrint resAst "3" false
 
 [<Test>]
+let testBetaRedex0 () =
+    let sexpr = SLet ("x", SNum 5, SAdd (SVar "x", SNum 10))
+    let res = (betaRedexStep (toAST sexpr)).toSExpr ()
+    let expected = SAdd (SNum 5, SNum 10)
+    Assert.AreEqual (expected, res)
+
+[<Test>]
+let testBetaRedex1 () =
+    let sexpr = SLet ("x", SNum 5, SLet ("y", SNum 10, SAdd (SVar "x", SVar "y")))
+    let res = (betaRedexStep (toAST sexpr)).toSExpr ()
+    let expected = SLet ("y", SNum 10, SAdd (SNum 5, SVar "y"))
+    Assert.AreEqual (expected, res)
+
+[<Test>]
+let testBetaRedex2 () =
+    let sexpr = SLet ("x", SNum 5, SLet ("y", SNum 10, SAdd (SVar "x", SVar "y")))
+    let res = (betaRedexStep (betaRedexStep (toAST sexpr))).toSExpr ()
+    let expected = SAdd (SNum 5, SNum 10)
+    Assert.AreEqual (expected, res)
+
+[<Test>]
+let testBetaRedex3 () =
+    // let apply = \f.\x.f x in (apply plus1)
+      // --> (\f.\x.f x) plus1
+    let sexpr = SLet ("apply", SFunc ("f", SFunc ("x", SAp (SVar "f", SVar "x"))),
+                      SAp (SVar "apply", SVar "plus1"))
+    let res = (betaRedexStep (toAST sexpr)).toSExpr ()
+    let expected = SAp (SFunc ("f", SFunc ("x", SAp (SVar "f", SVar "x"))), SVar "plus1")
+    Assert.AreEqual (expected, res)
+
+[<Test>]
+let testBetaRedex4 () =
+    // let apply = \f.\x.f x in (apply plus1)
+      // --> (\f.\x.f x) plus1
+      // --> \x plus1 x
+    let sexpr = SLet ("apply", SFunc ("f", SFunc ("x", SAp (SVar "f", SVar "x"))),
+                      SAp (SVar "apply", SVar "plus1"))
+    let res = (betaRedexStep (betaRedexStep (toAST sexpr))).toSExpr ()
+    let expected = SFunc ("x", SAp (SVar "plus1", SVar "x"))
+    Assert.AreEqual (expected, res)
+
+[<Test>]
+let testBetaRedex5 () =
+    // let apply = \f.\x.f x in (apply plus1 5)
+      // --> ((\f.\x.f x) plus1) 5
+      // --> (\x plus1 x) 5
+      // --> plus1 5
+    let sexpr = SLet ("apply", SFunc ("f", SFunc ("x", SAp (SVar "f", SVar "x"))),
+                      SAp (SAp (SVar "apply", SVar "plus1"), SNum 5))
+    let res = (betaRedexStep (betaRedexStep (betaRedexStep (toAST sexpr)))).toSExpr ()
+    let expected = SAp (SVar "plus1", SNum 5)
+    Assert.AreEqual (expected, res)
+
+
+[<Test>]
 let testCurry1 () =
     let res = parse "contract test
                      let main =
@@ -136,8 +191,31 @@ let testCurry1 () =
                        let inc x = x + 1 in
                        let apply_inc = apply inc in
                        (apply_inc 1) ;;"
+    // let apply = \f \x.(f (x+1)) in
+    //  let inc = \y . y + 1 in
+    //   let apply_inc = (apply inc) in
+    //     apply_inc 1
+
+    // let inc = .. in
+    //  let apply_inc = (\f \x.(f (x+1))) inc in
+    //    apply_inc 1
+    // ==>
+    // let apply_inc = (\f \x.(f (x+1))) (\y.y+1) in
+    //   apply_inc 1
+    // ==>
+    //  ((\f \x.(f (x+1))) (\y.y+1)) 1
+    // ==>
+    //  (\x . ( (\y.y+1) (x+1) ) 1
+    // ==>
+    //  (\y. y + 1) (1+1)
+    // ==>
+    //  (1 + 1) + 1
     let resAst = getLetAst res.Value 0
-    execAndCheckPrint resAst "3" false
+    printfn "SExpr = %A" (resAst.toSExpr ())
+    let res = (LHMachine.betaRedexFull resAst).toSExpr ()
+    let expected = SAdd (SAdd (SNum 1, SNum 1), SNum 1)
+    Assert.AreEqual (expected, res)
+    // execAndCheckPrint resAst "3" false
 
 (**
 [<Test>]
