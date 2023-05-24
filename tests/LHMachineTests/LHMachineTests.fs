@@ -137,7 +137,7 @@ let testCurry1 () =
                        let apply_inc = apply inc in
                        (apply_inc 1) ;;"
     let resAst = getLetAst res.Value 0
-    execAndCheckPrint resAst "3" true
+    execAndCheckPrint resAst "3" false
 
 (**
 [<Test>]

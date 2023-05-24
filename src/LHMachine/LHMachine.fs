@@ -299,57 +299,76 @@ and mkFiftCell (body: string) : string =
     "<{ " + body + "}>c "
 
 let rec astReducer (ast:ASTNode) (red: ASTNode -> ASTNode) : ASTNode =
-    let ast' = red ast
-    match ast'.Expr with
-    | EFunc (arg, body) ->
-        mkAST (EFunc (arg, astReducer body red))
-    | ELet (name, bind, body) ->
-        mkAST (ELet (name, astReducer bind red, astReducer body red))
-    | ELetRec (name, bind, body) ->
-        mkAST (ELetRec (name, astReducer bind red, astReducer body red))
-    | EAp (e0, e1) ->
-        mkAST (EAp (astReducer e0 red, astReducer e1 red))
-    | EIf (e0, e1, e2) ->
-        mkAST (EIf (astReducer e0 red, astReducer e1 red, astReducer e2 red))
-    | EAdd (e0, e1) ->
-        mkAST (EAdd (astReducer e0 red, astReducer e1 red))
-    | ESub (e0, e1) ->
-        mkAST (ESub (astReducer e0 red, astReducer e1 red))
-    | EMul (e0, e1) ->
-        mkAST (EMul (astReducer e0 red, astReducer e1 red))
-    | EGt (e0, e1) ->
-        mkAST (EGt (astReducer e0 red, astReducer e1 red))
-    | EEq (e0, e1) ->
-        mkAST (EEq (astReducer e0 red, astReducer e1 red))
+    match ast.Expr with
+    // leaf nodes
     | EVar _
     | ENull
     | ENum _ ->
-        ast'
+        ast
+    | EFunc (arg, body) ->
+        let body' = astReducer body red
+        if body' <> body then mkAST (EFunc (arg, body'))
+        else ast
+    | ELet (name, bind, body)
+    | ELetRec (name, bind, body) ->
+        let bind' = astReducer bind red
+        let body' = astReducer body red
+        if (bind' <> bind) || (body' <> body) then
+            match ast.Expr with
+            | ELet _ ->
+                mkAST (ELet (name, bind', body'))
+            | ELetRec _ ->
+                mkAST (ELetRec (name, bind', body'))
+        else ast
+    | EIf (e0, e1, e2) ->
+        let e0' = astReducer e0 red
+        let e1' = astReducer e1 red
+        let e2' = astReducer e2 red
+        if e0' <> e0 || e1' <> e1 || e2' <> e2 then
+            mkAST (EIf (e0', e1', e2'))
+        else ast
+    | EAp (e0, e1)
+    | EAdd (e0, e1)
+    | ESub (e0, e1)
+    | EMul (e0, e1)
+    | EGt (e0, e1)
+    | EEq (e0, e1) ->
+        let e0' = astReducer e0 red
+        let e1' = astReducer e1 red
+        if e0' <> e0 || e1' <> e1 then
+            match ast.Expr with
+            | EAp _ -> mkAST (EAp (e0', e1'))
+            | EAdd _ -> mkAST (EAdd (e0', e1'))
+            | ESub _ -> mkAST (ESub (e0', e1'))
+            | EMul _ -> mkAST (EMul (e0', e1'))
+            | EGt _ -> mkAST (EGt (e0', e1'))
+            | EEq _ -> mkAST (EEq (e0', e1'))
+        else ast
     | _ ->
-        failwithf "unrecognised node %A" ast'.Expr
-        ast'
+        failwithf "unrecognised node %A" ast.Expr
+    |> red
 
 // eta reduction step:
 // (\x -> f x) ==> f
-let rec eta (node:ASTNode) : ASTNode =
+let rec etaStep (node:ASTNode) : ASTNode =
     match node.Expr with
     | EFunc (arg, body) ->
         match body.Expr with
         | EAp (f, f_arg) ->
             match f_arg.Expr with
             | EVar arg1 when arg1 = arg ->
-                eta f
+                etaStep f
             | _ ->
                 node
         | _ ->
-            let red = eta body
+            let red = etaStep body
             if red = body then node
-            else eta (mkAST (EFunc (arg, red)))
+            else etaStep (mkAST (EFunc (arg, red)))
     | _ ->
         node
 
 let etaRedex node =
-    astReducer node eta
+    astReducer node etaStep
 
 // Return a list of free (unbound) variables in expression 'node'
 let rec freeVars (expr:Expr) : string list =
@@ -364,7 +383,7 @@ let rec freeVars (expr:Expr) : string list =
 let private nameId = ref 0
 
 // Substitute a free variable 'x' for the term y in the 'node'
-let substFreeVar (x:string) (y:Expr) (node:ASTNode) =
+let rec substFreeVar (x:string) (y:Expr) (node:ASTNode) =
     let newVarName () =
         let id = !nameId
         nameId := id + 1 ;
@@ -379,54 +398,55 @@ let substFreeVar (x:string) (y:Expr) (node:ASTNode) =
             let yFreeVars = freeVars y
             if List.contains name yFreeVars then
                 let z = newVarName ()
-                let newBody = substFreeVarInner name (EVar z) body
-                mkAST (EFunc (z, substFreeVarInner x y newBody))
+                let newBody = substFreeVar name (EVar z) body
+                mkAST (EFunc (z, substFreeVar x y newBody))
             else
-                mkAST (EFunc (name, substFreeVarInner x y body))
+                mkAST (EFunc (name, substFreeVar x y body))
         | _ ->
             node
     in astReducer node (fun node -> substFreeVarInner x y node)
 
-
-let rec astInsertEval (ast:ASTNode) (ty:Map<int,LHType>) : ASTNode =
-    match ast.Expr with
-    | EAp (e1, e2) ->
-        let t =
-            match (Map.tryFind ast.Id ty) with
-            | Some v -> v
-            | None -> failwithf "failed to find type for %A" ast
-        if (t = LHTypes.Int 256 ||
-            t = LHTypes.Bool ||
-            t = LHTypes.String) then
-              mkAST (EEval ast)
-        else
-            mkAST (EAp (astInsertEval e1 ty, astInsertEval e2 ty))
-    | EFunc (arg, body) ->
-        mkAST (EFunc (arg, astInsertEval body ty))
-    | ELet (name, bind, body) ->
-        mkAST (ELet (name, astInsertEval bind ty, astInsertEval body ty))
-    | ELetRec (name, bind, body) ->
-        mkAST (ELetRec (name, astInsertEval bind ty, astInsertEval body ty))
-    | EIf (e0, e1, e2) ->
-        mkAST (EIf (astInsertEval e0 ty, astInsertEval e1 ty, astInsertEval e2 ty))
-    | EAdd (e0, e1) ->
-        mkAST (EAdd (astInsertEval e0 ty, astInsertEval e1 ty))
-    | ESub (e0, e1) ->
-        mkAST (ESub (astInsertEval e0 ty, astInsertEval e1 ty))
-    | EMul (e0, e1) ->
-        mkAST (EMul (astInsertEval e0 ty, astInsertEval e1 ty))
-    | EGt (e0, e1) ->
-        mkAST (EGt (astInsertEval e0 ty, astInsertEval e1 ty))
-    | EVar _
-    | ENum _
-    | ENull ->
-        ast
-    | EEval e ->
-        mkAST (EEval (astInsertEval e ty))
-    | EFix e ->
-        failwith "EFix shall not appear here"
+let rec betaStep (node:ASTNode) : ASTNode =
+    match node.Expr with
+    | EAp (e1, arg) ->
+        match e1.Expr with
+        | EFunc (x, body) ->
+            substFreeVar x arg.Expr body
+        | EVar x ->
+            mkAST (EAp (mkAST (EVar x), betaStep arg))
+    | EAp (term, arg) ->
+        let term' = betaStep term
+        match term'.Expr with
+        | EFunc _ ->
+            EAp (term', betaStep arg)
+            |> mkAST
+            |> betaStep
+        | _ ->
+            EAp (term', betaStep arg)
+            |> mkAST
     | _ ->
-        failwithf "Unsupported ast node = %A" ast
+        node
+
+let betaRedex node =
+    astReducer node betaStep
+
+let rec insertEval (ast:ASTNode) (ty:Map<int,LHType>) : ASTNode =
+    let rec insertEvalInner (node:ASTNode) : ASTNode =
+        match node.Expr with
+        | EAp (e1, e2) ->
+            let t =
+                match (Map.tryFind node.Id ty) with
+                | Some v -> v
+                | None -> failwithf "failed to find type for %A" ast
+            if (t = LHTypes.Int 256 ||
+                t = LHTypes.Bool ||
+                t = LHTypes.String) then
+                mkAST (EEval node)
+            else
+                node
+        | _ ->
+            node
+    in astReducer ast insertEvalInner
 
 let printDict d =
     printfn "%A" (Map.toList d)
@@ -461,7 +481,7 @@ let fixpointImpl = "
 let compileIntoFiftDebug ast debug : string =
     let ast' = etaRedex ast
     let (ty, (oldMap, newMap)) = LHTypeInfer.typeInferenceDebug (Map []) ast' debug // get types for all AST nodes
-    let ast'' = astInsertEval ast' newMap // AST with EEval nodes inserted into the right places
+    let ast'' = insertEval ast' newMap // AST with EEval nodes inserted into the right places
     let ir = compile ast'' []
     if debug then
         printfn "FullAST = %O" ast ;
