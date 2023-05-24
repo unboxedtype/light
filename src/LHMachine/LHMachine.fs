@@ -338,16 +338,55 @@ let rec eta (node:ASTNode) : ASTNode =
         | EAp (f, f_arg) ->
             match f_arg.Expr with
             | EVar arg1 when arg1 = arg ->
-                eta f  // f may be reduced further
+                eta f
             | _ ->
                 node
         | _ ->
-            node
+            let red = eta body
+            if red = body then node
+            else eta (mkAST (EFunc (arg, red)))
     | _ ->
         node
 
 let etaRedex node =
     astReducer node eta
+
+// Return a list of free (unbound) variables in expression 'node'
+let rec freeVars (expr:Expr) : string list =
+    match expr with
+    | EVar x -> List.singleton x
+    | EFunc (y, body) ->
+        freeVars body.Expr |> List.except [y]
+    | EAp (e1, e2) ->
+        List.append (freeVars e1.Expr) (freeVars e2.Expr)
+
+// global counter for generating unique variable names
+let private nameId = ref 0
+
+// Substitute a free variable 'x' for the term y in the 'node'
+let substFreeVar (x:string) (y:Expr) (node:ASTNode) =
+    let newVarName () =
+        let id = !nameId
+        nameId := id + 1 ;
+        "z" + (string id)
+    let rec substFreeVarInner x y (node:ASTNode) =
+        match node.Expr with
+        | EVar x' when x' = x ->
+            mkAST y
+        | EFunc (x', body) when x' = x ->
+            node
+        | EFunc (name, body) ->  // here name <> x
+            let yFreeVars = freeVars y
+            if List.contains name yFreeVars then
+                let z = newVarName ()
+                let newBody = substFreeVarInner name (EVar z) body
+                mkAST (EFunc (z, substFreeVarInner x y newBody))
+            else
+                mkAST (EFunc (name, substFreeVarInner x y body))
+        | _ ->
+            node
+    in astReducer node (fun node -> substFreeVarInner x y node)
+
 
 let rec astInsertEval (ast:ASTNode) (ty:Map<int,LHType>) : ASTNode =
     match ast.Expr with
