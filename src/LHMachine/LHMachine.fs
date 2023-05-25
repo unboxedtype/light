@@ -403,6 +403,14 @@ let rec substFreeVar (x:string) (y:Expr) (node:ASTNode) =
         else node
     | ENum _ ->
         node
+    | EGt (e0, e1) ->
+        mkAST (EGt (substFreeVar x y e0, substFreeVar x y e1))
+    | ESub (e0, e1) ->
+        mkAST (ESub (substFreeVar x y e0, substFreeVar x y e1))
+    | EMul (e0, e1) ->
+        mkAST (EMul (substFreeVar x y e0, substFreeVar x y e1))
+    | EIf (e0, e1, e2) ->
+        mkAST (EIf (substFreeVar x y e0, substFreeVar x y e1, substFreeVar x y e2))
     | EAdd (e1, e2) ->
         mkAST (EAdd (substFreeVar x y e1, substFreeVar x y e2))
     | EAp (e1, e2) ->
@@ -419,13 +427,16 @@ let rec substFreeVar (x:string) (y:Expr) (node:ASTNode) =
             mkAST (EFunc (name, substFreeVar x y body))
     | ELet (arg, bind, body) ->
         mkAST (ELet (arg, substFreeVar x y bind, substFreeVar x y body))
+    | ELetRec (arg, bind, body) ->
+        mkAST (ELetRec (arg, substFreeVar x y bind, substFreeVar x y body))
     | _ ->
         failwithf "substFreeVar not implemented for %A" node.Expr
 
 let rec betaRedexStep (node:ASTNode) : ASTNode =
     match node.Expr with
-    | ELet (x, bind, body)
     | ELetRec (x, bind, body) ->
+        mkAST (ELetRec (x, betaRedexStep bind, betaRedexStep body))
+    | ELet (x, bind, body) ->
         substFreeVar x bind.Expr body
     | EAp (e0, arg) ->
         match e0.Expr with
@@ -437,11 +448,28 @@ let rec betaRedexStep (node:ASTNode) : ASTNode =
                 mkAST (EAp (node', arg))
             else
                 node
-    | EAdd (e0, e1) ->
+    | EAdd (e0, e1)
+    | EMul (e0, e1)
+    | ESub (e0, e1)
+    | EGt (e0, e1) ->
         let e0' = betaRedexStep e0
         let e1' = betaRedexStep e1
         if e0'.Expr <> e0.Expr || e1'.Expr <> e1.Expr then
-            mkAST (EAdd (e0', e1'))
+            match node.Expr with
+            | EAdd _ -> mkAST (EAdd (e0', e1'))
+            | ESub _ -> mkAST (ESub (e0', e1'))
+            | EMul _ -> mkAST (EMul (e0', e1'))
+            | EGt _ -> mkAST (EGt (e0', e1'))
+        else
+            node
+    | EIf (e0, e1, e2) ->
+        let e0' = betaRedexStep e0
+        let e1' = betaRedexStep e1
+        let e2' = betaRedexStep e2
+        if e0'.Expr <> e0.Expr ||
+           e1'.Expr <> e1.Expr ||
+           e2'.Expr <> e2.Expr then
+            mkAST (EIf (e0', e1', e2'))
         else
             node
     | EVar _
@@ -464,6 +492,22 @@ let rec betaRedexFullDebug node debug =
 let rec betaRedexFull node =
     betaRedexFullDebug node false
 
+let rec arithSimplRedex node =
+    let arithSimpl (node : ASTNode) =
+        match (node.toSExpr ()) with
+        | SAdd (SNum x, SNum y) ->
+            mkAST (ENum (x + y))
+        | SSub (SNum x, SNum y) ->
+            mkAST (ENum (x - y))
+        | SMul (SNum x, SNum y) ->
+            mkAST (ENum (x * y))
+        | SGt (SNum x, SNum y) ->
+            mkAST (ENum (if x > y then -1 else 0))
+        | SEq (SNum x, SNum y) ->
+            mkAST (ENum (if x = y then -1 else 0))
+        | _ ->
+            node
+    in astReducer node arithSimpl
 
 let rec insertEval (ast:ASTNode) (ty:Map<int,LHType>) : ASTNode =
     let rec insertEvalInner (node:ASTNode) : ASTNode =
@@ -514,9 +558,16 @@ let fixpointImpl = "
  2 SETGLOB"  // fixpoint operator is stored in global 2
 
 let compileIntoFiftDebug ast debug : string =
-    let ast' = etaRedex ast
+    let ast' =
+        ast
+        |> etaRedex
+        |> betaRedexFull
+        |> arithSimplRedex
+    if debug then
+        printfn "AST after beta and eta redex : %A" (ast'.toSExpr ())
     let (ty, (oldMap, newMap)) = LHTypeInfer.typeInferenceDebug (Map []) ast' debug // get types for all AST nodes
     let ast'' = insertEval ast' newMap // AST with EEval nodes inserted into the right places
+    let hasFixpoint = true // ast''.hasNode (function | SFix _ -> true | _ -> false)
     let ir = compile ast'' []
     if debug then
         printfn "FullAST = %O" ast ;
@@ -525,7 +576,7 @@ let compileIntoFiftDebug ast debug : string =
         printfn "IR = %A" ir
     List.singleton "\"Asm.fif\" include" @
     List.singleton "<{ " @
-    List.singleton   fixpointImpl @
+    (if hasFixpoint then [fixpointImpl] else []) @
     List.singleton   (compileToTVM ir) @
     List.singleton " }>s 1000000 gasrunvmcode drop .dump cr .dump cr"
     |> String.concat "\n"

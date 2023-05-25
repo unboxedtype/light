@@ -116,7 +116,7 @@ let testGlobals () =
                            if (n > 0) then (n + ((sum (n - 1)) m)) else m
                        in ((sum nArg) mArg) ;;"
     let resAst = getLetAst res.Value 0
-    execAndCheck resAst "75"
+    execAndCheckPrint resAst "75" false
 
 [<Test>]
 let testCurry0 () =
