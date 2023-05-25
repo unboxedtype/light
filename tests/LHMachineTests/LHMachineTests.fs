@@ -182,6 +182,27 @@ let testBetaRedex5 () =
     let expected = SAp (SVar "plus1", SNum 5)
     Assert.AreEqual (expected, res)
 
+[<Test>]
+let testBetaRedex6 () =
+    // (\y .(\x . y + 1)) (x + 1) 1
+    let sexpr =  SAp (SAp (SFunc ("y", SFunc ("x", SAdd (SVar "y", SNum 1))),
+                           SAdd (SVar "x", SNum 1)),
+                      SNum 1)
+    let res = (betaRedexStep (toAST sexpr)).toSExpr ()
+    let expected = SAp (SFunc ("z0", SAdd (SAdd (SVar "x", SNum 1), SNum 1)), SNum 1)
+    Assert.AreEqual (expected, res)
+
+[<Test>]
+let testBetaRedex7 () =
+    // (\x . (\x . x + 1) (x + 1) ) 1
+    let sexpr = SAp (SFunc ("x",
+                       SAp (SFunc ("x", SAdd (SVar "x", SNum 1)),
+                            SAdd (SVar "x", SNum 1))),
+                     SNum 1)
+    let res = (betaRedexStep (toAST sexpr)).toSExpr ()
+    let expected = SAp (SFunc ("x", SAdd (SVar "x", SNum 1)), SAdd (SNum 1, SNum 1))
+    Assert.AreEqual (expected, res)
+
 
 [<Test>]
 let testCurry1 () =
@@ -191,31 +212,11 @@ let testCurry1 () =
                        let inc x = x + 1 in
                        let apply_inc = apply inc in
                        (apply_inc 1) ;;"
-    // let apply = \f \x.(f (x+1)) in
-    //  let inc = \y . y + 1 in
-    //   let apply_inc = (apply inc) in
-    //     apply_inc 1
-
-    // let inc = .. in
-    //  let apply_inc = (\f \x.(f (x+1))) inc in
-    //    apply_inc 1
-    // ==>
-    // let apply_inc = (\f \x.(f (x+1))) (\y.y+1) in
-    //   apply_inc 1
-    // ==>
-    //  ((\f \x.(f (x+1))) (\y.y+1)) 1
-    // ==>
-    //  (\x . ( (\y.y+1) (x+1) ) 1
-    // ==>
-    //  (\y. y + 1) (1+1)
-    // ==>
-    //  (1 + 1) + 1
     let resAst = getLetAst res.Value 0
-    printfn "SExpr = %A" (resAst.toSExpr ())
-    let res = (LHMachine.betaRedexFull resAst).toSExpr ()
+    let res = LHMachine.betaRedexFullDebug resAst false
     let expected = SAdd (SAdd (SNum 1, SNum 1), SNum 1)
-    Assert.AreEqual (expected, res)
-    // execAndCheckPrint resAst "3" false
+    Assert.AreEqual (expected, res.toSExpr ())
+    execAndCheckPrint res "3" false
 
 (**
 [<Test>]

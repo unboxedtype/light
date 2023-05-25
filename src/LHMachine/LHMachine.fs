@@ -397,38 +397,35 @@ let rec substFreeVar (x:string) (y:Expr) (node:ASTNode) =
         let id = !nameId
         nameId := id + 1 ;
         "z" + (string id)
-    let rec substFreeVarInner x y (node:ASTNode) =
-        match node.Expr with
-        | EVar x' ->
-            if x' = x then mkAST y
-            else node
-        | ENum _ ->
-            node
-        | EAdd (e1, e2) ->
-            mkAST (EAdd (substFreeVar x y e1, substFreeVar x y e2))
-        | EAp (e1, e2) ->
-            mkAST (EAp (substFreeVar x y e1, substFreeVar x y e2))
-        | EFunc (x', body) when x' = x ->
-            node
-        | EFunc (name, body) ->  // here name <> x
-            let yFreeVars = freeVars y
-            if List.contains name yFreeVars then
-                let z = newVarName ()
-                let newBody = substFreeVar name (EVar z) body
-                mkAST (EFunc (z, substFreeVar x y newBody))
-            else
-                mkAST (EFunc (name, substFreeVar x y body))
-        | ELet (arg, bind, body) ->
-            mkAST (ELet (arg, substFreeVar x y bind, substFreeVar x y body))
-        | _ ->
-            failwithf "substFreeInner not implemented for %A" node.Expr
-    in astReducer node (fun node -> substFreeVarInner x y node)
+    match node.Expr with
+    | EVar x' ->
+        if x' = x then mkAST y
+        else node
+    | ENum _ ->
+        node
+    | EAdd (e1, e2) ->
+        mkAST (EAdd (substFreeVar x y e1, substFreeVar x y e2))
+    | EAp (e1, e2) ->
+        mkAST (EAp (substFreeVar x y e1, substFreeVar x y e2))
+    | EFunc (x', body) when x' = x ->
+        node
+    | EFunc (name, body) ->  // here name <> x
+        let yFreeVars = freeVars y
+        if List.contains name yFreeVars then
+            let z = newVarName ()
+            let newBody = substFreeVar name (EVar z) body
+            mkAST (EFunc (z, substFreeVar x y newBody))
+        else
+            mkAST (EFunc (name, substFreeVar x y body))
+    | ELet (arg, bind, body) ->
+        mkAST (ELet (arg, substFreeVar x y bind, substFreeVar x y body))
+    | _ ->
+        failwithf "substFreeVar not implemented for %A" node.Expr
 
 let rec betaRedexStep (node:ASTNode) : ASTNode =
     match node.Expr with
     | ELet (x, bind, body)
     | ELetRec (x, bind, body) ->
-        // let bind' = betaRedexStep bind
         substFreeVar x bind.Expr body
     | EAp (e0, arg) ->
         match e0.Expr with
@@ -454,13 +451,19 @@ let rec betaRedexStep (node:ASTNode) : ASTNode =
     | _ ->
         failwithf "Redex for expr %A not defined" node.Expr
 
+let rec betaRedexFullDebug node debug =
+    let node' = betaRedexStep node
+    if node'.Expr <> node.Expr then
+        if debug then
+            printfn "*** %A" (node'.toSExpr ())
+        betaRedexFullDebug node' debug
+    else node
+
 // Do redexes until progress stops. We assume that fixpoints
 // do not get expanded.
 let rec betaRedexFull node =
-    let node' = betaRedexStep node
-    if node'.Expr <> node.Expr then
-        betaRedexFull node'
-    else node
+    betaRedexFullDebug node false
+
 
 let rec insertEval (ast:ASTNode) (ty:Map<int,LHType>) : ASTNode =
     let rec insertEvalInner (node:ASTNode) : ASTNode =
