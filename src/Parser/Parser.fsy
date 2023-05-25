@@ -26,12 +26,16 @@ let rec unfoldFunction args body =
 %token DSCOLON
 %token MODULE TYPEDEF OF IF THEN ELSE HANDLER LET RECURSIVE IN
 %token EQ GT PLUS MINUS SEMICOLON VBAR STAR COLON COMMA EOF
-%token LEFT_BRACE RIGHT_BRACE LEFT_BRACKET RIGHT_BRACKET RARROW LARROW
+%token LEFT_BRACE RIGHT_BRACE LPAREN RPAREN RARROW LARROW
 %token MATCH WITH UNDERSCORE DOT
 
 %type <ParserModule.Module option> start
 
-%nonassoc LET
+%nonassoc LET IN ELSE RECURSIVE
+%left PLUS MINUS
+%left STAR
+%left EQ GT
+%left prec_app
 
 %%
 
@@ -156,7 +160,7 @@ prodType:
 // "(x:int)" "y"
 // =================================================
 funcArg:
-  | LEFT_BRACKET typedVarDecl RIGHT_BRACKET { $2 }
+  | LPAREN typedVarDecl RPAREN { $2 }
   | LIDENT  { ($1, "") }
 
 funcArgs:
@@ -165,7 +169,7 @@ funcArgs:
 
 matchPattern:
   | VBAR UIDENT RARROW expr { ($2, [], $4) }
-  | VBAR UIDENT LEFT_BRACKET patternVarDecls RIGHT_BRACKET RARROW expr { ($2, $4, $7) }
+  | VBAR UIDENT LPAREN patternVarDecls RPAREN RARROW expr { ($2, $4, $7) }
 
 matchPatterns:
   | matchPattern { [$1] }
@@ -184,44 +188,59 @@ varEquations:
 // Language expression is a recursive structure that
 // may be one of the following:
 // =================================================
-expr:
+
+basicExpr:
+  | LPAREN expr RPAREN
+     { $2 }
+//  | LPAREN RPAREN
+//    { Unit }
+//  | BOOL
+//    { EBool($1) }
   | INT
-  { ASTNode (ASTNode.newId (), ENum ( $1 |> int )) }
-
+    { mkAST (ENum ( $1 |> int )) }
   | LIDENT
-  { ASTNode (ASTNode.newId (), EVar $1) }
-
-  | LEFT_BRACKET expr RIGHT_BRACKET
-  { $2 }
-
+    { mkAST (EVar $1) }
+  | basicExpr DOT LIDENT
+  {
+    // Here, we shall translate the field identifier into its index.
+    // This is done after the type of the field $1 is known.
+    let left = $1
+    let right = mkAST (EVar $3)
+    mkAST (ESelect (left, right))
+  }
+  
+expr:
+  | basicExpr
+  { $1 }
+  
   | expr GT expr
-  { ASTNode (ASTNode.newId (), EGt ($1, $3))  }
+  { mkAST (EGt ($1, $3))  }
 
   | expr PLUS expr
-  { ASTNode (ASTNode.newId (), EAdd ($1, $3)) }
+  { mkAST (EAdd ($1, $3)) }
 
   | expr MINUS expr
-  { ASTNode (ASTNode.newId (), ESub ($1, $3)) }
+  { mkAST (ESub ($1, $3)) }
 
   | expr STAR expr
-  { ASTNode (ASTNode.newId (), EMul ($1, $3)) }
+  { mkAST (EMul ($1, $3)) }
 
   | IF expr THEN expr ELSE expr
-  { ASTNode (ASTNode.newId (), EIf ($2, $4, $6)) }
+  { mkAST (EIf ($2, $4, $6)) }
 
   | LET LIDENT EQ expr IN expr
-  { ASTNode (ASTNode.newId (), ELet ($2, $4, $6)) }
+  { mkAST (ELet ($2, $4, $6)) }
 
   | LET LIDENT funcArgs EQ expr IN expr
   {
     let argNames = List.map fst $3
-    ASTNode (ASTNode.newId (), ELet ($2, unfoldFunction argNames $5, $7))
+    mkAST (ELet ($2, unfoldFunction argNames $5, $7))
   }
 
   | LET RECURSIVE LIDENT funcArgs EQ expr IN expr
   {
     let argNames = List.map fst $4
-    ASTNode (ASTNode.newId (), ELetRec ($3, unfoldFunction argNames $6, $8))
+    mkAST (ELetRec ($3, unfoldFunction argNames $6, $8))
   }
 
   | MATCH expr WITH matchPatterns
@@ -236,7 +255,7 @@ expr:
                        List.map fst args, // leave only variable names
                        expr) // case body
                       ) patterns
-        ASTNode (ASTNode.newId (), ECase ($2, cases))
+        mkAST (ECase ($2, cases))
   }
 
   | LEFT_BRACE varEquations RIGHT_BRACE
@@ -248,7 +267,7 @@ expr:
     // correct order.
     let recNameValPairs = $2
     let recValues = recNameValPairs |> List.map snd
-    ASTNode (ASTNode.newId (), ERecord recValues)
+    mkAST (ERecord recValues)
   }
 
   | expr LARROW expr
@@ -257,24 +276,20 @@ expr:
     else failwith "assignment operator is permited only for 'state' variable currently"
   }
 
-  | expr expr
+  | basicExpr actualArguments
+    %prec prec_app
   {
-    ASTNode (ASTNode.newId (), EAp ($1, $2))
+    // func a1 a2 a3 --> EAp (EAp (a1, a2), a3)
+    List.fold ( fun acc expr -> mkAST (EAp (acc, expr)) ) $1 $2
   }
 
-  | LIDENT DOT LIDENT
-  {
-    // Here, we shall translate the field identifier into its index.
-    // This is done after the type of the field $1 is known.
-    let left = mkAST (EVar $1)
-    let right = mkAST (EVar $3)
-    ASTNode (ASTNode.newId (), ESelect (left, right))
-  }
-
-
-exprs:
-  | { [] }
-  | expr exprs { $1 :: $2 }
+actualArguments:
+  | actualArguments basicExpr
+    %prec prec_app
+    { $1 @ [$2] }
+  | basicExpr
+    %prec prec_app
+    { [$1] }
 
 // =================================================
 // Declaration is one of the following:

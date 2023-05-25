@@ -52,8 +52,8 @@ rule read =
   | '"'      { read_string "" false lexbuf }
   | '{'      { LEFT_BRACE }
   | '}'      { RIGHT_BRACE }
-  | '('      { LEFT_BRACKET }
-  | ')'      { RIGHT_BRACKET }
+  | '('      { LPAREN }
+  | ')'      { RPAREN }
   | '|'      { VBAR }
   | ':'      { COLON }
   | '.'      { DOT }

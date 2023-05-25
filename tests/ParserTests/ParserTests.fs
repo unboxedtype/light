@@ -11,6 +11,11 @@ open type LHExpr.Expr
 open type LHExpr.SExpr
 open type LHTypes.Type
 
+let parse source =
+    let lexbuf = LexBuffer<char>.FromString source
+    let res = Parser.start Lexer.read lexbuf
+    res
+
 [<SetUp>]
 let Setup () =
     ()
@@ -158,6 +163,20 @@ let testLetMain4 () =
                                                   SSub (SVar "n", SNum 1))),
                              SNum 1)),
             SAp (SVar "factorial", SNum 10))
+    Assert.AreEqual( expected, resAst  )
+
+[<Test>]
+let testApAssoc0 () =
+    let res = parse "contract test
+                     let f f1 f2 x y = f2 (f1 x) (f1 y) ;;"
+    let resAst = getLetAst res.Value 0
+    let expected = SFunc ("f1",
+                    SFunc ("f2",
+                     SFunc ("x",
+                      SFunc ("y",
+                       SAp (SAp (SVar "f2",
+                             SAp (SVar "f1", SVar "x")),
+                       SAp (SVar "f1", SVar "y"))))))
     Assert.AreEqual( expected, resAst  )
 
 (**

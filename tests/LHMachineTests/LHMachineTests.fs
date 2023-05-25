@@ -218,32 +218,22 @@ let testCurry1 () =
     Assert.AreEqual (expected, res.toSExpr ())
     execAndCheckPrint res "3" false
 
-(**
-[<Test>]
-let testCurry1 () =
-    let g = [("f", [], EFunc ("func", EFunc ("x", EEval (EAp (EVar "func", EVar "x")))));
-             ("inc", [], EFunc ("x", EAdd (EVar "x", ENum 1)));
-             ("main", [], EFunc ("", EEval (EAp (EAp (EVar "f", EVar "inc"), ENum 1))))]
-    execAndCheck g "2"
-
 [<Test>]
 let testCurry2 () =
-    let g =
-        // f f1 f2 x y = f2 (f1 x) (f1 y)
-        [("f", [],
-           EFunc ("f1",
-            EFunc ("f2",
-             EFunc ("x",
-              EFunc ("y",
-               EEval (
-                EAp (EAp (EVar "f2", EEval (EAp (EVar "f1", EVar "x"))), EEval (EAp (EVar "f1", EVar "y")))
-          ))))));
+    // let f = \f1 \f2 \x \y . f2 (f1 x) (f1 y)
+    // let sum = \x \y . x + y
+    // let inc = \x . x + 1
+    // let main = f inc sum 10 20
+    let res = parse "contract test
+                     let main =
+                       let f f1 f2 x y = f2 (f1 x) (f1 y) in
+                       let sum x y = x + y in
+                       let inc x = x + 1 in
+                       f inc sum 10 20 ;;"
+    let resAst = getLetAst res.Value 0
+    execAndCheckPrint resAst "32" false
 
-         ("sum", [], EFunc ("x", EFunc ("y", EAdd (EVar "x", EVar "y"))));
-         ("inc", [], EFunc ("x", EAdd (EVar "x", ENum 1)));
-         ("main", [], EFunc ("", EEval (EAp (EAp (EAp (EAp (EVar "f", EVar "inc"), EVar "sum"), ENum 10), ENum 20))))]
-    execAndCheck g "32"
-
+(*
 [<Test>]
 let testArity0 () =
     let g =
