@@ -60,17 +60,6 @@ let testDecl4 () =
     Assert.AreEqual( Some (Module ("test", [TypeDef ("State", PT [("x", UserType ("List", Unit));
                                                                   ("y", Bool)])])), res );
 
-(* [<Test>]
-[<Ignore("not ready")>]
-let testDecl5 () =
-    let res = parse "contract test
-                     type UserData = { name : string; balance : int }
-                     type State = { ud:UserData }
-    "
-    let decls = [TypeDef ("UserData", PT [("name", String); ("balance", Int 256)]);
-                 TypeDef ("State", PT [("ud", UserType "UserData")])]
-    Assert.AreEqual( Some (Module ("test", decls)), res  );
-*)
 [<Test>]
 let testDecl6 () =
     let res = parse "contract test
@@ -83,26 +72,6 @@ let testDecl6 () =
                           ST [("Borrower", [String; Int 256]);
                               ("Depositor", [String; Int 256])])]
     Assert.AreEqual( Some (Module ("test", decls)), res  );
-
-// TODO!
-(*[<Test>]
-let testDecl7 () =
-    let res = parse "contract test
-
-                     type UserData =
-                         | Borrower of name:string * amount:int
-                         | Depositor of name:string * amount:int
-
-                     type State = { user : UserData }
-    "
-    let decls = [TypeDef ("UserData",
-                          ST [("Borrower", [String; Int 256]);
-                              ("Depositor", [String; Int 256])]);
-                 TypeDef ("State",
-                          PT [("user", UserType "UserData")])]
-
-    Assert.AreEqual( Some (Module ("test", decls)), res  );
-**)
 
 
 // extract n-th handler definition AST in a form of SExpr
@@ -179,17 +148,22 @@ let testApAssoc0 () =
                        SAp (SVar "f1", SVar "y"))))))
     Assert.AreEqual( expected, resAst  )
 
-(**
+
 [<Test>]
 let testHandler4 () =
     let res = parse "contract test
                      handler test (x:int) =
-                          if ( (1 + 1) > 2) then 1 else 0
-    "
-    let decls = [HandlerDef ("test", [("x", Int 256)],
-                             EIf (EGt (EAdd (ENum 1, ENum 1), ENum 2), ENum 1, ENum 0))]
+                          if ( (1 + 1) > 2) then 1 else 0 "
 
-    Assert.AreEqual( Some (Module ("test", decls)), res  );
+    match res with
+    | Some (Module ("test", [HandlerDef ("test", [("x", Int 256)], decls)])) ->
+        Assert.AreEqual(SIf (SGt (SAdd (SNum 1, SNum 1), SNum 2),
+                             SNum 1,
+                             SNum 0),
+                        decls.toSExpr() );
+    | _ ->
+        Assert.Fail ("wrong parsing")
+
 
 [<Test>]
 let testHandler5 () =
@@ -198,10 +172,9 @@ let testHandler5 () =
                      handler test (x:int) =
                           if (1 + (1 > 2)) then 1 else 0
     "
-    let decls = [HandlerDef ("test", [("x",Int 256)],
-                             EIf (EAdd (ENum 1, EGt (ENum 1, ENum 2)), ENum 1, ENum 0))]
+    let expected = SIf (SAdd (SNum 1, SGt (SNum 1, SNum 2)), SNum 1, SNum 0)
 
-    Assert.AreEqual( Some (Module ("test", decls)), res  );
+    Assert.AreEqual( expected, getHandlerAst res.Value 0 );
 
 [<Test>]
 let testHandler6 () =
@@ -209,12 +182,11 @@ let testHandler6 () =
                      handler fact (n:int) =
                           if (n > 1) then n * fact (n - 1) else 1
     "
-    let decls = [HandlerDef ("fact", [("n", Int 256)],
-                             EIf (EGt (EVar "n", ENum 1),
-                                  EMul (EVar "n", EAp (EVar "fact", ESub (EVar "n", ENum 1))),
-                                  ENum 1))]
+    let expected = SIf (SGt (SVar "n", SNum 1),
+                        SMul (SVar "n", SAp (SVar "fact", SSub (SVar "n", SNum 1))),
+                        SNum 1)
 
-    Assert.AreEqual( Some (Module ("test", decls)), res  );
+    Assert.AreEqual( expected, getHandlerAst res.Value 0  );
 
 [<Test>]
 let testHandler7 () =
@@ -224,9 +196,10 @@ let testHandler7 () =
                      handler msg_handler2 (n:int) =
                           n * 2
     "
-    let decls = [HandlerDef ("msg_handler1", [("n", Int 256)], EVar "n");
-                 HandlerDef ("msg_handler2", [("n", Int 256)], EMul (EVar "n", ENum 2))]
-    Assert.AreEqual( Some (Module ("test", decls)), res  );
+    let expr0 = SVar "n"
+    let expr1 = SMul (SVar "n", SNum 2)
+    Assert.AreEqual( expr0 , getHandlerAst res.Value 0  );
+    Assert.AreEqual( expr1 , getHandlerAst res.Value 1  );
 
 [<Test>]
 let testLet0 () =
@@ -234,21 +207,8 @@ let testLet0 () =
                      handler msg_handler1 (n:int) =
                        let f = 10 in f
     "
-    let decls = [HandlerDef ("msg_handler1",
-                             [("n", Int 256)],
-                             ELet ("f", ENum 10, EVar "f"))]
-    Assert.AreEqual( Some (Module ("test", decls)), res  );
-
-[<Test>]
-let testLet1 () =
-    let res = parse "contract test
-                     handler msg_handler1 (n:int) =
-                       let f = 10 in f
-    "
-    let decls = [HandlerDef ("msg_handler1",
-                             [("n", Int 256)],
-                             ELet ("f",ENum 10, EVar "f"))]
-    Assert.AreEqual( Some (Module ("test", decls)), res  );
+    let expected = SLet ("f", SNum 10, SVar "f")
+    Assert.AreEqual( expected, getHandlerAst res.Value 0  );
 
 [<Test>]
 let testLet2 () =
@@ -259,83 +219,9 @@ let testLet2 () =
                        let g = msg_handler1 10 in
                        g
                     "
-
-    let decls = [HandlerDef ("msg_handler1",
-                             [("n",Int 256)],
-                             ELet ("f", ENum 10,
-                               ELet ("g", EAp (EVar "msg_handler1", ENum 10), EVar "g")))]
-    Assert.AreEqual( Some (Module ("test", decls)), res  );
-
-[<Test>]
-let testLet3 () =
-    let res = parse "contract test
-
-                     handler msg_handler1 (n:int) =
-                      let f x = x + 5 in
-                      f 10
-                    "
-    let decls = [HandlerDef ("msg_handler1",
-                             [("n", Int 256)],
-                             ELet ("f", EFunc ("x", EAdd (EVar "x", ENum 5)),
-                              EAp (EVar "f", ENum 10)))]
-    Assert.AreEqual( Some (Module ("test", decls)), res  );
-
-[<Test>]
-let testLet4 () =
-    let res = parse "contract test
-                     handler msg_handler1 (n:int) =
-                      let f x = x + 5 in
-                      let g = 1000 in
-                      f g
-                    "
-    let decls = [HandlerDef ("msg_handler1",
-                             [("n", Int 256)],
-                             ELet ("f", EFunc ("x", EAdd (EVar "x", ENum 5)),
-                              ELet ("g", ENum 1000,
-                               EAp (EVar "f", EVar "g"))))]
-    Assert.AreEqual( Some (Module ("test", decls)), res  );
-
-[<Test>]
-let testLet5 () =
-    let res = parse "contract test
-                     let f x y z = x + y + z ;;
-                     let haa xy wy = xy wy ;;
-                     let haaAAAA x y z = f x y z ;;
-                     let haa_A_A12AA_ x y z = f x y z ;;
-                    "
-    let decls = [LetBinding
-                  ("f", false,
-                    EFunc ("x", EFunc ("y", EFunc ("z", EAdd (EVar "x", EAdd (EVar "y", EVar "z"))))));
-                 LetBinding
-                  ("haa", false, EFunc ("xy", EFunc ("wy", EAp (EVar "xy", EVar "wy"))));
-                 LetBinding
-                  ("haaAAAA", false, EFunc ("x",
-                                            EFunc ("y",
-                                                   EFunc ("z",
-                                                          EAp (EVar "f", EAp (EVar "x", EAp (EVar "y", EVar "z")))))));
-                 LetBinding
-                  ("haa_A_A12AA_", false,
-                   EFunc ("x",
-                    EFunc ("y",
-                     EFunc ("z", EAp (EVar "f", EAp (EVar "x", EAp (EVar "y", EVar "z")))))))]
-    Assert.AreEqual( Some (Module ("test", decls)), res  );
-
-[<Test>]
-let testLetRec1 () =
-    let res = parse "contract test
-                     handler msg_handler1 (n:int) =
-                      let rec fact x = fact (x - 1) in
-                      let g = 1000 in
-                      fact g
-                    "
-    let decls = [
-        HandlerDef ("msg_handler1",
-                    [("n", Int 256)],
-                       ELet ("fact", EFunc ("x", EAp (EVar "fact", ESub (EVar "x", ENum 1))),
-                        ELet ("g", ENum 1000,
-                         EAp (EVar "fact", EVar "g"))))
-    ]
-    Assert.AreEqual( Some (Module ("test", decls)), res  );
+    let expected = SLet ("f", SNum 10,
+                    SLet ("g", SAp (SVar "msg_handler1", SNum 10), SVar "g"))
+    Assert.AreEqual( expected, getHandlerAst res.Value 0 );
 
 [<Test>]
 let testLetBindings0 () =
@@ -346,12 +232,43 @@ let testLetBindings0 () =
                             s + length l
                      ;;
                     "
-    let decls = [LetBinding ("avg", false,
-                  EFunc ("l",
-                   ELet ("s", EAp (EVar "sum", EVar "l"),
-                    ELet ("length", EFunc ("l", EVar "l"),
-                     EAdd (EVar "s", EAp (EVar "length", EVar "l"))))))]
+    let expected = SFunc ("l",
+                    SLet ("s", SAp (SVar "sum", SVar "l"),
+                     SLetRec ("length", SFunc ("l", SVar "l"),
+                      SAdd (SVar "s", SAp (SVar "length", SVar "l")))))
+    Assert.AreEqual( expected, getLetAst res.Value 0 );
+
+(* [<Test>]
+[<Ignore("not ready")>]
+let testDecl5 () =
+    let res = parse "contract test
+                     type UserData = { name : string; balance : int }
+                     type State = { ud:UserData }
+    "
+    let decls = [TypeDef ("UserData", PT [("name", String); ("balance", Int 256)]);
+                 TypeDef ("State", PT [("ud", UserType "UserData")])]
     Assert.AreEqual( Some (Module ("test", decls)), res  );
+*)
+
+// TODO!
+(*[<Test>]
+let testDecl7 () =
+    let res = parse "contract test
+
+                     type UserData =
+                         | Borrower of name:string * amount:int
+                         | Depositor of name:string * amount:int
+
+                     type State = { user : UserData }
+    "
+    let decls = [TypeDef ("UserData",
+                          ST [("Borrower", [String; Int 256]);
+                              ("Depositor", [String; Int 256])]);
+                 TypeDef ("State",
+                          PT [("user", UserType "UserData")])]
+
+    Assert.AreEqual( Some (Module ("test", decls)), res  );
+**)
 
 (*
 [<Test>]
@@ -382,7 +299,6 @@ let testLetBindings1 () =
                          EAp (EVar "fact", EVar "g"))))
         ]
     Assert.AreEqual( Some (Module ("test", decls)), res  );
-**)
 
 [<Test>]
 [<Ignore("type List is not implemented")>]
