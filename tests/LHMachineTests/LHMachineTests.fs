@@ -219,6 +219,17 @@ let testCurry1 () =
     execAndCheckPrint res "3" false
 
 [<Test>]
+let testMkAdder () =
+    let res = parse "contract test
+                     let main =
+                      let rec make_adder x =
+                       let rec adder y = x + y in adder in
+                        make_adder 3 7 ;;"
+    let resAst = getLetAst res.Value 0
+    execAndCheck resAst "10"
+
+
+[<Test>]
 let testCurry2 () =
     // let f = \f1 \f2 \x \y . f2 (f1 x) (f1 y)
     // let sum = \x \y . x + y

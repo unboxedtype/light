@@ -376,15 +376,19 @@ let rec freeVars (expr:Expr) : string list =
     | EVar x -> List.singleton x
     | EFunc (y, body) ->
         freeVars body.Expr |> List.except [y]
-    | EAp (e1, e2) ->
+    | EAp (e1, e2)
+    | EGt (e1, e2)
+    | EAdd (e1, e2)
+    | ESub (e1, e2)
+    | EMul (e1, e2) ->
         (freeVars e1.Expr) @ (freeVars e2.Expr)
     | ELet (x, bind, body) ->
         (freeVars bind.Expr) @ (freeVars body.Expr)
     | ELetRec (x, bind, body) ->
         (freeVars bind.Expr) @ (freeVars body.Expr)
-    | EAdd (e1, e2) ->
-        (freeVars e1.Expr) @ (freeVars e2.Expr)
     | ENum _ -> []
+    | EIf (e1, e2, e3) ->
+        (freeVars e1.Expr) @ (freeVars e2.Expr) @ (freeVars e3.Expr)
     | _ ->
         failwithf "freeVars for %A not implemented" expr
 
@@ -509,6 +513,21 @@ let rec arithSimplRedex node =
             node
     in astReducer node arithSimpl
 
+
+// Here we substitute 'false' letrecs (with no recursion in them),
+// for ordinary let expressions; this step has to be done before
+// type inference.
+let rec letrecRedex node =
+    let letrecRedexStep (node:ASTNode) =
+        match node.Expr with
+        | ELetRec (name, bind, body) ->
+            if not (List.contains name (freeVars bind.Expr)) then
+                mkAST (ELet (name, bind, body))
+            else node
+        | _ ->
+            node
+    in astReducer node letrecRedexStep
+
 let rec insertEval (ast:ASTNode) (ty:Map<int,LHType>) : ASTNode =
     let rec insertEvalInner (node:ASTNode) : ASTNode =
         match node.Expr with
@@ -560,6 +579,7 @@ let fixpointImpl = "
 let compileIntoFiftDebug ast debug : string =
     let ast' =
         ast
+        |> letrecRedex
         |> etaRedex
         |> betaRedexFull
         |> arithSimplRedex

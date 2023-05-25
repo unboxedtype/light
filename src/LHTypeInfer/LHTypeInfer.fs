@@ -249,7 +249,7 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) : Subst * Typ * N
         let t' =
           match (Typ.apply s' t) with
           | Function (t1, t2) when t1 = t2 -> t1
-          | _ ->
+          | x ->
               failwithf "Unexpected type for a fix point argument: %A" t
         // printfn "%A : s' = %A" exp.Name  s'
         let tm2 = Map.add node.Id t' tm1
