@@ -1,7 +1,9 @@
 // For emacs: -*- fsharp -*-
 
 module LHCompilerTests
+
 open NUnit.Framework
+
 
 [<SetUp>]
 let Setup () =
@@ -10,7 +12,8 @@ let Setup () =
 [<Test>]
 let testContractSimple () =
     let program = "contract Simple
-                   let main = 0 ;; "
+                   type State = { bal:int }
+                   let main = 0 ;; " + ActorInit.actorInitCode
     let code = LHCompiler.compile program true
     let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".fif"
     TVM.dumpFiftScript filename code
@@ -18,7 +21,8 @@ let testContractSimple () =
 
 [<Test>]
 let testGenStateInit0 () =
-    let code = "<{ 777 INT }>s s>c"
+    // without ACCEPT, the actor will not get deployed
+    let code = "<{ ACCEPT 777 INT }>s s>c"
     let data = "<b b>"
     let fift = LHCompiler.generateStateInit "testGenStateInit0.tvc" code data
     let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".fif"

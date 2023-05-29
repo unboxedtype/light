@@ -1,6 +1,4 @@
-//This lexer has been writen with help of "Real world OCaml" book By Yaron Minsky, Anil Madhavapeddy, Jason Hickey (chapter 16)
 {
-
 module Lexer
 
 open FSharp.Text.Lexing
@@ -35,14 +33,14 @@ rule read =
   | "type"   { TYPEDEF }
   | "of"     { OF }
   | "handler" { HANDLER }
-  | "if" { IF }
-  | "then" { THEN }
-  | "else" { ELSE }
-  | "let"  { LET }
-  | "rec"  { RECURSIVE }
-  | "in"   { IN }
-  | "match" { MATCH }
-  | "with" { WITH }
+  | "if"     { IF }
+  | "then"   { THEN }
+  | "else"   { ELSE }
+  | "let"    { LET }
+  | "rec"    { RECURSIVE }
+  | "in"     { IN }
+  | "match"  { MATCH }
+  | "with"   { WITH }
   | ucaseIdentifier  { UIDENT (string (lexeme lexbuf)) }
   | lcaseIdentifier  { LIDENT (string (lexeme lexbuf)) }
   | identifier { IDENT (string (lexeme lexbuf)) }
@@ -66,7 +64,13 @@ rule read =
   | '>'      { GT }
   | '_'      { UNDERSCORE }
   | eof      { EOF }
-  | _ { raise (Exception (sprintf "SyntaxError: Unexpected char: '%s' Line: %d Column: %d" (lexeme lexbuf) (lexbuf.StartPos.Line+1) lexbuf.StartPos.Column)) }
+  | _
+     {
+      raise (Exception (sprintf "SyntaxError: Unexpected char: '%s' Line: %d Column: %d"
+                           (lexeme lexbuf)
+                           (lexbuf.StartPos.Line+1)
+                           lexbuf.StartPos.Column))
+     }
 
 
 and read_string str ignorequote =

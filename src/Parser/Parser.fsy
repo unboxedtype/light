@@ -2,6 +2,7 @@
 open ParserModule
 open type LHExpr.Expr
 open LHExpr
+open FSharp.Text.Parsing
 
 // EFunc of arg:Name * body:Expr
 // ["x","y","z"], body ->
@@ -191,9 +192,9 @@ varEquations:
 
 basicExpr:
   | LPAREN expr RPAREN
-     { $2 }
-//  | LPAREN RPAREN
-//    { Unit }
+    { $2 }
+  | LPAREN RPAREN
+    { mkAST ENull }   // Unit
 //  | BOOL
 //    { EBool($1) }
   | INT
@@ -332,3 +333,4 @@ decls:
 modle:
   | MODULE LIDENT decls { Module ($2, $3) }
   | MODULE UIDENT decls { Module ($2, $3) }
+

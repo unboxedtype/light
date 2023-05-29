@@ -84,7 +84,7 @@ type Type =
     | PT of e:ProductType               // product type
     | ST of e:SumType                   // sum type
     | Function of inp:Type * out:Type   // function type
-    | UserType of name:Name * typ:Type  // user-defined type with name s
+    | UserType of name:Name * typ:option<Type>  // user-defined type with name s
     | TVar of s:Name // type variable
     member this.usertypeName =
         match this with
@@ -120,8 +120,8 @@ let mapType (str : string) : Type =
     | "int" -> Int 256
     | "string" -> String
     | "bool" -> Int 2
-    | _ -> failwith (str + " is not supported currently")
-    // | S -> UserType S
+    | S -> UserType (S, None)
+    // | _ -> failwith (str + " is not supported currently")
 
 // t = PT [("x",Int);("y",List Int);("z",Bool)]
 // stateGlobalsMapping t = Map [("x",1);("y",2);("z",3)]
@@ -141,10 +141,10 @@ let findType (typename:string) (pr:ProgramTypes) : Type =
 let findStateType (pr:ProgramTypes) : Type =
     let t = findType "state" pr
     match t with
-    | UserType ("State", typ) ->
+    | UserType ("State", Some typ) ->
         typ
     | _ ->
-        t
+        failwithf "Unexpected state type %A" t
 
 
 // constructs the stack object from the cell

@@ -120,8 +120,12 @@ let generateStateInit outputPath codeFift dataFift : string =
     builder_ref_append
     stateinit_data
     builder_ref_append" + newline +
-    "builder_end
-dup
-cell_to_bytes" + newline +
-"\"" + outputPath + "\" file_write_bytes" + newline +
-".\"0:\" cell_hash val_print_hex_ws"
+    "builder_end dup cell_to_bytes" + newline + "\"" + outputPath +
+    "\" file_write_bytes" + newline +
+    ".\"0:\" cell_hash val_print_hex_ws"
+
+// Generate FIFT script that produces .BOC file containing
+// an external inbound message carrying stateinit with specified
+// code and data, and destination address set to that stateinit
+// hash.
+// let generateMessageWithStateInit outputPath codeFift dataFift : string = ""

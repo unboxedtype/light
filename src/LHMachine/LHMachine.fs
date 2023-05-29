@@ -163,7 +163,7 @@ let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:LHTypes.ProgramType
             let stype = LHTypes.findType s ty     // findType "state" [("state",UserType "State"); ...]
             let ptype =
                 match stype with
-                | UserType (n, ty') ->
+                | UserType (n, Some ty') ->
                     ty'
                 | _ ->
                     stype
