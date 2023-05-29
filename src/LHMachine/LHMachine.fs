@@ -303,6 +303,7 @@ let rec astReducer (ast:ASTNode) (red: ASTNode -> ASTNode) : ASTNode =
     // leaf nodes
     | EVar _
     | ENull
+    | EStr _
     | ENum _ ->
         ast
     | EFunc (arg, body) ->
@@ -332,7 +333,8 @@ let rec astReducer (ast:ASTNode) (red: ASTNode -> ASTNode) : ASTNode =
     | ESub (e0, e1)
     | EMul (e0, e1)
     | EGt (e0, e1)
-    | EEq (e0, e1) ->
+    | EEq (e0, e1)
+    | ESelect (e0, e1) ->
         let e0' = astReducer e0 red
         let e1' = astReducer e1 red
         if e0' <> e0 || e1' <> e1 then
@@ -343,7 +345,13 @@ let rec astReducer (ast:ASTNode) (red: ASTNode -> ASTNode) : ASTNode =
             | EMul _ -> mkAST (EMul (e0', e1'))
             | EGt _ -> mkAST (EGt (e0', e1'))
             | EEq _ -> mkAST (EEq (e0', e1'))
+            | ESelect _ -> mkAST (ESelect (e0', e1'))
         else ast
+    | ERecord es ->
+        es 
+        |> List.map (fun e -> astReducer e red)
+        |> ERecord
+        |> mkAST
     | _ ->
         failwithf "unrecognised node %A" ast.Expr
     |> red

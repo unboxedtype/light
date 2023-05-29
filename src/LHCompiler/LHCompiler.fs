@@ -66,13 +66,13 @@ let compile (source:string) (debug:bool) : string =
             |> List.map TVM.instrToFift
             |> String.concat "\n"
         **)
-        let mainLet =
+        let actorInitLet =
             letBnds
-            |> List.filter (fun (name, expr) -> name = "main")
-        if mainLet.Length <> 1 then
-            failwith "main not found"
-        let ("main", mainExpr) = List.head mainLet
-        LHMachine.compileIntoFift mainExpr
+            |> List.filter (fun (name, expr) -> name = "actorInit")
+        if actorInitLet.Length <> 1 then
+            failwith "actorInit not found"
+        let ("actorInit", actorInitExpr) = List.head actorInitLet
+        LHMachine.compileIntoFift actorInitExpr
     | _ ->
         failwith "Actor not found"
 

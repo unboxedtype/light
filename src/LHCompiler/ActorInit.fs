@@ -19,18 +19,18 @@ module ActorInit
 // This code shall be put after user code.
 let actorInitCode =
  "type ActorState = {
-   seqno: int;
-   state: State
+     seqno: int;
+     state: State
   }
 
-  let actorInit msg is_external =
+  let actorInit msgBodySlice is_external =
      let act_st = actorStateRead () in
      let msg_seqno = msgSeqNo msg in
      if msg_seqno  = act_st.seqno then
         failwith \"Replay detected. Rejecting the message.\"
      else
         let st = act_st.state in
-        let st' = actorMain msg st in
+        let st' = main msg st in
         let act_st' = { seqno = msg_seqno; state = st' } in
         actorStateWrite act_st'
     ;;

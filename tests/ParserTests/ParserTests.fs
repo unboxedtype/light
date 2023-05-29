@@ -267,13 +267,13 @@ let testActorInit () =
       SFunc ("msg",
        SFunc ("is_external",
         SLet ("act_st", SAp (SVar "actorStateRead", SNull),
-              SLet ("msg_seqno", SAp (SVar "msgSeqNo", SVar "msg"), 
-                SIf (SEq (SVar "msg_seqno", SSelect (SVar "act_st", SVar "seqno")),
-                     SAp (SVar "failwith", SStr "Replay detected. Rejecting the message."),
-                     SLet ("st", SSelect (SVar "act_st", SVar "state"),
-                       SLet ("st'", SAp (SAp (SVar "actorMain", SVar "msg"), SVar "st"),
-                         SLet ("act_st'", SRecord [SVar "msg_seqno"; SVar "st'"],
-                           SAp (SVar "actorStateWrite", SVar "act_st'")))))))))
+         SLet ("msg_seqno", SAp (SVar "msgSeqNo", SVar "msg"), 
+           SIf (SEq (SVar "msg_seqno", SSelect (SVar "act_st", SVar "seqno")),
+                SAp (SVar "failwith", SStr "Replay detected. Rejecting the message."),
+                SLet ("st", SSelect (SVar "act_st", SVar "state"),
+                 SLet ("st'", SAp (SAp (SVar "actorMain", SVar "msg"), SVar "st"),
+                  SLet ("act_st'", SRecord [SVar "msg_seqno"; SVar "st'"],
+                   SAp (SVar "actorStateWrite", SVar "act_st'")))))))))
     Assert.AreEqual( expected, getLetAst res.Value 0  );
 
 (* [<Test>]

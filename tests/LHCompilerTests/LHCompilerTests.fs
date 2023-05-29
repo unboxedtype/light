@@ -13,7 +13,7 @@ let Setup () =
 let testContractSimple () =
     let program = "contract Simple
                    type State = { bal:int }
-                   let main = 0 ;; " + ActorInit.actorInitCode
+                   let main msg st = 0 ;; " + ActorInit.actorInitCode
     let code = LHCompiler.compile program true
     let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".fif"
     TVM.dumpFiftScript filename code

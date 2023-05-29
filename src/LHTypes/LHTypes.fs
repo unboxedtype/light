@@ -200,6 +200,7 @@ let stateReader (types:ProgramTypes) : TVM.Code =
 let stateWriter (types:ProgramTypes) : TVM.Code =
     // this function generates a pairs of swaps needed
     // to reverse the list l. The acc is an accumulator (state)
+    // TODO!!: Use REVERSE instruction for that.
     let rec xchgs l acc =
         let len = List.length l
         if len > 1 then
