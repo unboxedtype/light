@@ -122,6 +122,6 @@ let generateStateInit outputPath codeFift dataFift : string =
     builder_ref_append" + newline +
     "builder_end
 dup
-cell_to_bytes
-\"" + outputPath + "\" file_write_bytes" + newline +
-   ".\"0:\" cell_hash val_print_hex_ws"
+cell_to_bytes" + newline +
+"\"" + outputPath + "\" file_write_bytes" + newline +
+".\"0:\" cell_hash val_print_hex_ws"
