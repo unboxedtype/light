@@ -105,6 +105,8 @@ let generateStateInit outputPath codeFift dataFift : string =
 { u, } : builder_uint_append
 { ref, } : builder_ref_append
 { boc>B } : cell_to_bytes
+{ hashu } : cell_hash
+{ x._ } : val_print_hex_ws
 { B>file } : file_write_bytes" + newline +
     "{ " + dataFift + " } : stateinit_data" + newline +
     "{ " + codeFift + " } : stateinit_code" + newline +
@@ -121,4 +123,5 @@ let generateStateInit outputPath codeFift dataFift : string =
     "builder_end
 dup
 cell_to_bytes
-\"" + outputPath + "\" file_write_bytes"
+\"" + outputPath + "\" file_write_bytes" + newline +
+   ".\"0:\" cell_hash val_print_hex_ws"
