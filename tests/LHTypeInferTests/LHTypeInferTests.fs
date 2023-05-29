@@ -62,8 +62,8 @@ let testIf4 () =
     let se = SFunc ("x", SIf (SVar "x", SNum 10, SVar "x"))
     let env = Map []
     try
-        LHTypeInfer.typeInference env (toAST se) ;
-        Assert.Fail( "must not typecheck" )
+        LHTypeInfer.typeInference env (toAST se) |> ignore ;
+        Assert.Fail( "shall not typecheck" )
     with
     | _ ->
         Assert.Pass()

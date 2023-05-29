@@ -1,0 +1,58 @@
+(* A dialog-like system of actors. *)
+
+(* In the  loop, actor1 asks actor2  to provide him one  of the following
+   items: Number,  Word or  Bool.  Then,  using receive  operator, actor1
+   suspends  its   execution  until   a  message   from  the   actor2  is
+   received. Then it politely thanks the actor2 and repeats. *)
+
+(* Both actors are stateless *)
+
+type Request =
+  | Number
+  | Word
+  | Bool
+
+type Response =
+  | Number of n:uint
+  | Word of s:string
+  | Bool of b:bool
+
+contract ActorRequestor
+
+handler requestItem (act2:ActorId) (st:State) =
+   let random = random () ;
+   let askWord = (random % 10) = 5
+   let askBool = (random % 10) = 3
+   let askNum = (not askWord) && (not askBool)
+
+   // ("requestItem", actorId, Request)
+   act2 ! ("requestItem", ctx.identifier,
+             if random % 10 = 5 then Word
+             elif random % 10 = 3 then Bool
+             else Number ) ;
+   receive
+   | ("response", Number n) ->
+       log "number %n received" n
+   | ("response", Word s) ->
+       log "word %s received" s
+   | ("response", Bool b) ->
+       log "bool %s received" (string b)
+   | _ ->
+       () 
+   end   
+   requestItem act2 st
+
+
+// ==========================================================
+
+contract ActorSender
+
+handler requestItem (id:ActorId) (req:Request) (st:State) =
+   match req with
+   | Number ->
+      id ! ("response", (Number blkch.random()))
+   | Bool ->
+      id ! ("response", (Bool (if blkch.random() % 2 = 0 then true else false)))
+   | String ->
+      id ! ("response", (String "hi!"))
+      

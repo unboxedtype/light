@@ -1,0 +1,100 @@
+(* FunDAO allows to process group decisions based on voting. The voting
+   is done by a special function. Usually, voting mechanisms in DAO are
+   hard-coded and is a big thing. However, in FunDAO, users can assign
+   different voting algorithms to process the next decision on the fly.
+   For example, in one case the absolute majority is sufficient (50%+1),
+   while in another case the relatve vote weight is applied, in the third
+   case soft-majority-voting is neccessary. The voting method is no
+   longer a big thing. This became possible thanks to the ability to pass
+   functions in messages and store them as first-class objects. *)
+   
+
+contract FunDAO
+
+// The voting function takes DAO state as input,
+// and produces true/false as the decision outcome.
+// Any algorithm that fits this function signature
+// may be used as a voting method.
+
+type Vote =
+   | Vote of reqId:uint * support:bool
+
+type Request =
+   | Request of id:uint *
+                desc:string *
+                deadline:Epoch *
+                vot:VotingMethod *
+                dec:Decision
+and State {
+    members: List<ActorId> ;
+    weights: Map<ActorId,uint256> ;
+    request_opt: Option<Request> ;
+    votes: Map<ActorId * Vote> ;
+}
+// Decision is our case is an arbitrary operation on
+// the DAO funds. It is a function, not a data structure.
+and Decision =
+    Request -> State -> State
+   
+type VotingFunction =
+    State -> bool
+
+
+let isMember (id:ActorId) (st:State) : bool = 
+    List.contains id st.members ;;
+
+// Add new member to the DAO.
+handler addMember (id:ActorId) (weight:uint256) (st:State) =
+   // Only existing members are allowed to add new users.
+   assert (List.contains ctx.msg.src st.members) ;
+   // The new user shall not be a member of the DAO.
+   assert (not List.contains id st.members) ;   
+   accept () ;   
+   State { st with { members = id :: st.members ;
+                     weights = Map.add id weight st.weights } }
+
+// Add DAO request for processing. It is possible only if
+// there are no pending requests.
+handler addRequest (req:Request) (st:State) =
+   let sender = ctx.msg.src in
+   // Only existing members are allowed to add requests.
+   assert ( isMember sender st, "Not a member") ;
+   assert (st.request_opt <> None, "Pending request") ;
+   accept () ;
+   State { st with { request_opt = Some req } }
+
+handler vote (v:Vote) (st:State) =
+   let sender = ctx.msg.src ;
+   // Only existing members are allowed to vote
+   assert ( isMember sender st ) ;
+   // The vote has to address the current request, not some other
+   // outdated one.
+   assert (v.reqId = request_opt.Value.id) ;
+   accept ();
+   
+   // We allow revoting, so overwriting the already placed vote is OK.
+   State { st with { votes = Map.add sender v st.votes } }
+
+
+// Execute the decision by processing votes using the chosen
+// voting function. If the DAO members support the request,
+// execute the decision function (possibly transferring funds
+// to the contractor).
+handler execute (st:State) =
+   let sender = ctx.msg.src ;
+   // Only existing members are allowed to execute DAO decision
+   assert ( isMember sender st ) ;
+   // There is some request pending.
+   assert ( st.request_opt <> None );
+   accept() ;   
+   let deadline = st.request_opt.Value.deadline ;
+   if now () >= deadline then
+      let votingFun = st.request_opt.vot ;
+      let decisionFun = st.request_opt.dec ;
+      if votingFun st = true then         
+         decisionFun st
+      else
+         State { st with { request_opt = None ;
+                           votes = Map.empty } }
+   else
+      failwith "The deadline is not yet reached."
