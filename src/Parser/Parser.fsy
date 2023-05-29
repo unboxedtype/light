@@ -199,6 +199,8 @@ basicExpr:
 //    { EBool($1) }
   | INT
     { mkAST (ENum ( $1 |> int )) }
+  | STRING
+    { mkAST (EStr $1) }
   | LIDENT
     { mkAST (EVar $1) }
   | basicExpr DOT LIDENT
@@ -209,13 +211,16 @@ basicExpr:
     let right = mkAST (EVar $3)
     mkAST (ESelect (left, right))
   }
-  
+
 expr:
   | basicExpr
   { $1 }
-  
+
   | expr GT expr
   { mkAST (EGt ($1, $3))  }
+
+  | expr EQ expr
+  { mkAST (EEq ($1, $3))  }
 
   | expr PLUS expr
   { mkAST (EAdd ($1, $3)) }
@@ -333,4 +338,3 @@ decls:
 modle:
   | MODULE LIDENT decls { Module ($2, $3) }
   | MODULE UIDENT decls { Module ($2, $3) }
-

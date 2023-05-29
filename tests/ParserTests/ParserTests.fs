@@ -49,7 +49,7 @@ let testDecl3 () =
     let res = parse "contract test
                      type State = { x : List }
     "
-    Assert.AreEqual( Some (Module ("test", [TypeDef ("State", PT [("x", UserType ("List", Unit))])])), res );
+    Assert.AreEqual( Some (Module ("test", [TypeDef ("State", PT [("x", UserType ("List", Some Unit))])])), res );
 
 [<Test>]
 [<Ignore("type List is not implemented")>]
@@ -57,7 +57,7 @@ let testDecl4 () =
     let res = parse "contract test
                      type State = { x : List; y : Bool }
     "
-    Assert.AreEqual( Some (Module ("test", [TypeDef ("State", PT [("x", UserType ("List", Unit));
+    Assert.AreEqual( Some (Module ("test", [TypeDef ("State", PT [("x", UserType ("List", Some Unit));
                                                                   ("y", Bool)])])), res );
 
 [<Test>]
@@ -237,6 +237,44 @@ let testLetBindings0 () =
                      SLetRec ("length", SFunc ("l", SVar "l"),
                       SAdd (SVar "s", SAp (SVar "length", SVar "l")))))
     Assert.AreEqual( expected, getLetAst res.Value 0 );
+
+[<Test>]
+let testStr0 () =
+    let res = parse "contract test
+                     let x = \"abcd\" ;;
+    "
+    let expected = SStr ("abcd")
+    Assert.AreEqual( expected, getLetAst res.Value 0  );
+
+[<Test>]
+let testActorInit () =
+    let res = parse "
+     contract test
+
+     let actorInit msg is_external =
+       let act_st = actorStateRead () in
+       let msg_seqno = msgSeqNo msg in
+       if msg_seqno  = act_st.seqno then
+          failwith \"Replay detected. Rejecting the message.\"
+       else
+          let st = act_st.state in
+          let st' = actorMain msg st in
+          let act_st' = { seqno = msg_seqno; state = st' } in
+          actorStateWrite act_st'
+     ;;"
+
+    let expected =
+      SFunc ("msg",
+       SFunc ("is_external",
+        SLet ("act_st", SAp (SVar "actorStateRead", SNull),
+              SLet ("msg_seqno", SAp (SVar "msgSeqNo", SVar "msg"), 
+                SIf (SEq (SVar "msg_seqno", SSelect (SVar "act_st", SVar "seqno")),
+                     SAp (SVar "failwith", SStr "Replay detected. Rejecting the message."),
+                     SLet ("st", SSelect (SVar "act_st", SVar "state"),
+                       SLet ("st'", SAp (SAp (SVar "actorMain", SVar "msg"), SVar "st"),
+                         SLet ("act_st'", SRecord [SVar "msg_seqno"; SVar "st'"],
+                           SAp (SVar "actorStateWrite", SVar "act_st'")))))))))
+    Assert.AreEqual( expected, getLetAst res.Value 0  );
 
 (* [<Test>]
 [<Ignore("not ready")>]

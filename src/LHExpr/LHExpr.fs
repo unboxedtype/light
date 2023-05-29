@@ -15,6 +15,7 @@ type Name = string
 // for testing purposes, while ASTNode is for real compilation.
 type SExpr =
     | SNum of n:int                     // value of type Int
+    | SStr of s:string
     | SNull                             // value Null (unit)
     | SFunc of arg:Name * body:SExpr     // value of type Function<T1,T2>
     | SVar of name:Name                 // value of the variable
@@ -41,8 +42,9 @@ type SExpr =
 // AST Expression
 type Expr =
     | ENum of n:int                     // value of type Int
-    | ENull                             // value Null (unit)
-    | EFunc of arg:Name * body:ASTNode     // value of type Function<T1,T2>
+    | EStr of s:string                  // value of type String
+    | ENull                             // value Null (Unit)
+    | EFunc of arg:Name * body:ASTNode  // value of type Function<T1,T2>
     | EVar of name:Name                 // value of the variable
     | EEval of e:ASTNode                   // evaluate saturated function
     | EAp of e1:ASTNode * e2:ASTNode
@@ -66,6 +68,7 @@ type Expr =
     member this.Name =
         match this with
         | ENum n -> sprintf "%A" this
+        | EStr s -> sprintf "%A" this
         | ENull -> "ENull"
         | EFunc (arg, body) -> sprintf "EFunc (%A, ...) " arg
         | EVar n -> sprintf "%A" this
@@ -94,6 +97,7 @@ and ASTNode =
     member this.toSExpr () =
         match this.Expr with
         | ENum n -> SNum n
+        | EStr s -> SStr s
         | ENull -> SNull
         | EFunc (arg,body) -> SFunc (arg, body.toSExpr ())
         | EVar name -> SVar name
@@ -106,6 +110,9 @@ and ASTNode =
         | ESub (e0, e1) -> SSub (e0.toSExpr(), e1.toSExpr())
         | EMul (e0, e1) -> SMul (e0.toSExpr(), e1.toSExpr())
         | EGt (e0, e1) -> SGt (e0.toSExpr(), e1.toSExpr())
+        | EEq (e0, e1) -> SEq (e0.toSExpr(), e1.toSExpr())
+        | ESelect (e0, e1) -> SSelect (e0.toSExpr(), e1.toSExpr())
+        | ERecord es -> SRecord (List.map (fun (e:ASTNode) -> e.toSExpr()) es)
         | _ -> failwithf "unsupported expr : %A" this.Expr
 
     static member newId () =
@@ -131,5 +138,6 @@ let rec toAST sexp : ASTNode =
     | SGt (e0, e1) -> mkAST (EGt (toAST e0, toAST e1))
     | SVar n -> mkAST (EVar n)
     | SNum n -> mkAST (ENum n)
+    | SStr s -> mkAST (EStr s)
     | SNull -> mkAST ENull
     | _ -> failwithf "unexpected term: %A" sexp

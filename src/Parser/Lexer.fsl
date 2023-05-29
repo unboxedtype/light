@@ -20,7 +20,7 @@ let lcase = ['a'-'z']
 let ucaseIdentifier = ucase (lcase | digit | ucase | '_' | '\'' )*
 let lcaseIdentifier = lcase (ucase | digit | lcase | '_' | '\'' )*
 let identifier = lcaseIdentifier | ucaseIdentifier
-
+let string = '\"' (lcase)* '\"'
 let white = [' ' '\t']+
 let newline = '\r' | '\n' | "\r\n"
 
@@ -63,6 +63,7 @@ rule read =
   | '-'      { MINUS }
   | '>'      { GT }
   | '_'      { UNDERSCORE }
+  | '"'      { read_string "" false lexbuf } 
   | eof      { EOF }
   | _
      {
@@ -71,8 +72,6 @@ rule read =
                            (lexbuf.StartPos.Line+1)
                            lexbuf.StartPos.Column))
      }
-
-
 and read_string str ignorequote =
   parse
   | '"'           { if ignorequote  then (read_string (str+"\\\"") false lexbuf) else STRING (str) }

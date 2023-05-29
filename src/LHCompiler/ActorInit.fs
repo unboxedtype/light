@@ -33,4 +33,5 @@ let actorInitCode =
         let st' = actorMain msg st in
         let act_st' = { seqno = msg_seqno; state = st' } in
         actorStateWrite act_st'
-  ;;"
+    ;;
+"
