@@ -406,7 +406,7 @@ let rec freeVars (expr:Expr) : string list =
 let private nameId = ref 0
 
 // Substitute a free variable 'x' for the term y in the 'node'
-let rec substFreeVar (x:string) (y:Expr) (node:ASTNode) =
+let rec substFreeVar (x:string) (y:Expr) (node:ASTNode) : ASTNode =
     let newVarName () =
         let id = !nameId
         nameId := id + 1 ;
@@ -415,20 +415,27 @@ let rec substFreeVar (x:string) (y:Expr) (node:ASTNode) =
     | EVar x' ->
         if x' = x then mkAST y
         else node
-    | ENum _ ->
+    | ENum _
+    | ENull ->
         node
-    | EGt (e0, e1) ->
-        mkAST (EGt (substFreeVar x y e0, substFreeVar x y e1))
-    | ESub (e0, e1) ->
-        mkAST (ESub (substFreeVar x y e0, substFreeVar x y e1))
-    | EMul (e0, e1) ->
-        mkAST (EMul (substFreeVar x y e0, substFreeVar x y e1))
+    | EGt (e0, e1) 
+    | ESub (e0, e1)
+    | EMul (e0, e1)
+    | EAdd (e0, e1)
+    | EEq (e0, e1)
+    | EAp (e0, e1) ->
+        let e0' = substFreeVar x y e0
+        let e1' = substFreeVar x y e1
+        mkAST ( match node.Expr with
+                | EGt _ -> EGt (e0', e1')
+                | EEq _ -> EEq (e0', e1')
+                | ESub _ -> ESub (e0', e1')
+                | EMul _ -> EMul (e0', e1')
+                | EAdd _ -> EAdd (e0', e1')
+                | EAp _ -> EAp (e0', e1')
+              )
     | EIf (e0, e1, e2) ->
         mkAST (EIf (substFreeVar x y e0, substFreeVar x y e1, substFreeVar x y e2))
-    | EAdd (e1, e2) ->
-        mkAST (EAdd (substFreeVar x y e1, substFreeVar x y e2))
-    | EAp (e1, e2) ->
-        mkAST (EAp (substFreeVar x y e1, substFreeVar x y e2))
     | EFunc (x', body) when x' = x ->
         node
     | EFunc (name, body) ->  // here name <> x
@@ -443,6 +450,13 @@ let rec substFreeVar (x:string) (y:Expr) (node:ASTNode) =
         mkAST (ELet (arg, substFreeVar x y bind, substFreeVar x y body))
     | ELetRec (arg, bind, body) ->
         mkAST (ELetRec (arg, substFreeVar x y bind, substFreeVar x y body))
+    | ERecord es ->
+        let es' = List.map (fun (name, term) -> (name, substFreeVar x y term)) es
+        mkAST (ERecord es')
+    | ESelect (e0, e1) ->
+        mkAST (ESelect ((substFreeVar x y e0), e1))
+    | EFailWith _ ->
+        node
     | _ ->
         failwithf "substFreeVar not implemented for %A" node.Expr
 

@@ -101,8 +101,15 @@ let compile (source:string) (debug:bool) : string =
             |> List.filter (fun (name, expr) -> name = "actorInit")
         if actorInitLet.Length <> 1 then
             failwith "actorInit not found"
+        let mainLet =
+            letBnds
+            |> List.filter (fun (name, expr) -> name = "main")
+        if mainLet.Length <> 1 then
+            failwith "main not found"
         let ("actorInit", actorInitExpr) = List.head actorInitLet
-        LHMachine.compileWithInitialTypes actorInitExpr types2
+        let ("main", mainExpr) = List.head mainLet
+        let finalExpr = LHExpr.mkAST (LHExpr.ELet("main", mainExpr, actorInitExpr))
+        LHMachine.compileWithInitialTypes finalExpr types2
     | _ ->
         failwith "Actor not found"
 

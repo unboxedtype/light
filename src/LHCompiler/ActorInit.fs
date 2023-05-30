@@ -23,7 +23,7 @@ let actorInitCode =
      state: State
   }
 
-  let actorInit msgBodySlice is_external =
+  let actorInit msgCell msgBodySlice is_external =
      let actorStateRead () =
         { seqno = 0; state = () } in
      let act_st = actorStateRead () in

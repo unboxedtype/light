@@ -40,6 +40,8 @@ module Typ =
         | String
         | PT _
         | Bool -> Set.empty
+        | UserType (_, Some v) ->
+            ftv v
         | Function (t1, t2) -> Set.union (ftv t1) (ftv t2)
         | _ -> failwithf "type %A is not supported" typ
 
@@ -59,6 +61,8 @@ module Typ =
         | PT _
         | Unit ->
             typ
+        | UserType (name, Some t1) ->
+            UserType (name, Some (apply s t1))
         | _ -> failwithf "type %A is not supported" typ
 
     let parens s =
