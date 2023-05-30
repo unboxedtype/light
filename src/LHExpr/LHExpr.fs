@@ -34,10 +34,11 @@ type SExpr =
     | SCase of c:SExpr * cs:(int * (Name list) * SExpr) list
     | SPack of tag:int * arity:int * args:SExpr list
     | SSelect of e0:SExpr * e1:SExpr
-    | SRecord of es:SExpr list
+    | SRecord of es:(Name * SExpr) list
     | SUpdateRec of e0:SExpr * n:int * e1:SExpr
     | SAssign of e0:SExpr
     | SAsm of s:string
+    | SFailWith of n:int
 
 // AST Expression
 type Expr =
@@ -61,14 +62,17 @@ type Expr =
     | ECase of c:ASTNode * cs:(int * (Name list) * ASTNode) list
     | EPack of tag:int * arity:int * args:ASTNode list
     | ESelect of e0:ASTNode * e1:ASTNode
-    | ERecord of es:ASTNode list
+    | ERecord of es:(Name * ASTNode) list
     | EUpdateRec of e0:ASTNode * n:int * e1:ASTNode
     | EAssign of e0:ASTNode
+    | EFailWith of n:int
     | EAsm of s:string
     member this.Name =
         match this with
-        | ENum n -> sprintf "%A" this
-        | EStr s -> sprintf "%A" this
+        | EFailWith _
+        | ENum _
+        | EStr _ ->
+            sprintf "%A" this
         | ENull -> "ENull"
         | EFunc (arg, body) -> sprintf "EFunc (%A, ...) " arg
         | EVar n -> sprintf "%A" this
@@ -99,6 +103,7 @@ and ASTNode =
         | ENum n -> SNum n
         | EStr s -> SStr s
         | ENull -> SNull
+        | EFailWith n -> SFailWith n
         | EFunc (arg,body) -> SFunc (arg, body.toSExpr ())
         | EVar name -> SVar name
         | EEval e -> SEval (e.toSExpr ())
@@ -112,7 +117,7 @@ and ASTNode =
         | EGt (e0, e1) -> SGt (e0.toSExpr(), e1.toSExpr())
         | EEq (e0, e1) -> SEq (e0.toSExpr(), e1.toSExpr())
         | ESelect (e0, e1) -> SSelect (e0.toSExpr(), e1.toSExpr())
-        | ERecord es -> SRecord (List.map (fun (e:ASTNode) -> e.toSExpr()) es)
+        | ERecord es -> SRecord (List.map (fun (name, (e:ASTNode)) -> (name, e.toSExpr())) es)
         | _ -> failwithf "unsupported expr : %A" this.Expr
 
     static member newId () =

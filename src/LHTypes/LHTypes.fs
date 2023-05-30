@@ -120,6 +120,7 @@ let mapType (str : string) : Type =
     | "int" -> Int 256
     | "string" -> String
     | "bool" -> Int 2
+    | "unit" -> Unit
     | S -> UserType (S, None)
     // | _ -> failwith (str + " is not supported currently")
 
@@ -222,3 +223,46 @@ let stateWriter (types:ProgramTypes) : TVM.Code =
         |> (fun l -> List.append l [Endc; PopCtr 4u])
     | _ ->
         failwith "State shall be a Product type"
+
+// Find all partially defined types within the type term 't'.
+let rec hasUndefType (t:Type) : List<Name> =
+    match t with
+    | UserType (name, None) ->
+        List.singleton name
+    | UserType (name, Some t) ->
+        hasUndefType t
+    | PT pts ->
+        pts
+        |> List.map snd
+        |> List.map hasUndefType
+        |> List.concat
+    | ST sts ->
+        sts
+        |> List.map snd
+        |> List.concat
+        |> List.map hasUndefType
+        |> List.concat
+    | _ ->
+        // TODO: what about Function?
+        []
+
+// substitute type name with the given definition def
+// in the type t
+let rec insertType (name:Name) (typDefs:ProgramTypes) (expr:Type) : Type =
+    match expr with
+    | UserType (name1, None) when name1 = name ->
+        let def = (Map.ofList typDefs).[name1] in
+        UserType (name1, Some def)
+    | UserType (name1, Some t) ->
+        UserType (name1, Some (insertType name typDefs t))
+    | PT pts ->
+        PT (pts
+            |> List.map (fun (name1, t) ->
+                         (name1, insertType name typDefs t) ))
+    | ST sts ->
+        ST (sts
+            |> List.map (fun (name1, ts) ->
+                         (name1, List.map (insertType name typDefs) ts)))
+    | _ ->
+        // TODO: what about Function?
+        expr

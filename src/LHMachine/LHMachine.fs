@@ -100,8 +100,9 @@ let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:LHTypes.ProgramType
             | h :: t ->
                 (compileWithTypes h env' ty) @
                 compileExprs t (argOffset 1 env')
-        let n = List.length es
-        (compileExprs es env) @ [Record n]
+        let es' = List.map snd es
+        let n = List.length es' // now we need only values; field names are omitted.
+        (compileExprs es' env) @ [Record n]
     | EFunc (argName, body) ->
         let env' = (0, argName) :: (argOffset 1 env)
         // If  it is a function of a single argument, then
@@ -304,6 +305,7 @@ let rec astReducer (ast:ASTNode) (red: ASTNode -> ASTNode) : ASTNode =
     | EVar _
     | ENull
     | EStr _
+    | EFailWith _
     | ENum _ ->
         ast
     | EFunc (arg, body) ->
@@ -349,7 +351,7 @@ let rec astReducer (ast:ASTNode) (red: ASTNode -> ASTNode) : ASTNode =
         else ast
     | ERecord es ->
         es 
-        |> List.map (fun e -> astReducer e red)
+        |> List.map (fun (name, e) -> (name, astReducer e red))
         |> ERecord
         |> mkAST
     | _ ->
@@ -584,7 +586,7 @@ let fixpointImpl = "
  }> PUSHCONT
  2 SETGLOB"  // fixpoint operator is stored in global 2
 
-let compileIntoFiftDebug ast debug : string =
+let compileIntoFiftDebug ast initialTypes debug : string =
     let ast' =
         ast
         |> letrecRedex
@@ -593,7 +595,8 @@ let compileIntoFiftDebug ast debug : string =
         |> arithSimplRedex
     if debug then
         printfn "AST after beta and eta redex : %A" (ast'.toSExpr ())
-    let (ty, (oldMap, newMap)) = LHTypeInfer.typeInferenceDebug (Map []) ast' debug // get types for all AST nodes
+    let (ty, (oldMap, newMap)) =
+        LHTypeInfer.typeInferenceDebug (LHTypeInfer.TypeEnv.ofProgramTypes initialTypes) ast' debug
     let ast'' = insertEval ast' newMap // AST with EEval nodes inserted into the right places
     let hasFixpoint = true // ast''.hasNode (function | SFix _ -> true | _ -> false)
     let ir = compile ast'' []
@@ -610,4 +613,7 @@ let compileIntoFiftDebug ast debug : string =
     |> String.concat "\n"
 
 let compileIntoFift ast =
-    compileIntoFiftDebug ast false
+    compileIntoFiftDebug ast [] false
+
+let compileWithInitialTypes ast types =
+    compileIntoFiftDebug ast types false

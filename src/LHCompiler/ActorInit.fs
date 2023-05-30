@@ -24,10 +24,12 @@ let actorInitCode =
   }
 
   let actorInit msgBodySlice is_external =
+     let actorStateRead () =
+        { seqno = 0; state = () } in
      let act_st = actorStateRead () in
-     let msg_seqno = msgSeqNo msg in
+     let msg_seqno = msgBodySlice in
      if msg_seqno  = act_st.seqno then
-        failwith \"Replay detected. Rejecting the message.\"
+        failwith 100
      else
         let st = act_st.state in
         let st' = main msg st in

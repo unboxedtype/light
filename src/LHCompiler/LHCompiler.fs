@@ -8,6 +8,7 @@ open FSharp.Text.Lexing
 
 open type ParserModule.Decl
 open type ParserModule.Module
+open type LHTypes.Type
 
 let parse source =
     let lexbuf = LexBuffer<char>.FromString source
@@ -25,14 +26,43 @@ let compile (source:string) (debug:bool) : string =
     | Some (Module (modName, decls)) ->
         if debug then
             printfn "Compiling actor %A" modName ;
-        let types =
+        let types : List<LHTypes.Name * LHTypes.Type> =
             decls
             |> List.filter (function
                             | TypeDef _ -> true
                             | _ -> false)
             |> List.map (fun n -> n.typeDef)
+        let undefTypesNames : List<(LHTypes.Name * LHTypes.Type) * List<LHTypes.Name>> =
+            types  // [(name, typ)]
+            |> List.map (fun (name, typ:LHTypes.Type) ->
+                         ((name, typ), LHTypes.hasUndefType typ))
+            |> List.filter (fun ((_, _),l) -> l <> [])
+        let undefTypesNamesList =
+            undefTypesNames
+            |> List.map (fun ((n, _), _) -> n)
         if debug then
-            printfn "Types found: %A" types
+            printfn "Partially defined types:\n%A" undefTypesNames
+        let defTypes =
+            types
+            |> List.filter (fun (n, t) -> not (List.contains n undefTypesNamesList))
+        if debug then
+            printfn "Fully defined types:\n%A" defTypes
+        let completeTypes =
+            undefTypesNames
+            |> List.map (fun ((name, typ), undNames) ->
+                         // TODO: fixpoint is needed here, because there might
+                         // be cyclic references.
+                         let rec updateUndName undNames typ =
+                            match undNames with
+                            | n :: t ->
+                               let typ' = LHTypes.insertType n defTypes typ
+                               updateUndName t typ'
+                            | [] ->
+                               typ
+                         (name, updateUndName undNames typ))
+        if debug then
+            printfn "Completed types:\n%A" completeTypes
+        let types2 = defTypes @ completeTypes
         let letBnds =
             decls
             |> List.filter (function
@@ -72,7 +102,7 @@ let compile (source:string) (debug:bool) : string =
         if actorInitLet.Length <> 1 then
             failwith "actorInit not found"
         let ("actorInit", actorInitExpr) = List.head actorInitLet
-        LHMachine.compileIntoFift actorInitExpr
+        LHMachine.compileWithInitialTypes actorInitExpr types2
     | _ ->
         failwith "Actor not found"
 

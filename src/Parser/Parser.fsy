@@ -28,7 +28,7 @@ let rec unfoldFunction args body =
 %token MODULE TYPEDEF OF IF THEN ELSE HANDLER LET RECURSIVE IN
 %token EQ GT PLUS MINUS SEMICOLON VBAR STAR COLON COMMA EOF
 %token LEFT_BRACE RIGHT_BRACE LPAREN RPAREN RARROW LARROW
-%token MATCH WITH UNDERSCORE DOT
+%token MATCH WITH UNDERSCORE DOT FAILWITH
 
 %type <ParserModule.Module option> start
 
@@ -157,11 +157,12 @@ prodType:
   }
 
 // =================================================
-// Function and Handler argument
-// "(x:int)" "y"
+// Function and Handler declaration argument
+// "(x:int)" "y" "()"
 // =================================================
 funcArg:
   | LPAREN typedVarDecl RPAREN { $2 }
+  | LPAREN RPAREN { ("", "unit") }
   | LIDENT  { ($1, "") }
 
 funcArgs:
@@ -271,15 +272,24 @@ expr:
     // to their appearence in their type. However, for now,
     // we skip it and pretend the values are placed in the
     // correct order.
-    let recNameValPairs = $2
-    let recValues = recNameValPairs |> List.map snd
-    mkAST (ERecord recValues)
+    // let recNameValPairs = $2
+    // let recValues = recNameValPairs |> List.map snd
+    mkAST (ERecord $2)
   }
 
   | expr LARROW expr
   {
     if ($1).Expr = (EVar "state") then mkAST (EAssign ($3))
     else failwith "assignment operator is permited only for 'state' variable currently"
+  }
+
+  | FAILWITH expr
+  {
+     match ($2.Expr) with
+     | ENum n ->
+         mkAST (EFailWith n)
+     | _ ->
+         failwith "failwith requires integer value as parameter"
   }
 
   | basicExpr actualArguments

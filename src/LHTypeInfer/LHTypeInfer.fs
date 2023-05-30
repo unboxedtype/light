@@ -38,6 +38,7 @@ module Typ =
         | Int _
         | Unit
         | String
+        | PT _
         | Bool -> Set.empty
         | Function (t1, t2) -> Set.union (ftv t1) (ftv t2)
         | _ -> failwithf "type %A is not supported" typ
@@ -55,6 +56,7 @@ module Typ =
             Function (apply s t1, apply s t2)
         | Int _
         | Bool
+        | PT _
         | Unit ->
             typ
         | _ -> failwithf "type %A is not supported" typ
@@ -77,7 +79,7 @@ module Typ =
             | Function (t, s) ->
                 "(" + (parenType t) + " -> " + (toString s) + ")"
             | _ ->
-                failwithf "type %A is not supported" ty
+                failwithf "type %A not supported" ty
 
 module Scheme =
    let ftv (scheme: Scheme) =
@@ -100,6 +102,10 @@ module TypeEnv =
             Set.union state (Scheme.ftv v)) typEnv Set.empty
      let apply (s : Subst) (env: TypeEnv) : TypeEnv =
         Map.map (fun _k v -> Scheme.apply s v) env
+     let ofProgramTypes (pr:LHTypes.ProgramTypes) : TypeEnv =
+         pr
+         |> List.map (fun (name, typ) -> (name, Scheme ([""], typ)))
+         |> Map.ofList
 
 module Subst =
     /// Apply `s1` to `s2` then merge the results
@@ -155,6 +161,9 @@ let rec unify (t1 : Typ) (t2 : Typ) : Subst =
 
 let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) : Subst * Typ * NodeTypeMap =
     match node.Expr with
+    | EFailWith _ ->
+        let tm' = Map.add node.Id Unit tm
+        (Map.empty, Unit, tm')
     | ENum n ->
         // printfn "%A : s' = %A" exp.Name Map.empty
         let tm' = Map.add node.Id (Int 256) tm
@@ -254,7 +263,8 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) : Subst * Typ * N
         // printfn "%A : s' = %A" exp.Name  s'
         let tm2 = Map.add node.Id t' tm1
         (s', t', tm2)
-    | EGt (e1, e2) ->
+    | EGt (e1, e2)
+    | EEq (e1, e2) ->
         let s1, t1, tm1 = ti env e1 tm
         let s2, t2, tm2 = ti env e2 tm1
         let s1' = unify t1 (Int 256)
@@ -263,8 +273,47 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) : Subst * Typ * N
         // printfn "%A : s' = %A" exp.Name  s'
         let tm3 = Map.add node.Id Bool tm2
         (s', Bool, tm3)
+    | ESelect (expr, ASTNode (_, EVar field)) ->
+        let s', t1, tm1 = ti env expr tm
+        match t1 with
+        | PT fields ->
+            let t2 = (Map.ofList fields).[field]
+            let tm2 = Map.add node.Id t2 tm1
+            (s', t2, tm2)
+        | _ ->
+            failwithf "Expected record type in expression %A, but received %A" (node.toSExpr()) t1
+    | ERecord es ->
+        // We need to reconstruct the type of a record by comparing
+        // the set of provided record fields in the record constructor to
+        // all available records. The comparison is made on set-basis, not
+        // sequence basis, because the order is not important, i.e.
+        // { name = "John", surname = "Smith" } is the same record as
+        // { surname = "Smith", name = "John" }
+        // It is not allowed to define records with same field names,
+        // but distinct types.
+        let varNames = Set.ofList (List.map fst es)
+        let recsInEnv =
+            env
+            |> Map.toList
+            |> List.filter (fun (name, scheme) ->
+                            let (Scheme (names, typ)) = scheme in
+                            match typ with
+                            | PT flds ->
+                               let fldNames = Set.ofList (List.map fst flds) in
+                               fldNames = varNames
+                            | _ ->
+                               false)
+            |> List.map (fun (name, Scheme (names, typ)) -> typ)
+        if recsInEnv.Length = 0 then
+            failwithf "Record with the given fields not defined : %A" (node.toSExpr ())
+        elif recsInEnv.Length > 1 then
+            failwithf "Several record definitions with the same fields: %A" (node.toSExpr ())
+        else
+            let t' = recsInEnv.[0]
+            let tm2 = Map.add node.Id t' tm
+            (Map [], t', tm2)
     | _ ->
-        failwithf "Unsupported expression %A" exp
+        failwithf "Unsupported expression %A" (node.toSExpr ())
 
 let typeInferenceDebug env (e:ASTNode) (debug:bool) : Typ * (NodeTypeMap * NodeTypeMap) =
   let s, t, ty = ti env e (Map [])
@@ -278,14 +327,13 @@ let typeInferenceDebug env (e:ASTNode) (debug:bool) : Typ * (NodeTypeMap * NodeT
       Map.map (fun k v ->
                match v with
                // substitute type variable for the actual type
-               | TVar n ->  
+               | TVar n ->
                  match (Map.tryFind n s) with
                  | Some v' -> v'
                  | _ -> v
                | _ -> v
               ) m
   (exprType, (m, m'))
-  
+
 let typeInference env (e:ASTNode) =
     typeInferenceDebug env e false
-
