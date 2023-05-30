@@ -5,11 +5,13 @@ module LHCompiler
 open System.IO
 open Parser
 open FSharp.Text.Lexing
+open ActorInit
 
 open type ParserModule.Decl
 open type ParserModule.Module
 open type LHTypes.Type
 
+// TODO: put all parse functions into a single module
 let parse source =
     let lexbuf = LexBuffer<char>.FromString source
     let res = Parser.start Lexer.read lexbuf
@@ -20,8 +22,10 @@ let parse source =
 // Arguments:
 //  - source = a string representing the source code
 //    of an actor.
-let compile (source:string) (debug:bool) : string =
-    let res = parse source
+let compile (source:string) (withInit:bool) (debug:bool) : string =
+    let prog = if withInit then (source + ActorInit.actorInitCode)
+               else source
+    let res = parse prog
     match res with
     | Some (Module (modName, decls)) ->
         if debug then
@@ -30,7 +34,7 @@ let compile (source:string) (debug:bool) : string =
             decls
             |> List.filter (function
                             | TypeDef _ -> true
-                            | _ -> false)
+                            | _         -> false)
             |> List.map (fun n -> n.typeDef)
         let undefTypesNames : List<(LHTypes.Name * LHTypes.Type) * List<LHTypes.Name>> =
             types  // [(name, typ)]
@@ -81,6 +85,7 @@ let compile (source:string) (debug:bool) : string =
                          let (name, vars, expr) = n.handlerDef in
                           (name, List.map fst vars, expr))
         // The actor initial state. Currently, empty.
+        // For debugging.
         let dataCellContent = "<b b>"
 
         (**
@@ -96,20 +101,24 @@ let compile (source:string) (debug:bool) : string =
             |> List.map TVM.instrToFift
             |> String.concat "\n"
         **)
-        let actorInitLet =
-            letBnds
-            |> List.filter (fun (name, expr) -> name = "actorInit")
-        if actorInitLet.Length <> 1 then
-            failwith "actorInit not found"
         let mainLet =
             letBnds
             |> List.filter (fun (name, expr) -> name = "main")
         if mainLet.Length <> 1 then
             failwith "main not found"
-        let ("actorInit", actorInitExpr) = List.head actorInitLet
         let ("main", mainExpr) = List.head mainLet
-        let finalExpr = LHExpr.mkAST (LHExpr.ELet("main", mainExpr, actorInitExpr))
-        LHMachine.compileWithInitialTypes finalExpr types2
+        let finalExpr =
+            if withInit then
+                let actorInitLet =
+                   letBnds
+                   |> List.filter (fun (name, expr) -> name = "actorInit")
+                if actorInitLet.Length <> 1 then
+                    failwith "actorInit not found"
+                let ("actorInit", actorInitExpr) = List.head actorInitLet
+                LHExpr.mkAST (LHExpr.ELet("main", mainExpr, actorInitExpr))
+            else
+                mainExpr
+        LHMachine.compileWithInitialTypesDebug finalExpr types2 debug
     | _ ->
         failwith "Actor not found"
 
@@ -126,7 +135,7 @@ let compileFile (filePath:string) =
     let writeStringToFile (filePath: string) (content: string) =
         File.WriteAllText(filePath, content)
     let fileContent = readFileContents filePath
-    let fiftStr = compile fileContent false
+    let fiftStr = compile fileContent true false
     let newPath = replaceFileExtension filePath
     writeStringToFile newPath fiftStr
 

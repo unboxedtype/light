@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/LHCompiler/LHCompiler.fsproj" />
+    <ProjectReference Include="../../src/FiftExecutor/FiftExecutor.fsproj" />
   </ItemGroup>
 
   <ItemGroup>

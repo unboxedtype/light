@@ -20,6 +20,7 @@ module ActorInit
 let actorInitCode =
  "type ActorState = {
      seqno: int;
+     deployed: bool;
      state: State
   }
 

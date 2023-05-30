@@ -323,7 +323,10 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) : Subst * Typ * N
 let typeInferenceDebug env (e:ASTNode) (debug:bool) : Typ * (NodeTypeMap * NodeTypeMap) =
   let s, t, ty = ti env e (Map [])
   if debug then
-      printfn "Derived types = %A" s
+      printfn "Node ID: %A" e.Id
+      printfn "Derived type:\n%A" t
+      printfn "Substitutions:\n%A" s
+      printfn "Node Type Map:\n%A" (Map.toList ty)
   // apply all found derived types to the type mapping,
   // so it becomes full and actual
   let exprType = Typ.apply s t

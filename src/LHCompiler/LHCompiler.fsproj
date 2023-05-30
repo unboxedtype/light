@@ -6,8 +6,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="LHCompiler.fs" />
     <Compile Include="ActorInit.fs" />
+    <Compile Include="LHCompiler.fs" />
   </ItemGroup>
 
   <ItemGroup>

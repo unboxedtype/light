@@ -316,13 +316,13 @@ let rec astReducer (ast:ASTNode) (red: ASTNode -> ASTNode) : ASTNode =
         ast
     | EFunc (arg, body) ->
         let body' = astReducer body red
-        if body' <> body then mkAST (EFunc (arg, body'))
+        if body'.toSExpr () <> body.toSExpr () then mkAST (EFunc (arg, body'))
         else ast
     | ELet (name, bind, body)
     | ELetRec (name, bind, body) ->
         let bind' = astReducer bind red
         let body' = astReducer body red
-        if (bind' <> bind) || (body' <> body) then
+        if bind'.toSExpr () <> bind.toSExpr () || (body'.toSExpr () <> body.toSExpr ()) then
             match ast.Expr with
             | ELet _ ->
                 mkAST (ELet (name, bind', body'))
@@ -333,8 +333,10 @@ let rec astReducer (ast:ASTNode) (red: ASTNode -> ASTNode) : ASTNode =
         let e0' = astReducer e0 red
         let e1' = astReducer e1 red
         let e2' = astReducer e2 red
-        if e0' <> e0 || e1' <> e1 || e2' <> e2 then
-            mkAST (EIf (e0', e1', e2'))
+        if e0'.toSExpr () <> e0.toSExpr () ||
+           e1'.toSExpr () <> e1.toSExpr () ||
+           e2'.toSExpr () <> e2.toSExpr () then
+              mkAST (EIf (e0', e1', e2'))
         else ast
     | EAp (e0, e1)
     | EAdd (e0, e1)
@@ -345,7 +347,8 @@ let rec astReducer (ast:ASTNode) (red: ASTNode -> ASTNode) : ASTNode =
     | ESelect (e0, e1) ->
         let e0' = astReducer e0 red
         let e1' = astReducer e1 red
-        if e0' <> e0 || e1' <> e1 then
+        if e0'.toSExpr () <> e0.toSExpr () ||
+           e1'.toSExpr () <> e1.toSExpr () then
             match ast.Expr with
             | EAp _ -> mkAST (EAp (e0', e1'))
             | EAdd _ -> mkAST (EAdd (e0', e1'))
@@ -356,10 +359,13 @@ let rec astReducer (ast:ASTNode) (red: ASTNode -> ASTNode) : ASTNode =
             | ESelect _ -> mkAST (ESelect (e0', e1'))
         else ast
     | ERecord es ->
-        es
-        |> List.map (fun (name, e) -> (name, astReducer e red))
-        |> ERecord
-        |> mkAST
+        let node' =
+          es
+          |> List.map (fun (name, e) -> (name, astReducer e red))
+          |> ERecord
+          |> mkAST
+        if node'.toSExpr () <> ast.toSExpr () then node'
+        else ast
     | _ ->
         failwithf "unrecognised node %A" ast.Expr
     |> red
@@ -510,12 +516,25 @@ let rec betaRedexStep (node:ASTNode) : ASTNode =
     | EFunc _
     | ENum _ ->
         node
+    | ERecord vs ->  // record instance: [(name,expr)]
+        let vs' =
+            vs
+            |> List.map ( fun (n, e) -> (n, betaRedexStep e) )
+        mkAST (ERecord vs')
+    | ESelect (ASTNode (_, ERecord vs), ASTNode (_, EVar n)) ->
+        Map.ofList vs
+        |> Map.tryFind n
+        |> function
+           | None ->
+               failwithf "field %A not found in the record %A" n (node.toSExpr())
+           | Some v ->
+               mkAST v.Expr
     | _ ->
         failwithf "Redex for expr %A not defined" node.Expr
 
 let rec betaRedexFullDebug node debug =
     let node' = betaRedexStep node
-    if node'.Expr <> node.Expr then
+    if node'.toSExpr () <> node.toSExpr () then
         if debug then
             printfn "*** %A" (node'.toSExpr ())
         betaRedexFullDebug node' debug
@@ -565,7 +584,7 @@ let rec insertEval (ast:ASTNode) (ty:Map<int,LHType>) : ASTNode =
             let t =
                 match (Map.tryFind node.Id ty) with
                 | Some v -> v
-                | None -> failwithf "failed to find type for %A" ast
+                | None -> failwithf "failed to find type for node %A, expression: %A" node.Id (ast.toSExpr ())
             if (t = LHTypes.Int 256 ||
                 t = LHTypes.Bool ||
                 t = LHTypes.String) then
@@ -606,25 +625,40 @@ let fixpointImpl = "
  }> PUSHCONT
  2 SETGLOB"  // fixpoint operator is stored in global 2
 
+let tprintf str debug =
+    fun x ->
+        if debug then printfn str else () |> ignore
+        x
+
 let compileIntoFiftDebug ast initialTypes debug : string =
     let ast' =
         ast
+        |> tprintf "Making LetRec reductions..." debug
         |> letrecRedex
+        |> tprintf "Making ETA reductions..." debug
         |> etaRedex
-        |> betaRedexFull
+        |> tprintf "Making BETA reductions..." debug
+        |> (fun n -> betaRedexFullDebug n debug)
+        |> tprintf "Making Arith reductions..." debug
         |> arithSimplRedex
     if debug then
         printfn "AST after beta and eta redex : %A" (ast'.toSExpr ())
+    if debug then
+        printfn "Running type inference..."
     let (ty, (oldMap, newMap)) =
         LHTypeInfer.typeInferenceDebug (LHTypeInfer.TypeEnv.ofProgramTypes initialTypes) ast' debug
+    if debug then
+        printfn "Inserting Eval nodes..."
     let ast'' = insertEval ast' newMap // AST with EEval nodes inserted into the right places
     let hasFixpoint = true // ast''.hasNode (function | SFix _ -> true | _ -> false)
+    if debug then
+        printfn "Compiling reduced AST into assembly..."
     let ir = compileWithTypes ast'' [] newMap
     if debug then
-        printfn "FullAST = %O" ast ;
-        printfn "AST = %O" (ast''.toSExpr()) ;
-        printfn "Types = %A" (Map.toList newMap) ;
-        printfn "IR = %A" ir
+        printfn "Expr AST:\n%A" ast ;
+        printfn "SExpr AST:\n%O" (ast''.toSExpr()) ;
+        printfn "Types:\n%A" (Map.toList newMap) ;
+        printfn "IR:\n%A" ir
     List.singleton "\"Asm.fif\" include" @
     List.singleton "<{ " @
     (if hasFixpoint then [fixpointImpl] else []) @
@@ -635,5 +669,8 @@ let compileIntoFiftDebug ast initialTypes debug : string =
 let compileIntoFift ast =
     compileIntoFiftDebug ast [] false
 
+let compileWithInitialTypesDebug ast types debug =
+    compileIntoFiftDebug ast types debug
+
 let compileWithInitialTypes ast types =
-    compileIntoFiftDebug ast types false
+    compileWithInitialTypesDebug ast types false
