@@ -26,13 +26,14 @@ let actorInitCode =
   let actorInit msgCell msgBodySlice is_external =
      let actorStateRead () =
         { seqno = 0; state = () } in
+     let actorStateWrite st = () in
      let act_st = actorStateRead () in
      let msg_seqno = msgBodySlice in
      if msg_seqno  = act_st.seqno then
         failwith 100
      else
         let st = act_st.state in
-        let st' = main msg st in
+        let st' = main msgCell st in
         let act_st' = { seqno = msg_seqno; state = st' } in
         actorStateWrite act_st'
     ;;

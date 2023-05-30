@@ -136,7 +136,9 @@ let stateGlobalsMapping (t:ProductType) : VariablesMapping =
 let findType (typename:string) (pr:ProgramTypes) : Type =
     pr
     |> List.tryFind (fun e -> (fst e) = typename)
-    |> Option.get
+    |> function
+       | None -> failwithf "typename %A not found amoung defined types %A" typename pr
+       | Some v -> v
     |> snd
 
 let findStateType (pr:ProgramTypes) : Type =

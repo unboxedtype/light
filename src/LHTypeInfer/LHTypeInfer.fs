@@ -19,8 +19,7 @@ type Typ =
 type Scheme = Scheme of name list * Typ
 type TypeEnv = Map<string, Scheme>
 type Subst = Map<name,Typ>
-
-type NodeTypeMap = Map<int,Typ>
+type NodeTypeMap = Map<int,Typ>   // nodeId -> type
 
 // Map.union is missing? This is just a throw-away stub
 let mapUnion m1 m2 =
@@ -161,6 +160,7 @@ let rec unify (t1 : Typ) (t2 : Typ) : Subst =
     | t, TVar u -> varBind u t
     | Int n, Int m when n = m -> Map.empty
     | Bool, Bool -> Map.empty
+    | Unit, Unit -> Map.empty
     | _ -> failwithf "Types do not unify: %A vs %A" t1 t2
 
 let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) : Subst * Typ * NodeTypeMap =
@@ -308,10 +308,11 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) : Subst * Typ * N
                             | _ ->
                                false)
             |> List.map (fun (name, Scheme (names, typ)) -> typ)
+            |> List.distinct
         if recsInEnv.Length = 0 then
             failwithf "Record with the given fields not defined : %A" (node.toSExpr ())
         elif recsInEnv.Length > 1 then
-            failwithf "Several record definitions with the same fields: %A" (node.toSExpr ())
+            failwithf "Several record definitions with the same fields: %A %A" (node.toSExpr ()) recsInEnv
         else
             let t' = recsInEnv.[0]
             let tm2 = Map.add node.Id t' tm

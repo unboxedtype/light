@@ -52,6 +52,7 @@ type Instruction =
     | Alloc of n:int  // Allocate n Null values on the stack
     | Update of i:int // Update the i-th stack value with the one residing on the top
     | Asm of s:string // Assembler inline code
+    | FailWith of n:int // raise exception with the given number
 and LHCode = Instruction list
 
 // index + variable name
@@ -80,7 +81,7 @@ let compileArgs (defs:BoundVarDefs) (env:Environment) : Environment =
     (List.zip indexes names) @ (argOffset n env)
 
 // ty is collection of types defined in the actor code
-let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:LHTypes.ProgramTypes) : LHCode =
+let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) : LHCode =
     match ast.Expr with
     | EVar v ->
         let r = List.tryPick (fun (n, v') ->
@@ -161,7 +162,8 @@ let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:LHTypes.ProgramType
             // used with records. To compile this expression, we need
             // to find out the index of the "x" field. For that, we need
             // to access type information of e0.
-            let stype = LHTypes.findType s ty     // findType "state" [("state",UserType "State"); ...]
+            let stype = ty.[e0.Id]
+            // LHTypes.findType s ty     // findType "state" [("state",UserType "State"); ...]
             let ptype =
                 match stype with
                 | UserType (n, Some ty') ->
@@ -188,8 +190,10 @@ let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:LHTypes.ProgramType
         [UpdateRec n]
     | EAsm s ->
         [Asm s]
+    | EFailWith n ->
+        [FailWith n]
     | _ ->
-        failwith "not implemented"
+        failwithf "not implemented : %A" (ast.toSExpr())
 and compileAlts alts env ty =
     List.map (fun a ->
                  let (tag, names, body) = a
@@ -231,7 +235,7 @@ and compileLetRecDefs defs env n ty =
             (compileWithTypes node env ty) @ [Update n] @ compileLetRecDefs defs' env (n - 1) ty
 
 let compile (ast:ASTNode) (env: Environment) : LHCode =
-    compileWithTypes ast env []
+    compileWithTypes ast env (Map [])
 
 let rec instrToTVM (i:Instruction) : string =
     match i with
@@ -290,6 +294,8 @@ let rec instrToTVM (i:Instruction) : string =
         "DUP 0 INDEX <{ " + l' + " }> " + " PUSHCONT EXECUTE"
     | Asm s ->
         s
+    | FailWith n ->
+        " " + (string n) + " THROW"
     | _ ->
         failwith (sprintf "unimplemented instruction %A"  i)
 and compileToTVM (code:LHCode) : string =
@@ -350,7 +356,7 @@ let rec astReducer (ast:ASTNode) (red: ASTNode -> ASTNode) : ASTNode =
             | ESelect _ -> mkAST (ESelect (e0', e1'))
         else ast
     | ERecord es ->
-        es 
+        es
         |> List.map (fun (name, e) -> (name, astReducer e red))
         |> ERecord
         |> mkAST
@@ -418,7 +424,7 @@ let rec substFreeVar (x:string) (y:Expr) (node:ASTNode) : ASTNode =
     | ENum _
     | ENull ->
         node
-    | EGt (e0, e1) 
+    | EGt (e0, e1)
     | ESub (e0, e1)
     | EMul (e0, e1)
     | EAdd (e0, e1)
@@ -613,7 +619,7 @@ let compileIntoFiftDebug ast initialTypes debug : string =
         LHTypeInfer.typeInferenceDebug (LHTypeInfer.TypeEnv.ofProgramTypes initialTypes) ast' debug
     let ast'' = insertEval ast' newMap // AST with EEval nodes inserted into the right places
     let hasFixpoint = true // ast''.hasNode (function | SFix _ -> true | _ -> false)
-    let ir = compile ast'' []
+    let ir = compileWithTypes ast'' [] newMap
     if debug then
         printfn "FullAST = %O" ast ;
         printfn "AST = %O" (ast''.toSExpr()) ;
