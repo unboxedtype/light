@@ -229,7 +229,7 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
         let s2, t2, tm3 = ti env e2 tm2 debug
         let scond = unify tc Bool   // Conditional must be a boolean.
         let s1' = unify (Typ.apply scond t1) (Typ.apply scond t2)
-        // The type of if branch must equal the type of else branch.
+        // The type of if branch shall unify with the type of else branch.
         let s2' = unify t' t1
         let s3' = unify t' t2
         let s' = Subst.compose scond

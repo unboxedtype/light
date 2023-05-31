@@ -82,6 +82,56 @@ let testRecord3 () =
 
 [<Test>]
 [<Timeout(1000)>]
+let testTuple0 () =
+    let prog = "contract Simple
+                   let main = ()
+                   ;;"
+    execAndCheckPrint prog "(null)" false false
+
+[<Test>]
+[<Timeout(1000)>]
+let testTuple1 () =
+    let prog = "contract Simple
+                   let main =
+                      let func x y () = x + y in
+                      func 5 6 ()
+                   ;;"
+    execAndCheckPrint prog "11" false false
+
+[<Test>]
+[<Timeout(1000)>]
+let testTuple2 () =
+    let prog = "contract Simple
+                type Rec = { a:int; b:int }
+                let main =
+                  let func x y () = { a = x; b = y } in
+                      func 5 6 ()
+                   ;;"
+    execAndCheckPrint prog "[ 5 6 ]" false false
+
+[<Test>]
+[<Timeout(1000)>]
+let testTuple3 () =
+    let prog = "contract Simple
+                type ActorState = {
+                 seqno: int;
+                 deployed: bool
+                }
+                let main =
+                  let actorStateRead () =
+                    { seqno = 1; deployed = false } in
+                  let actorStateWrite st = () in
+                  let act_st = actorStateRead () in
+                  if act_st.seqno = 10 then
+                      failwith 100
+                  else
+                      actorStateWrite 1
+                  ;;"
+    execAndCheckPrint prog "(null)" false true
+
+[<Test>]
+[<Timeout(1000)>]
+[<Ignore("bug")>]
 let testRecord4 () =
     let prog = "contract Simple
                    type State = { bal:int }

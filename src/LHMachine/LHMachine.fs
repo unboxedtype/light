@@ -161,21 +161,22 @@ let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) : LHCo
         let expr = mkAST (ELet (name, mkAST (EFix (mkAST (EFunc (name, def)))), body))
         compileWithTypes expr env ty
     | ESelect (e0, e1) ->
-        match (e0.Expr, e1.Expr) with
-        | (EVar s, EVar x) ->
+        match e1.Expr with
+        | EVar x ->
             // n = lookup x position in the record definition of e0
             // Currently,the lookup operator '.' is only allowed to be
             // used with records. To compile this expression, we need
             // to find out the index of the "x" field. For that, we need
             // to access type information of e0.
-            let stype = ty.[e0.Id]
-            // LHTypes.findType s ty     // findType "state" [("state",UserType "State"); ...]
+            let stype =
+               match (Map.tryFind e0.Id ty) with
+               | Some v -> v
+               | None ->
+                   failwithf "Can't find type for the node %A, expr:%A" e0.Id ((e0.toSExpr()).ToString())
             let ptype =
                 match stype with
-                | UserType (n, Some ty') ->
-                    ty'
-                | _ ->
-                    stype
+                | UserType (n, Some ty') -> ty'
+                | _ -> stype
             match ptype with
             | PT pts ->
                 let n =
@@ -187,9 +188,8 @@ let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) : LHCo
             | _ ->
                 failwith "the .dot operator is allowed to be used only on record types"
         | _ ->
-            failwith "the . dot operator shall be used only in an explicit form, like:
-                      'var.id' , where var is a record-type variable, and id is
-                      the name of the record field you want to access"
+            failwith "For the expression 'var.id', the 'id' is an explicit
+                      record field name you want to access"
     | EUpdateRec (e, n, e1) ->
         (compileWithTypes e env ty) @
         (compileWithTypes e1 (argOffset 1 env) ty) @
@@ -246,6 +246,8 @@ let compile (ast:ASTNode) (env: Environment) : LHCode =
 let rec instrToTVM (i:Instruction) : string =
     match i with
     | Null -> "NULL"
+    | False -> "FALSE"
+    | True -> "TRUE"
     | Alloc n -> String.concat " " [for i in [1..n] -> "NULL"]
     | Apply ->  "1 -1 SETCONTARGS"  // inject a single value into cont stack
     | Update i -> "s0 s" + (string i) + " XCHG DROP"
@@ -415,7 +417,8 @@ let rec freeVars (expr:Expr) : string list =
         (freeVars bind.Expr) @ (freeVars body.Expr)
     | ELetRec (x, bind, body) ->
         (freeVars bind.Expr) @ (freeVars body.Expr)
-    | ENum _ -> []
+    | ENull
+    | ENum _
     | EBool _ -> []
     | EIf (e1, e2, e3) ->
         (freeVars e1.Expr) @ (freeVars e2.Expr) @ (freeVars e3.Expr)
@@ -505,6 +508,7 @@ let rec betaRedexStep (node:ASTNode) : ASTNode =
     | EAdd (e0, e1)
     | EMul (e0, e1)
     | ESub (e0, e1)
+    | EEq (e0, e1)
     | EGt (e0, e1) ->
         let e0' = betaRedexStep e0
         let e1' = betaRedexStep e1
@@ -529,6 +533,8 @@ let rec betaRedexStep (node:ASTNode) : ASTNode =
     | EVar _
     | EFunc _
     | EBool _
+    | ENull
+    | EFailWith _
     | ENum _ ->
         node
     | ERecord vs ->  // record instance: [(name,expr)]
@@ -544,8 +550,12 @@ let rec betaRedexStep (node:ASTNode) : ASTNode =
                failwithf "field %A not found in the record %A" n (node.toSExpr())
            | Some v ->
                mkAST v.Expr
+    | ESelect (e0, e1) as e ->
+        let e0' = betaRedexStep e0
+        // TODO: e1 has to be EVar
+        mkAST (ESelect (e0, e1))
     | _ ->
-        failwithf "Redex for expr %A not defined" node.Expr
+        failwithf "Beta Redex for expr %A not defined" node.Expr
 
 let rec betaRedexFullDebug node debug =
     let node' = betaRedexStep node
@@ -602,12 +612,12 @@ let rec insertEval (ast:ASTNode) (ty:Map<int,LHType>) : ASTNode =
                 match (Map.tryFind node.Id ty) with
                 | Some v -> v
                 | None -> failwithf "failed to find type for node %A, expression: %s" node.Id ((ast.toSExpr ()).ToString())
-            if (t = LHTypes.Int 256 ||
-                t = LHTypes.Bool ||
-                t = LHTypes.String) then
-                mkAST (EEval node)
-            else
+            match t with
+            | LHType.Function _
+            | LHType.TVar _ ->
                 node
+            | _ ->
+                mkAST (EEval node)
         | _ ->
             node
     in astReducer ast insertEvalInner

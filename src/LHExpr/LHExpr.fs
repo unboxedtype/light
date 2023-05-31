@@ -43,7 +43,8 @@ type SExpr =
     override this.ToString () =
         let s = sprintf "%A" this
         let len = s.Length
-        s.Substring (0, 200) + (if (len > 200) then "..." else "")
+        let newlen = min 200 len
+        s.Substring (0, newlen) + (if (len > 200) then "..." else "")
 // AST Expression
 type Expr =
     | ENum of n:int                     // value of type Int
