@@ -648,6 +648,8 @@ let compileIntoFiftDebug ast initialTypes debug : string =
     let (ty, (oldMap, newMap)) =
         LHTypeInfer.typeInferenceDebug (LHTypeInfer.TypeEnv.ofProgramTypes initialTypes) ast' debug
     if debug then
+        printfn "newMap:\n%A" (Map.toList newMap)
+    if debug then
         printfn "Inserting Eval nodes..."
     let ast'' = insertEval ast' newMap // AST with EEval nodes inserted into the right places
     let hasFixpoint = true // ast''.hasNode (function | SFix _ -> true | _ -> false)

@@ -78,4 +78,4 @@ let testRecord3 () =
                      let st' = { bal = sumN 5 } in
                      { st = st' }
                    ;;"
-    execAndCheckPrint prog "[ [ 15 ] ]" true
+    execAndCheckPrint prog "[ [ 15 ] ]" false
