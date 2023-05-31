@@ -285,7 +285,6 @@ let rec instrToTVM (i:Instruction) : string =
         " SECOND" + " " +
         (string n) + " UNTUPLE"
     | Select n when n < 16 ->
-        " SECOND" + " " +
         (string n) + " INDEX"
     | Record n when n < 16 ->
         (string n) + " TUPLE"
