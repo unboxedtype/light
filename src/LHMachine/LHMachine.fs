@@ -161,6 +161,10 @@ let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) : LHCo
         let expr = mkAST (ELet (name, mkAST (EFix (mkAST (EFunc (name, def)))), body))
         compileWithTypes expr env ty
     | ESelect (e0, e1) ->
+        let (e0', isEval) =
+            match e0.Expr with
+            | EEval e -> (e, true)
+            | _ -> (e0, false)
         match e1.Expr with
         | EVar x ->
             // n = lookup x position in the record definition of e0
@@ -169,10 +173,10 @@ let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) : LHCo
             // to find out the index of the "x" field. For that, we need
             // to access type information of e0.
             let stype =
-               match (Map.tryFind e0.Id ty) with
+               match (Map.tryFind e0'.Id ty) with
                | Some v -> v
                | None ->
-                   failwithf "Can't find type for the node %A, expr:%A" e0.Id ((e0.toSExpr()).ToString())
+                   failwithf "Can't find type for the node %A, expr:%A" e0'.Id ((e0'.toSExpr()).ToString())
             let ptype =
                 match stype with
                 | UserType (n, Some ty') -> ty'
@@ -184,7 +188,9 @@ let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) : LHCo
                     |> List.indexed
                     |> List.find (fun (i,e) -> fst e = x)
                     |> fst
-                (compileWithTypes e0 env ty) @ [Select n]
+                (compileWithTypes e0' env ty) @
+                (if isEval then [Execute] else []) @
+                [Select n]
             | _ ->
                 failwith "the .dot operator is allowed to be used only on record types"
         | _ ->
