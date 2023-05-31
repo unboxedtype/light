@@ -4,6 +4,8 @@
 // Contains basic replay protection and state reading/writing.
 module ActorInit
 
+open type LHTypes.Type
+
 // State type and main function shall be defined
 // before this code.
 // readActorState : () -> ActorState
@@ -15,16 +17,30 @@ module ActorInit
 // 3. If integer1 does not equal integer2 then proceed,
 //    otherwise throw (replay detected).
 
+let actorStateType =
+    ""
 
+// Types of parameters passed to ActorInit function.
+// It is exactly what virtual machine passes to the
+// smart-contract in the beginning of execution.
 // This code shall be put after user code.
 let actorInitCode =
- "type ActorState = {
+  "
+   type ActorInitParam = {
+     accBalance : Coins;
+     msgBalance : Coins;
+     msg: VMCell;
+     msgBody: VMSlice;
+     isExternal: bool
+   }
+
+   type ActorState = {
      seqno: int;
      deployed: bool;
      state: State
-  }
+   }
 
-  let actorInit msgCell msgBodySlice is_external =
+   let actorInit (initArgs:ActorInitParams) =
      let actorStateRead () =
         { seqno = 0; state = (); deployed = false } in
      let actorStateWrite st = () in

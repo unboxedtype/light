@@ -4,12 +4,9 @@ module LHCompilerTests
 
 open NUnit.Framework
 
-let execAndCheckPrint (prog:string) expected addInit debug =
+let execAndCheckPrint (prog:string) addInit debug expected =
     if debug then
         printfn "%A" prog |> ignore
-    // Here we compile without ActorInit code. This is because
-    // we want to capture the exact behavior of the piece.
-    if debug then
         printfn "Passing program to the compiler..."
     let code = LHCompiler.compile prog addInit debug
     if debug then
@@ -22,7 +19,10 @@ let execAndCheckPrint (prog:string) expected addInit debug =
     Assert.AreEqual (expected, res)
 
 let execAndCheck prog expected =
-    execAndCheckPrint prog expected false false
+    execAndCheckPrint prog false false expected
+
+//let execActorMain prog actorMainParams debug expected =
+//    execAndCheckPrintActorMain prog actorMainParams true debug expected
 
 [<SetUp>]
 let Setup () =
@@ -78,7 +78,7 @@ let testRecord3 () =
                      let st' = { bal = sumN 5 } in
                      { st = st' }
                    ;;"
-    execAndCheckPrint prog "[ [ 15 ] ]" false false
+    execAndCheck prog "[ [ 15 ] ]"
 
 [<Test>]
 [<Timeout(1000)>]
@@ -86,7 +86,7 @@ let testTuple0 () =
     let prog = "contract Simple
                    let main = ()
                    ;;"
-    execAndCheckPrint prog "(null)" false false
+    execAndCheck prog "(null)"
 
 [<Test>]
 [<Timeout(1000)>]
@@ -96,7 +96,7 @@ let testTuple1 () =
                       let func x y () = x + y in
                       func 5 6 ()
                    ;;"
-    execAndCheckPrint prog "11" false false
+    execAndCheck prog "11"
 
 [<Test>]
 [<Timeout(1000)>]
@@ -107,7 +107,7 @@ let testTuple2 () =
                   let func x y () = { a = x; b = y } in
                       func 5 6 ()
                    ;;"
-    execAndCheckPrint prog "[ 5 6 ]" false false
+    execAndCheck prog "[ 5 6 ]"
 
 [<Test>]
 [<Timeout(1000)>]
@@ -127,17 +127,13 @@ let testTuple3 () =
                   else
                       actorStateWrite 1
                   ;;"
-    execAndCheckPrint prog "(null)" false true
+    execAndCheck prog "(null)"
 
 [<Test>]
 [<Timeout(1000)>]
-[<Ignore("bug")>]
 let testRecord4 () =
     let prog = "contract Simple
-                   type State = { bal:int }
-                   type Data = { st:State }
-                   let main msgCell st =
-                     let rec sumN n = if (n > 0) then n + (sumN (n - 1)) else 0 in
-                     { st = { bal = (sumN 5) } }
-                   ;;"
-    execAndCheckPrint prog "[ [ 15 ] ]" true true
+                type State = { bal:int }
+                type Data = { st:State }
+                let main msgCell st = { bal = 1000 } ;;"
+    execAndCheckPrint prog true true "[ [ 15 ] ]"

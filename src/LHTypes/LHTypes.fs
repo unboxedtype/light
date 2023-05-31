@@ -78,6 +78,9 @@ type TypeId =
 type Type =
     | Unit
     | Bool
+    | VMCell
+    | VMSlice
+    | Coins
     | Int of n:int    // n = bit length; 1 <= n <= 256
     | UInt of n:int   // n = bit length  1 <= n <= 256
     | String
@@ -119,10 +122,13 @@ let mapType (str : string) : Type =
     match str with
     | "int" -> Int 256
     | "string" -> String
-    | "bool" -> Int 2
+    | "bool" -> Bool
+    | "VMCell" -> VMCell
+    | "VMSlice" -> VMSlice
+    | "Coins" -> Coins
     | "unit" -> Unit
     | S -> UserType (S, None)
-    // | _ -> failwith (str + " is not supported currently")
+    | _ -> failwithf "Undefined type %s" str
 
 // t = PT [("x",Int);("y",List Int);("z",Bool)]
 // stateGlobalsMapping t = Map [("x",1);("y",2);("z",3)]
@@ -253,8 +259,12 @@ let rec hasUndefType (t:Type) : List<Name> =
 let rec insertType (name:Name) (typDefs:ProgramTypes) (expr:Type) : Type =
     match expr with
     | UserType (name1, None) when name1 = name ->
-        let def = (Map.ofList typDefs).[name1] in
-        UserType (name1, Some def)
+        let def = Map.tryFind name1 (Map.ofList typDefs) in
+        match def with
+        | Some def' ->
+            UserType (name1, Some def')
+        | None ->
+            failwithf "Definition for the type %A not found" name1
     | UserType (name1, Some t) ->
         UserType (name1, Some (insertType name typDefs t))
     | PT pts ->
