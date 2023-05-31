@@ -57,7 +57,7 @@ module Typ =
         | UserType (name, Some t1) ->
             UserType (name, Some (apply s t1))
         | _ -> failwithf "type %A is not supported" typ
-        
+
 module Scheme =
    let ftv (scheme: Scheme) =
        match scheme with

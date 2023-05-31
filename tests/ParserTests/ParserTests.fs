@@ -267,7 +267,7 @@ let testActorInit () =
       SFunc ("msg",
        SFunc ("is_external",
         SLet ("act_st", SAp (SVar "actorStateRead", SNull),
-         SLet ("msg_seqno", SAp (SVar "msgSeqNo", SVar "msg"), 
+         SLet ("msg_seqno", SAp (SVar "msgSeqNo", SVar "msg"),
            SIf (SEq (SVar "msg_seqno", SSelect (SVar "act_st", SVar "seqno")),
                 SAp (SVar "failwith", SStr "Replay detected. Rejecting the message."),
                 SLet ("st", SSelect (SVar "act_st", SVar "state"),

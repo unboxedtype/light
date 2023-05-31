@@ -37,7 +37,7 @@ let actorInitCode =
 
    let msgReadSeqNo (msg:VMCell) =
        assembly \"CTOS 32 LDU DROP\" ;;
-       
+
    let actorInit (initArgs:ActorInitParams) =
      let actorStateRead () =
         { seqno = 0; state = (); deployed = false } in
