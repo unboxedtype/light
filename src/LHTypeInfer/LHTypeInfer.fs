@@ -3,19 +3,13 @@
 module LHTypeInfer
 
 open System
-
 open LHTypes
 open LHExpr
 
 type name = string
 type label = string
-
-type exp =
-    LHExpr.Expr
-
-type Typ =
-    LHTypes.Type
-
+type exp = LHExpr.Expr
+type Typ = LHTypes.Type
 type Scheme = Scheme of name list * Typ
 type TypeEnv = Map<string, Scheme>
 type Subst = Map<name,Typ>
@@ -63,27 +57,7 @@ module Typ =
         | UserType (name, Some t1) ->
             UserType (name, Some (apply s t1))
         | _ -> failwithf "type %A is not supported" typ
-
-    let parens s =
-        sprintf "( %s )" s
-
-    let braces s =
-        sprintf "{ %s }" s
-    let rec toString ty =
-        let rec parenType ty =
-            match ty with
-            |  Function (_type1, _type2) -> parens (toString ty)
-            | _ -> toString ty
-
-        match ty with
-            | TVar name -> name
-            | Int n -> "int" + (string n)
-            | Bool -> "bool"
-            | Function (t, s) ->
-                "(" + (parenType t) + " -> " + (toString s) + ")"
-            | _ ->
-                failwithf "type %A not supported" ty
-
+        
 module Scheme =
    let ftv (scheme: Scheme) =
        match scheme with
@@ -340,8 +314,8 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
     | _ ->
         failwithf "Unsupported expression %A" (node.toSExpr ())
 
-let typeInferenceDebug env (e:ASTNode) (debug:bool) : Typ * (NodeTypeMap * NodeTypeMap) =
-  let s, t, ty = ti env e (Map []) debug
+let typeInferenceDebug env (e:ASTNode) (nodeTypes:NodeTypeMap) (debug:bool) : Typ * (NodeTypeMap * NodeTypeMap) =
+  let s, t, ty = ti env e nodeTypes debug
   // apply all found derived types to the type mapping,
   // so it becomes full and actual
   let exprType = Typ.apply s t
@@ -358,5 +332,5 @@ let typeInferenceDebug env (e:ASTNode) (debug:bool) : Typ * (NodeTypeMap * NodeT
               ) m
   (exprType, (m, m'))
 
-let typeInference env (e:ASTNode) =
-    typeInferenceDebug env e false
+let typeInference env (e:ASTNode) (nodeTypes:NodeTypeMap) =
+    typeInferenceDebug env e nodeTypes false

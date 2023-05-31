@@ -10,6 +10,7 @@ module LHMachine
 open System
 open System.Collections.Generic
 open type LHTypes.Type
+open type LHTypes.ProgramTypes
 open LHExpr
 
 type LHType = LHTypes.Type
@@ -326,6 +327,7 @@ let rec astReducer (ast:ASTNode) (red: ASTNode -> ASTNode) : ASTNode =
     | EStr _
     | EFailWith _
     | EBool _
+    | EAsm _
     | ENum _ ->
         ast
     | EFunc (arg, body) ->
@@ -409,6 +411,10 @@ let etaRedex node =
 // Return a list of free (unbound) variables in expression 'node'
 let rec freeVars (expr:Expr) : string list =
     match expr with
+    | ENull
+    | ENum _
+    | EAsm _
+    | EBool _ -> []
     | EVar x -> List.singleton x
     | EFunc (y, body) ->
         freeVars body.Expr |> List.except [y]
@@ -422,9 +428,6 @@ let rec freeVars (expr:Expr) : string list =
         (freeVars bind.Expr) @ (freeVars body.Expr)
     | ELetRec (x, bind, body) ->
         (freeVars bind.Expr) @ (freeVars body.Expr)
-    | ENull
-    | ENum _
-    | EBool _ -> []
     | EIf (e1, e2, e3) ->
         (freeVars e1.Expr) @ (freeVars e2.Expr) @ (freeVars e3.Expr)
     | ERecord vs ->
@@ -450,6 +453,7 @@ let rec substFreeVar (x:string) (y:Expr) (node:ASTNode) : ASTNode =
         else node
     | ENum _
     | EBool _
+    | EAsm _
     | ENull ->
         node
     | EGt (e0, e1)
@@ -662,7 +666,7 @@ let tprintf str debug =
         if debug then printfn str else () |> ignore
         x
 
-let compileIntoFiftDebug ast initialTypes debug : string =
+let compileIntoFiftDebug ast (initialTypes:LHTypes.ProgramTypes) debug : string =
     let ast' =
         ast
         |> tprintf "Making LetRec reductions..." debug
@@ -678,7 +682,7 @@ let compileIntoFiftDebug ast initialTypes debug : string =
     if debug then
         printfn "Running type inference..."
     let (ty, (oldMap, newMap)) =
-        LHTypeInfer.typeInferenceDebug (LHTypeInfer.TypeEnv.ofProgramTypes initialTypes) ast' debug
+        LHTypeInfer.typeInferenceDebug (LHTypeInfer.TypeEnv.ofProgramTypes initialTypes) ast' (Map []) debug
     if debug then
         printfn "newMap:\n%A" (Map.toList newMap)
     if debug then

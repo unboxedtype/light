@@ -6,6 +6,7 @@ open System.IO
 open Parser
 open FSharp.Text.Lexing
 open ActorInit
+open LHExpr
 
 open type ParserModule.Decl
 open type ParserModule.Module
@@ -113,11 +114,21 @@ let compile (source:string) (withInit:bool) (debug:bool) : string =
                    letBnds
                    |> List.filter (fun (name, expr) -> name = "actorInit")
                 if actorInitLet.Length <> 1 then
-                    failwith "actorInit not found"
-                let ("actorInit", actorInitExpr) = List.head actorInitLet
-                LHExpr.mkAST (LHExpr.ELet("main", mainExpr, actorInitExpr))
+                    failwith "actorInit not found or multiple definitions"
+                let lastLet = List.last letBnds
+                if (fst lastLet <> "actorInit") then
+                    failwith "actorInit let block shall be the last in the series of let-definitions"
+                // Fold global Let bindings one into another, so we have a
+                // complete program definition with actorInit being the very
+                // last expression.
+                let (("actorInit", actorInitLetBinding) :: other) = List.rev letBnds
+                List.fold (fun acc (name, expr) -> mkAST (ELet (name, expr, acc))) actorInitLetBinding other
             else
+                // Sometimes we may want to compile only the main function, without ActorInit code.
+                // For example, for tests.
                 mainExpr
+        if (debug) then
+            printfn "Final expression:\n%A" ((finalExpr.toSExpr()).ToString(1000))
         LHMachine.compileWithInitialTypesDebug finalExpr types2 debug
     | _ ->
         failwith "Actor not found"

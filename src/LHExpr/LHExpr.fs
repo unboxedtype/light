@@ -40,11 +40,14 @@ type SExpr =
     | SAssign of e0:SExpr
     | SAsm of s:string
     | SFailWith of n:int
-    override this.ToString () =
+    member this.ToString n =
         let s = sprintf "%A" this
         let len = s.Length
-        let newlen = min 200 len
-        s.Substring (0, newlen) + (if (len > 200) then "..." else "")
+        let newlen = min n len
+        s.Substring (0, newlen) + (if (len > n) then "..." else "")        
+    override this.ToString () =
+        this.ToString 200
+        
 // AST Expression
 type Expr =
     | ENum of n:int                     // value of type Int
@@ -78,6 +81,7 @@ type Expr =
         | EFailWith _
         | ENum _
         | EBool _
+        | EAsm _
         | EStr _ ->
             sprintf "%20A" this
         | ENull -> "ENull"
@@ -126,6 +130,7 @@ and ASTNode =
         | EEq (e0, e1) -> SEq (e0.toSExpr(), e1.toSExpr())
         | ESelect (e0, e1) -> SSelect (e0.toSExpr(), e1.toSExpr())
         | ERecord es -> SRecord (List.map (fun (name, (e:ASTNode)) -> (name, e.toSExpr())) es)
+        | EAsm s -> SAsm s
         | _ -> failwithf "unsupported expr : %A" this.Expr
 
     static member newId () =
@@ -154,4 +159,5 @@ let rec toAST sexp : ASTNode =
     | SStr s -> mkAST (EStr s)
     | SBool b -> mkAST (EBool b)
     | SNull -> mkAST ENull
+    | SAsm s -> mkAST (EAsm s)
     | _ -> failwithf "unexpected term: %A" sexp

@@ -29,6 +29,7 @@ rule read =
   | white    { read lexbuf }
   | newline  { newline lexbuf; read lexbuf }
   | int      { INT (int (lexeme lexbuf)) }
+  | "assembly" { ASM }
   | "contract" { MODULE }
   | "type"   { TYPEDEF }
   | "of"     { OF }
@@ -50,7 +51,6 @@ rule read =
   | ";;"     { DSCOLON }
   | "->"     { RARROW  }  // function type
   | "<-"     { LARROW  }  // assignment operator
-  | '"'      { read_string "" false lexbuf }
   | '{'      { LEFT_BRACE }
   | '}'      { RIGHT_BRACE }
   | '('      { LPAREN }

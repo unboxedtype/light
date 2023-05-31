@@ -29,7 +29,7 @@ let rec unfoldFunction args body =
 %token MODULE TYPEDEF OF IF THEN ELSE HANDLER LET RECURSIVE IN
 %token EQ GT PLUS MINUS SEMICOLON VBAR STAR COLON COMMA EOF
 %token LEFT_BRACE RIGHT_BRACE LPAREN RPAREN RARROW LARROW
-%token MATCH WITH UNDERSCORE DOT FAILWITH
+%token MATCH WITH UNDERSCORE DOT FAILWITH ASM
 
 %type <ParserModule.Module option> start
 
@@ -295,6 +295,11 @@ expr:
          failwith "failwith requires integer value as parameter"
   }
 
+  | ASM STRING
+  {
+     mkAST (EAsm $2)
+  }
+  
   | basicExpr actualArguments
     %prec prec_app
   {

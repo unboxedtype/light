@@ -25,16 +25,16 @@ type Request =
                 deadline:Epoch *
                 vot:VotingMethod *
                 dec:Decision
+// Decision is our case is an arbitrary operation on
+// the DAO funds. It is a function, not a data structure.
+and Decision =
+    Request -> State -> State
 and State {
     members: List<ActorId> ;
     weights: Map<ActorId,uint256> ;
     request_opt: Option<Request> ;
     votes: Map<ActorId * Vote> ;
 }
-// Decision is our case is an arbitrary operation on
-// the DAO funds. It is a function, not a data structure.
-and Decision =
-    Request -> State -> State
    
 type VotingFunction =
     State -> bool
