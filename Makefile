@@ -9,20 +9,20 @@ clean:
 test: test_tvm test_lhm test_parser test_ti test_comp
 
 test_parser:
-	@dotnet test /m:1 ./tests/ParserTests
+	@dotnet test ./tests/ParserTests
 
 test_lhm:
-	@dotnet test /m:1 ./tests/LHMachineTests
+	@dotnet test ./tests/LHMachineTests
 
 test_tvm:
-	@dotnet test /m:1 ./tests/TVMTests
+	@dotnet test ./tests/TVMTests
 
 test_lht:
-	@dotnet test /m:1 ./tests/LHTypesTests
+	@dotnet test ./tests/LHTypesTests
 
 test_ti:
-	@dotnet test /m:1 ./tests/LHTypeInferTests
+	@dotnet test ./tests/LHTypeInferTests
 
 test_comp:
-	@dotnet test /m:1 ./tests/LHCompilerTests
+	@dotnet test ./tests/LHCompilerTests
 

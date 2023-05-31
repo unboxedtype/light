@@ -24,6 +24,7 @@ let rec unfoldFunction args body =
 %token <string> LIDENT
 %token <string> IDENT
 %token <string> STRING
+%token TRUE FALSE
 %token DSCOLON
 %token MODULE TYPEDEF OF IF THEN ELSE HANDLER LET RECURSIVE IN
 %token EQ GT PLUS MINUS SEMICOLON VBAR STAR COLON COMMA EOF
@@ -196,8 +197,10 @@ basicExpr:
     { $2 }
   | LPAREN RPAREN
     { mkAST ENull }   // Unit
-//  | BOOL
-//    { EBool($1) }
+  | TRUE
+    { mkAST (EBool true) }
+  | FALSE
+    { mkAST (EBool false) }
   | INT
     { mkAST (ENum ( $1 |> int )) }
   | STRING

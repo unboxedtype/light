@@ -26,7 +26,7 @@ let actorInitCode =
 
   let actorInit msgCell msgBodySlice is_external =
      let actorStateRead () =
-        { seqno = 0; state = () } in
+        { seqno = 0; state = (); deployed = false } in
      let actorStateWrite st = () in
      let act_st = actorStateRead () in
      let msg_seqno = msgBodySlice in
@@ -35,7 +35,7 @@ let actorInitCode =
      else
         let st = act_st.state in
         let st' = main msgCell st in
-        let act_st' = { seqno = msg_seqno; state = st' } in
+        let act_st' = { seqno = msg_seqno; state = st'; deployed = true } in
         actorStateWrite act_st'
-    ;;
+   ;;
 "

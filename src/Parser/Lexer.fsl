@@ -42,6 +42,8 @@ rule read =
   | "match"  { MATCH }
   | "with"   { WITH }
   | "failwith" { FAILWITH }
+  | "true"   { TRUE }
+  | "false"  { FALSE }
   | ucaseIdentifier  { UIDENT (string (lexeme lexbuf)) }
   | lcaseIdentifier  { LIDENT (string (lexeme lexbuf)) }
   | identifier { IDENT (string (lexeme lexbuf)) }

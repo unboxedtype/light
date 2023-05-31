@@ -16,6 +16,7 @@ type Name = string
 type SExpr =
     | SNum of n:int                     // value of type Int
     | SStr of s:string
+    | SBool of b:bool
     | SNull                             // value Null (unit)
     | SFunc of arg:Name * body:SExpr     // value of type Function<T1,T2>
     | SVar of name:Name                 // value of the variable
@@ -39,11 +40,15 @@ type SExpr =
     | SAssign of e0:SExpr
     | SAsm of s:string
     | SFailWith of n:int
-
+    override this.ToString () =
+        let s = sprintf "%A" this
+        let len = s.Length
+        s.Substring (0, 200) + (if (len > 200) then "..." else "")
 // AST Expression
 type Expr =
     | ENum of n:int                     // value of type Int
     | EStr of s:string                  // value of type String
+    | EBool of b:bool
     | ENull                             // value Null (Unit)
     | EFunc of arg:Name * body:ASTNode  // value of type Function<T1,T2>
     | EVar of name:Name                 // value of the variable
@@ -71,8 +76,9 @@ type Expr =
         match this with
         | EFailWith _
         | ENum _
+        | EBool _
         | EStr _ ->
-            sprintf "%A" this
+            sprintf "%20A" this
         | ENull -> "ENull"
         | EFunc (arg, body) -> sprintf "EFunc (%A, ...) " arg
         | EVar n -> sprintf "%A" this
@@ -102,6 +108,7 @@ and ASTNode =
         match this.Expr with
         | ENum n -> SNum n
         | EStr s -> SStr s
+        | EBool b -> SBool b
         | ENull -> SNull
         | EFailWith n -> SFailWith n
         | EFunc (arg,body) -> SFunc (arg, body.toSExpr ())
@@ -144,5 +151,6 @@ let rec toAST sexp : ASTNode =
     | SVar n -> mkAST (EVar n)
     | SNum n -> mkAST (ENum n)
     | SStr s -> mkAST (EStr s)
+    | SBool b -> mkAST (EBool b)
     | SNull -> mkAST ENull
     | _ -> failwithf "unexpected term: %A" sexp

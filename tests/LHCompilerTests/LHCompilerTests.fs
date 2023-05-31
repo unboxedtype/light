@@ -4,14 +4,14 @@ module LHCompilerTests
 
 open NUnit.Framework
 
-let execAndCheckPrint (prog:string) expected debug =
+let execAndCheckPrint (prog:string) expected addInit debug =
     if debug then
         printfn "%A" prog |> ignore
     // Here we compile without ActorInit code. This is because
     // we want to capture the exact behavior of the piece.
     if debug then
         printfn "Passing program to the compiler..."
-    let code = LHCompiler.compile prog false debug
+    let code = LHCompiler.compile prog addInit debug
     if debug then
         printfn "Dumping compiled program into file..."
     let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".fif"
@@ -22,7 +22,7 @@ let execAndCheckPrint (prog:string) expected debug =
     Assert.AreEqual (expected, res)
 
 let execAndCheck prog expected =
-    execAndCheckPrint prog expected false
+    execAndCheckPrint prog expected false false
 
 [<SetUp>]
 let Setup () =
@@ -78,4 +78,16 @@ let testRecord3 () =
                      let st' = { bal = sumN 5 } in
                      { st = st' }
                    ;;"
-    execAndCheckPrint prog "[ [ 15 ] ]" false
+    execAndCheckPrint prog "[ [ 15 ] ]" false false
+
+[<Test>]
+[<Timeout(1000)>]
+let testRecord4 () =
+    let prog = "contract Simple
+                   type State = { bal:int }
+                   type Data = { st:State }
+                   let main msgCell st =
+                     let rec sumN n = if (n > 0) then n + (sumN (n - 1)) else 0 in
+                     { st = { bal = (sumN 5) } }
+                   ;;"
+    execAndCheckPrint prog "[ [ 15 ] ]" true true

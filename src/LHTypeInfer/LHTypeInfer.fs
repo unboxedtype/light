@@ -164,8 +164,8 @@ let rec unify (t1 : Typ) (t2 : Typ) : Subst =
     | _ -> failwithf "Types do not unify: %A vs %A" t1 t2
 
 let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Subst * Typ * NodeTypeMap =
-    if debug then
-        printfn "Visiting node %A" node.Id
+    // if debug then
+    //    printfn "Visiting node %A" node.Id
     match node.Expr with
     | EFailWith _ ->
         let tm' = Map.add node.Id Unit tm
@@ -174,6 +174,10 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
         // printfn "%A : s' = %A" exp.Name Map.empty
         let tm' = Map.add node.Id (Int 256) tm
         (Map.empty, Int 256, tm')
+    | EBool _ ->
+        // printfn "%A : s' = %A" exp.Name Map.empty
+        let tm' = Map.add node.Id (Bool) tm
+        (Map.empty, Bool, tm')
     | ENull  ->
         // printfn "%A : s' = %A" exp.Name Map.empty
         let tm' = Map.add node.Id Unit tm
@@ -286,7 +290,7 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
             let tm2 = Map.add node.Id t2 tm1
             (s', t2, tm2)
         | _ ->
-            failwithf "Expected record type in expression %A, but received %A" (node.toSExpr()) t1
+            failwithf "Expected record type in expression %A, but received %A" ((node.toSExpr()).ToString()) t1
     | ERecord es ->
         // First of all, derive all types of record var expressions.
         // For { a = expr1; b = expr2; ... }, derive type(expr1), type(expr2), ...
