@@ -45,13 +45,9 @@ let compile (source:string) (withInit:bool) (debug:bool) : string =
         let undefTypesNamesList =
             undefTypesNames
             |> List.map (fun ((n, _), _) -> n)
-        if debug then
-            printfn "Partially defined types:\n%A" undefTypesNames
         let defTypes =
             types
             |> List.filter (fun (n, t) -> not (List.contains n undefTypesNamesList))
-        if debug then
-            printfn "Fully defined types:\n%A" defTypes
         let completeTypes =
             undefTypesNames
             |> List.map (fun ((name, typ), undNames) ->
@@ -66,18 +62,41 @@ let compile (source:string) (withInit:bool) (debug:bool) : string =
                                typ
                          (name, updateUndName undNames typ))
         if debug then
+            printfn "Partially defined types:\n%A" undefTypesNames
+            printfn "Fully defined types:\n%A" defTypes
             printfn "Completed types:\n%A" completeTypes
         let types2 = defTypes @ completeTypes
+
+        // return a list of (name, type) pairs, where partially
+        // defined types like UserType ("ActorState", None) were
+        // reconstructed based on info from 'types'.
+        let restoreTypes (types:list<string*Type>) (args:list<string*option<Type>>) =
+            let restoreType arg =
+                match arg with
+                | (name, Some (UserType (n, None))) ->
+                    let typ =
+                        match Map.tryFind n (Map.ofList types2) with
+                        | Some t -> t
+                        | None -> failwithf "Cant find type definition for type %A of var %A" n name
+                    (name, Some (UserType (n, Some typ)))
+                | _ ->
+                    arg
+            args |> List.map restoreType
+
         let letBnds =
             decls
             |> List.collect (function
                              | LetBinding (_, _, _, _) as p -> [p.letBinding]
                              | _ -> [])
+            |> List.map ( fun (name, args, isrec, body) ->
+                          (name, restoreTypes types2 args, isrec, body) )
         let handlerDefs =
             decls
             |> List.collect (function
                             | HandlerDef (_, _, _) as p -> [p.handlerDef]
                             | _ -> [])
+            |> List.map ( fun (name, args, body) ->
+                          (name, restoreTypes types2 args, body) )
         // The actor initial state. Currently, empty.
         // For debugging.
         let dataCellContent = "<b b>"

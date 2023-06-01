@@ -21,7 +21,7 @@ module ActorInit
 // This code shall be put after user code.
 let actorInitCode =
   "
-   type ActorInitParam = {
+   type ActorInitParams = {
      accBalance : Coins;
      msgBalance : Coins;
      msg: VMCell;
