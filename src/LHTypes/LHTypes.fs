@@ -97,16 +97,16 @@ type Type =
 and Variable =
     VarName * Type
 and VariableList =
-    Variable list
+    List<Variable>
 // TypeList is a list of name*type pairs, where name
 // denotes either a type variable name, or a global type name.
 // record State --> ("State", PT ([("x",List Int);("y",bool)]))
 and TypeList =
-    (Name * Type) list
+    List<Name * Type>
 and ProductType =  // to construct it, you shall provide all the fields
     TypeList
 and SumType =      // to construct it, you shall provide only a single field
-    (Name * (Type list)) list
+    List<Name * List<Type>>
 
 // Type scheme is a description of all record types in the program.
 // It is represented as a list of mutually recursive record definitions.

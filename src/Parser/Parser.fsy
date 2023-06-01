@@ -299,7 +299,7 @@ expr:
   {
      mkAST (EAsm $2)
   }
-  
+
   | basicExpr actualArguments
     %prec prec_app
   {
@@ -337,13 +337,15 @@ decl:
   | LET LIDENT funcArgs EQ expr DSCOLON
   {
     let argNames = List.map fst $3
-    LetBinding ($2, false, unfoldFunction argNames $5)
+    let vars = $3 |> List.map (fun (n,t) -> (n, LHTypes.mapType t))
+    LetBinding ($2, vars, false, unfoldFunction argNames $5)
   }
 
   | LET RECURSIVE LIDENT funcArgs EQ expr DSCOLON
   {
     let argNames = List.map fst $4
-    LetBinding ($3, true, unfoldFunction argNames $6)
+    let vars = $4 |> List.map (fun (n,t) -> (n, LHTypes.mapType t))
+    LetBinding ($3, vars, true, unfoldFunction argNames $6)
   }
 
 

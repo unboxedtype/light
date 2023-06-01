@@ -71,12 +71,9 @@ let compile (source:string) (withInit:bool) (debug:bool) : string =
         let letBnds =
             decls
             |> List.filter (function
-                            | LetBinding (_, _, _) -> true
+                            | LetBinding (_, _, _, _) -> true
                             | _ -> false)
-            |> List.map (fun n ->
-                         let (name, isRec, expr) = n.letBinding in
-                           (name, expr)
-                         )
+            |> List.map (fun n -> n.letBinding)   // (name,vars,isRec,body)
         let handlerDefs =
             decls
             |> List.filter (function
@@ -104,32 +101,47 @@ let compile (source:string) (withInit:bool) (debug:bool) : string =
         **)
         let mainLet =
             letBnds
-            |> List.filter (fun (name, expr) -> name = "main")
+            |> List.filter (fun (name, _, _, _) -> name = "main")
         if mainLet.Length <> 1 then
             failwith "main not found"
-        let ("main", mainExpr) = List.head mainLet
+        let ("main", _, _, mainExpr) = List.head mainLet
         let finalExpr =
             if withInit then
                 let actorInitLet =
                    letBnds
-                   |> List.filter (fun (name, expr) -> name = "actorInit")
+                   |> List.filter (fun (name, _, _, _) -> name = "actorInit")
                 if actorInitLet.Length <> 1 then
                     failwith "actorInit not found or multiple definitions"
-                let lastLet = List.last letBnds
-                if (fst lastLet <> "actorInit") then
+                let (lastLetName, _, _, _) = List.last letBnds
+                if (lastLetName <> "actorInit") then
                     failwith "actorInit let block shall be the last in the series of let-definitions"
+                // Now we need to prepare knownVariableTypes mapping: together with type definitions,
+                // it constitutes our initial type information.
+                // To prepare the mapping, we:
+                // 1. Collect NodeId's of let arguments inside the expression body (where they are used free),
+                    // in a form of List<ASTNode(nodeId, EVar varName)>
+                // 2. Match those with types given in let expression (varName, varType),
+                    // resulting in List<(nodeId, varType)> pairs
+                // 3. Convert the list into a mapping
+                // 4. Pass this mapping further to LHMachine
+                let collectNodeIds letExpr varName : List<int> =
+                   []
                 // Fold global Let bindings one into another, so we have a
                 // complete program definition with actorInit being the very
                 // last expression.
-                let (("actorInit", actorInitLetBinding) :: other) = List.rev letBnds
-                List.fold (fun acc (name, expr) -> mkAST (ELet (name, expr, acc))) actorInitLetBinding other
+                let ("actorInit", _, _, actorInitLetBinding) :: other = List.rev letBnds
+                let astNode =
+                    List.fold (fun acc (name, _, _, expr) ->
+                               mkAST (ELet (name, expr, acc))) actorInitLetBinding other
+                astNode
             else
                 // Sometimes we may want to compile only the main function, without ActorInit code.
                 // For example, for tests.
                 mainExpr
+        let nodeTypeMapping = Map []
         if (debug) then
             printfn "Final expression:\n%A" ((finalExpr.toSExpr()).ToString(1000))
-        LHMachine.compileWithInitialTypesDebug finalExpr types2 debug
+        LHMachine.compileWithInitialTypesDebug finalExpr types2 nodeTypeMapping debug
     | _ ->
         failwith "Actor not found"
 

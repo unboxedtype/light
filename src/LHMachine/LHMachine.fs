@@ -408,35 +408,37 @@ let rec etaStep (node:ASTNode) : ASTNode =
 let etaRedex node =
     astReducer node etaStep
 
-// Return a list of free (unbound) variables in expression 'node'
-let rec freeVars (expr:Expr) : string list =
-    match expr with
+// Find all free variables (i.e. nodes of type (EVar n)) inside the
+// given AST node. Return found nodes in a list form.
+let rec freeVarsAST (ast:ASTNode) : ASTNode list =
+    match ast.Expr with
     | ENull
     | ENum _
     | EAsm _
     | EBool _ -> []
-    | EVar x -> List.singleton x
+    | EVar x -> List.singleton ast
     | EFunc (y, body) ->
-        freeVars body.Expr |> List.except [y]
+        freeVarsAST body
+        |> List.filter (fun (ASTNode (_, EVar n)) -> n <> y)   //List.except [y]
     | EAp (e1, e2)
     | EGt (e1, e2)
     | EAdd (e1, e2)
     | ESub (e1, e2)
     | EMul (e1, e2) ->
-        (freeVars e1.Expr) @ (freeVars e2.Expr)
+        (freeVarsAST e1) @ (freeVarsAST e2)
     | ELet (x, bind, body) ->
-        (freeVars bind.Expr) @ (freeVars body.Expr)
+        (freeVarsAST bind) @ (freeVarsAST body)
     | ELetRec (x, bind, body) ->
-        (freeVars bind.Expr) @ (freeVars body.Expr)
+        (freeVarsAST bind) @ (freeVarsAST body)
     | EIf (e1, e2, e3) ->
-        (freeVars e1.Expr) @ (freeVars e2.Expr) @ (freeVars e3.Expr)
+        (freeVarsAST e1) @ (freeVarsAST e2) @ (freeVarsAST e3)
     | ERecord vs ->
         vs
         |> List.map snd
-        |> List.map (fun ast -> freeVars ast.Expr)
+        |> List.map freeVarsAST
         |> List.concat
     | _ ->
-        failwithf "freeVars for %20A not implemented" expr
+        failwithf "freeVars for %20A not implemented" ast.Expr
 
 // global counter for generating unique variable names
 let private nameId = ref 0
@@ -477,8 +479,8 @@ let rec substFreeVar (x:string) (y:Expr) (node:ASTNode) : ASTNode =
     | EFunc (x', body) when x' = x ->
         node
     | EFunc (name, body) ->  // here name <> x
-        let yFreeVars = freeVars y
-        if List.contains name yFreeVars then
+        let yFreeVars = freeVarsAST (mkAST y)
+        if List.exists (fun (ASTNode (_, EVar n)) -> n = name) yFreeVars then
             let z = newVarName ()
             let newBody = substFreeVar name (EVar z) body
             mkAST (EFunc (z, substFreeVar x y newBody))
@@ -606,7 +608,7 @@ let rec letrecRedex node =
     let letrecRedexStep (node:ASTNode) =
         match node.Expr with
         | ELetRec (name, bind, body) ->
-            if not (List.contains name (freeVars bind.Expr)) then
+            if not (List.exists (fun (ASTNode (_, EVar n)) -> n = name) (freeVarsAST bind)) then
                 mkAST (ELet (name, bind, body))
             else node
         | _ ->
@@ -666,7 +668,7 @@ let tprintf str debug =
         if debug then printfn str else () |> ignore
         x
 
-let compileIntoFiftDebug ast (initialTypes:LHTypes.ProgramTypes) debug : string =
+let compileIntoFiftDebug ast initialTypes nodeTypeMapping debug : string =
     let ast' =
         ast
         |> tprintf "Making LetRec reductions..." debug
@@ -682,7 +684,11 @@ let compileIntoFiftDebug ast (initialTypes:LHTypes.ProgramTypes) debug : string 
     if debug then
         printfn "Running type inference..."
     let (ty, (oldMap, newMap)) =
-        LHTypeInfer.typeInferenceDebug (LHTypeInfer.TypeEnv.ofProgramTypes initialTypes) ast' (Map []) debug
+        LHTypeInfer.typeInferenceDebug
+             (LHTypeInfer.TypeEnv.ofProgramTypes initialTypes)
+             ast'
+             nodeTypeMapping
+             debug
     if debug then
         printfn "newMap:\n%A" (Map.toList newMap)
     if debug then
@@ -705,10 +711,10 @@ let compileIntoFiftDebug ast (initialTypes:LHTypes.ProgramTypes) debug : string 
     |> String.concat "\n"
 
 let compileIntoFift ast =
-    compileIntoFiftDebug ast [] false
+    compileIntoFiftDebug ast [] (Map []) false
 
-let compileWithInitialTypesDebug ast types debug =
-    compileIntoFiftDebug ast types debug
+let compileWithInitialTypesDebug ast initialTypes nodeTypeMapping debug =
+    compileIntoFiftDebug ast initialTypes nodeTypeMapping debug
 
 let compileWithInitialTypes ast types =
-    compileWithInitialTypesDebug ast types false
+    compileWithInitialTypesDebug ast types (Map []) false

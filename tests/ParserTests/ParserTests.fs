@@ -82,7 +82,7 @@ let getHandlerAst (m:Module) (n:int) =
 
 let getLetAst (m:Module) (n:int) =
     m.Decls.[n].letBinding
-    |> (function | (_, _, c) -> c)
+    |> (function | (_, _, _, c) -> c)
     |> (fun c -> c.toSExpr())
 
 [<Test>]
@@ -255,7 +255,7 @@ let testActorInit () =
        let act_st = actorStateRead () in
        let msg_seqno = msgSeqNo msg in
        if msg_seqno  = act_st.seqno then
-          failwith \"Replay detected. Rejecting the message.\"
+          failwith 100
        else
           let st = act_st.state in
           let st' = actorMain msg st in
@@ -269,11 +269,12 @@ let testActorInit () =
         SLet ("act_st", SAp (SVar "actorStateRead", SNull),
          SLet ("msg_seqno", SAp (SVar "msgSeqNo", SVar "msg"),
            SIf (SEq (SVar "msg_seqno", SSelect (SVar "act_st", SVar "seqno")),
-                SAp (SVar "failwith", SStr "Replay detected. Rejecting the message."),
+                SFailWith 100,
                 SLet ("st", SSelect (SVar "act_st", SVar "state"),
                  SLet ("st'", SAp (SAp (SVar "actorMain", SVar "msg"), SVar "st"),
-                  SLet ("act_st'", SRecord [SVar "msg_seqno"; SVar "st'"],
+                  SLet ("act_st'", SRecord [("seqno", SVar "msg_seqno"); ("state", SVar "st'")],
                    SAp (SVar "actorStateWrite", SVar "act_st'")))))))))
+
     Assert.AreEqual( expected, getLetAst res.Value 0  );
 
 (* [<Test>]

@@ -20,7 +20,7 @@ let execAndCheckPrint (expr:ASTNode) expected ifPrint =
     if ifPrint then
         printfn "%A" (expr.toSExpr ())
     let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".fif"
-    TVM.dumpFiftScript filename (compileIntoFiftDebug expr ifPrint)
+    TVM.dumpFiftScript filename (compileIntoFiftDebug expr [] (Map []) ifPrint)
     let res = FiftExecutor.runFiftScript filename
     Assert.AreEqual (expected, res)
 
@@ -29,7 +29,7 @@ let execAndCheck g expected =
 
 let getLetAst (m:Module) (n:int) =
     m.Decls.[n].letBinding
-    |> (function | (_, _, c) -> c)
+    |> (function | (_, _, _, c) -> c)
 
 [<Test>]
 let testTrivial () =

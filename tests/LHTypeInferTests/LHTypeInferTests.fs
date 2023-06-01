@@ -10,47 +10,50 @@ open type LHTypes.Type
 let SetupBeforeEachTest () =
     printfn "Executing test: %s" NUnit.Framework.TestContext.CurrentContext.Test.Name
 
+let typeInfer env ast =
+    LHTypeInfer.typeInference env ast (Map [])
+
 [<Test>]
 let testBasic () =
     let se0, se1 = SNum 10, SNull
     let env = Map []
-    Assert.AreEqual( (Int 256, Unit), (fst (LHTypeInfer.typeInference env (toAST se0)),
-                                       fst (LHTypeInfer.typeInference env (toAST se1))))
+    Assert.AreEqual( (Int 256, Unit), (fst (typeInfer env (toAST se0)),
+                                       fst (typeInfer env (toAST se1))))
 [<Test>]
 let testLet1 () =
     let sexpr = SLet ("x", SNum 1, SVar "x")
     let env = Map []
-    Assert.AreEqual(Int 256, fst (LHTypeInfer.typeInference env (toAST sexpr)))
+    Assert.AreEqual(Int 256, fst (typeInfer env (toAST sexpr)))
 
 [<Test>]
 let testAp1 () =
     let se = SAp ( SFunc ("x", SVar "x"), SNum 1 )
     let env = Map []
-    Assert.AreEqual(Int 256, fst (LHTypeInfer.typeInference env (toAST se)))
+    Assert.AreEqual(Int 256, fst (typeInfer env (toAST se)))
 
 [<Test>]
 let testAdd1 () =
     let se = SAdd (SVar "x", SNum 1)
     let env = Map [("x", LHTypeInfer.Scheme ([],Int 256))]
-    Assert.AreEqual(Int 256, fst (LHTypeInfer.typeInference env (toAST se)))
+    Assert.AreEqual(Int 256, fst (typeInfer env (toAST se)))
 
 [<Test>]
 let testIf1 () =
     let se = SIf (SGt (SVar "x", SNum 1), SNum 10, SNum 20)
     let env = Map [("x", LHTypeInfer.Scheme ([],Int 256))]
-    Assert.AreEqual(Int 256, fst (LHTypeInfer.typeInference env (toAST se)))
+    Assert.AreEqual(Int 256, fst (typeInfer env (toAST se)))
 
 [<Test>]
 let testIf2 () =
     let se = SFunc ("x", SIf (SVar "x", SNum 10, SNum 20))
     let env = Map []
-    Assert.AreEqual(Function (Bool, Int 256), fst (LHTypeInfer.typeInference env (toAST se)))
+    Assert.AreEqual(Function (Bool, Int 256), fst (typeInfer env (toAST se)))
 
 [<Test>]
 let testIf3 () =
     let se = SFunc ("x", SIf (SVar "x", SFunc ("y", SVar "y"), SFunc ("z", SVar "z")))
     let env = Map []
-    match fst (LHTypeInfer.typeInference env (toAST se)) with
+    match fst (typeInfer env (toAST se)) with
         | Function (Bool, Function (TVar s1, TVar s2)) when s1 = s2 ->
             Assert.Pass()
         | _ as p ->
@@ -62,7 +65,7 @@ let testIf4 () =
     let se = SFunc ("x", SIf (SVar "x", SNum 10, SVar "x"))
     let env = Map []
     try
-        LHTypeInfer.typeInference env (toAST se) |> ignore ;
+        typeInfer env (toAST se) |> ignore ;
         Assert.Fail( "shall not typecheck" )
     with
     | _ ->
@@ -72,26 +75,26 @@ let testIf4 () =
 let testFunc1 () =
     let se = SFunc ("x", SAdd (SVar "x", SNum 1))
     let env = Map []
-    Assert.AreEqual(Function (Int 256, Int 256), fst (LHTypeInfer.typeInference env (toAST se)));
+    Assert.AreEqual(Function (Int 256, Int 256), fst (typeInfer env (toAST se)));
 
 [<Test>]
 let testAp2 () =
     let se = SAp (SFunc ("x", SAdd (SVar "x", SNum 1)), SNum 10)
     let env = Map []
-    Assert.AreEqual(Int 256, fst (LHTypeInfer.typeInference env (toAST se)) );
+    Assert.AreEqual(Int 256, fst (typeInfer env (toAST se)) );
 
 [<Test>]
 let testAp3 () =
     let se = SAp (SFunc ("x", SAdd (SVar "x", SNum 1)), SNum 10)
     let env = Map []
-    Assert.AreEqual(Int 256, fst (LHTypeInfer.typeInference env (toAST se)));
+    Assert.AreEqual(Int 256, fst (typeInfer env (toAST se)));
 
 [<Test>]
 let testAp4 () =
     // fun f -> fun n -> f (n + 1)
     let ast = SFunc ("f", SFunc ("n", SAp (SVar "f", SAdd (SVar "n", SNum 1))))
     let env = Map []
-    match fst (LHTypeInfer.typeInference env (toAST ast)) with
+    match fst (typeInfer env (toAST ast)) with
         | Function (Function (Int 256, TVar s1), Function (Int 256, TVar s2)) when s1 = s2 ->
             Assert.Pass()
         | _ as p ->
@@ -108,7 +111,7 @@ let testRecFunc1 () =
                SVar "fact")
     let env = Map []
     Assert.AreEqual(Function (Int 256, Int 256),
-                    fst (LHTypeInfer.typeInference env (toAST ast)));
+                    fst (typeInfer env (toAST ast)));
 
 [<Test>]
 let testRecFunc2 () =
@@ -124,7 +127,7 @@ let testRecFunc2 () =
           SVar "fact")
     let env = Map []
     Assert.AreEqual(Function (Int 256, Function (Int 256, Int 256)),
-                    fst (LHTypeInfer.typeInference env (toAST ast)));
+                    fst (typeInfer env (toAST ast)));
 
 [<Test>]
 let testRecFunc3 () =
@@ -140,7 +143,7 @@ let testRecFunc3 () =
           SAp (SAp (SVar "fact", SNum 10), SNum 1))
     let env = Map []
     Assert.AreEqual(Int 256,
-                    fst (LHTypeInfer.typeInference env (toAST ast)))
+                    fst (typeInfer env (toAST ast)))
 
 [<Test>]
 let testEval1 () =
@@ -150,7 +153,7 @@ let testEval1 () =
                  SLet ("main", SAp (SVar "f", SNum 5), SVar "main"))
     let env = Map []
     Assert.AreEqual(Int 256,
-                    fst (LHTypeInfer.typeInference env (toAST ast)));
+                    fst (typeInfer env (toAST ast)));
 [<Test>]
 let testEvalCurry1 () =
     // f = \f1 -> \f2 -> \x -> \y -> f2 (f1 x) (f1 y)
@@ -180,7 +183,7 @@ let testEvalCurry1 () =
     let ast = f (sum (inc main))
     let env = Map []
     Assert.AreEqual(Int 256,
-                    fst (LHTypeInfer.typeInference env (toAST ast)));
+                    fst (typeInfer env (toAST ast)));
 
 [<Test>]
 let testCurryInc () =
@@ -198,4 +201,4 @@ let testCurryInc () =
   let env = Map []
   let ast = (toAST sexpr)
   Assert.AreEqual(Function (Int 256, Int 256),
-                  fst (LHTypeInfer.typeInference env ast))
+                  fst (typeInfer env ast))

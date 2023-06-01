@@ -12,14 +12,14 @@ type Expr =
 type Decl =
     | TypeDef of name:string * t:LHTypes.Type
     | HandlerDef of name:string * pars:LHTypes.VariableList * body:ASTNode
-    | LetBinding of name:string * recs:bool * body:ASTNode
+    | LetBinding of name:string * pars:LHTypes.VariableList * recs:bool * body:ASTNode
     member this.typeDef =
         match this with
         | TypeDef (n, t) -> (n, t)
         | _ -> failwith "Not a TypeDef value"
     member this.letBinding =
         match this with
-        | LetBinding (n,isRec,body) -> (n,isRec,body)
+        | LetBinding (n,varList,isRec,body) -> (n,varList,isRec,body)
         | _ -> failwith "Not a LetBinding value"
     member this.handlerDef =
         match this with
