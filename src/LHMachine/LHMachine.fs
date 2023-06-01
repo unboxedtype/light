@@ -415,6 +415,7 @@ let rec freeVarsAST (ast:ASTNode) : ASTNode list =
     | ENull
     | ENum _
     | EAsm _
+    | EFailWith _
     | EBool _ -> []
     | EVar x -> List.singleton ast
     | EFunc (y, body) ->
@@ -422,6 +423,7 @@ let rec freeVarsAST (ast:ASTNode) : ASTNode list =
         |> List.filter (fun (ASTNode (_, EVar n)) -> n <> y)   //List.except [y]
     | EAp (e1, e2)
     | EGt (e1, e2)
+    | EEq (e1, e2)
     | EAdd (e1, e2)
     | ESub (e1, e2)
     | EMul (e1, e2) ->
@@ -437,6 +439,8 @@ let rec freeVarsAST (ast:ASTNode) : ASTNode list =
         |> List.map snd
         |> List.map freeVarsAST
         |> List.concat
+    | ESelect (e0, e1) ->
+        freeVarsAST e0
     | _ ->
         failwithf "freeVars for %20A not implemented" ast.Expr
 
@@ -673,16 +677,18 @@ let compileIntoFiftDebug ast initialTypes nodeTypeMapping debug : string =
         ast
         |> tprintf "Making LetRec reductions..." debug
         |> letrecRedex
-        |> tprintf "Making ETA reductions..." debug
-        |> etaRedex
-        |> tprintf "Making BETA reductions..." debug
-        |> (fun n -> betaRedexFullDebug n debug)
-        |> tprintf "Making Arith reductions..." debug
-        |> arithSimplRedex
+        // |> tprintf "Making ETA reductions..." debug
+        // |> etaRedex
+        // |> tprintf "Making BETA reductions..." debug
+        // |> (fun n -> betaRedexFullDebug n debug)
+        // |> tprintf "Making Arith reductions..." debug
+        // |> arithSimplRedex
     if debug then
         printfn "AST after beta and eta redex : %A" (ast'.toSExpr ())
     if debug then
         printfn "Running type inference..."
+    if debug then
+        printfn "Node type mapping: %A" (Map.toList nodeTypeMapping)
     let (ty, (oldMap, newMap)) =
         LHTypeInfer.typeInferenceDebug
              (LHTypeInfer.TypeEnv.ofProgramTypes initialTypes)

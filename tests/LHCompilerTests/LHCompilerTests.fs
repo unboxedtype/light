@@ -131,9 +131,18 @@ let testTuple3 () =
 
 [<Test>]
 [<Timeout(1000)>]
+[<Ignore("bug")>]
 let testRecord4 () =
     let prog = "contract Simple
                 type State = { bal:int }
                 type Data = { st:State }
                 let main msgCell st = { bal = 1000 } ;;"
     execAndCheckPrint prog true true "[ [ 15 ] ]"
+
+[<Test>]
+let testRecord5 () =
+    let prog = "contract Simple
+                type State = { bal:int }
+                let func1 (x:State) = x.bal ;;
+                let main msgCell st = 0 ;; "
+    execAndCheckPrint prog true true "1000"

@@ -9,12 +9,6 @@ open FSharp.Text.Parsing
 //   --> EFunc ("x", EFunc ("y", EFunc ("z", body)))
 // [], body ->
 //   --> body
-let rec unfoldFunction args body =
-    match args with
-    | [] ->
-        body
-    | h :: t ->
-        mkAST (EFunc (h, unfoldFunction t body))
 %}
 
 %start start
@@ -344,8 +338,8 @@ decl:
   | LET RECURSIVE LIDENT funcArgs EQ expr DSCOLON
   {
     let argNames = List.map fst $4
-    let vars = $4 |> List.map (fun (n,t) -> (n, LHTypes.mapType t))
-    LetBinding ($3, vars, true, unfoldFunction argNames $6)
+    let argNameType = $4 |> List.map (fun (n,t) -> (n, LHTypes.mapType t))
+    LetBinding ($3, argNameType, true, unfoldFunction argNames $6)
   }
 
 
