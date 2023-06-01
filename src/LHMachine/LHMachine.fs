@@ -111,8 +111,8 @@ let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) : LHCo
         let es' = List.map snd es
         let n = List.length es' // now we need only values; field names are omitted.
         (compileExprs es' env) @ [Record n]
-    | EFunc (argName, body) ->
-        let env' = (0, argName) :: (argOffset 1 env)
+    | EFunc (argNameType, body) ->
+        let env' = (0, fst argNameType) :: (argOffset 1 env)
         // If  it is a function of a single argument, then
         // pack it directly into a lamda abstraction; otherwise,
         // recursively descend one level down with one env index shifted.
@@ -159,7 +159,7 @@ let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) : LHCo
         // let rec fact = \n -> n * fact (n-1)
         //  ---> let fact = fixpoint (\fact . \n . n * fact (n - 1))
         // fact 5 --> fixpoint (fact 5)
-        let expr = mkAST (ELet (name, mkAST (EFix (mkAST (EFunc (name, def)))), body))
+        let expr = mkAST (ELet (name, mkAST (EFix (mkAST (EFunc ((name, None), def)))), body))
         compileWithTypes expr env ty
     | ESelect (e0, e1) ->
         let (e0', isEval) =
@@ -390,18 +390,18 @@ let rec astReducer (ast:ASTNode) (red: ASTNode -> ASTNode) : ASTNode =
 // (\x -> f x) ==> f
 let rec etaStep (node:ASTNode) : ASTNode =
     match node.Expr with
-    | EFunc (arg, body) ->
+    | EFunc ((argName,argType), body) ->
         match body.Expr with
         | EAp (f, f_arg) ->
             match f_arg.Expr with
-            | EVar arg1 when arg1 = arg ->
+            | EVar arg1 when arg1 = argName ->
                 etaStep f
             | _ ->
                 node
         | _ ->
             let red = etaStep body
             if red = body then node
-            else etaStep (mkAST (EFunc (arg, red)))
+            else etaStep (mkAST (EFunc ((argName, argType), red)))
     | _ ->
         node
 
@@ -418,9 +418,9 @@ let rec freeVarsAST (ast:ASTNode) : ASTNode list =
     | EFailWith _
     | EBool _ -> []
     | EVar x -> List.singleton ast
-    | EFunc (y, body) ->
+    | EFunc ((argName, _), body) ->
         freeVarsAST body
-        |> List.filter (fun (ASTNode (_, EVar n)) -> n <> y)   //List.except [y]
+        |> List.filter (fun (ASTNode (_, EVar n)) -> n <> argName)   //List.except [y]
     | EAp (e1, e2)
     | EGt (e1, e2)
     | EEq (e1, e2)
@@ -480,16 +480,16 @@ let rec substFreeVar (x:string) (y:Expr) (node:ASTNode) : ASTNode =
               )
     | EIf (e0, e1, e2) ->
         mkAST (EIf (substFreeVar x y e0, substFreeVar x y e1, substFreeVar x y e2))
-    | EFunc (x', body) when x' = x ->
+    | EFunc ((argName,_), body) when argName = x ->
         node
-    | EFunc (name, body) ->  // here name <> x
+    | EFunc ((name,typ), body) ->  // here name <> x
         let yFreeVars = freeVarsAST (mkAST y)
         if List.exists (fun (ASTNode (_, EVar n)) -> n = name) yFreeVars then
             let z = newVarName ()
             let newBody = substFreeVar name (EVar z) body
-            mkAST (EFunc (z, substFreeVar x y newBody))
+            mkAST (EFunc ((z,typ), substFreeVar x y newBody))
         else
-            mkAST (EFunc (name, substFreeVar x y body))
+            mkAST (EFunc ((name,typ), substFreeVar x y body))
     | ELet (arg, bind, body) ->
         mkAST (ELet (arg, substFreeVar x y bind, substFreeVar x y body))
     | ELetRec (arg, bind, body) ->
@@ -512,7 +512,7 @@ let rec betaRedexStep (node:ASTNode) : ASTNode =
         substFreeVar x bind.Expr body
     | EAp (e0, arg) ->
         match e0.Expr with
-        | EFunc (x, body) ->
+        | EFunc ((x,_), body) ->
             substFreeVar x arg.Expr body
         | term -> // EAp (EAp (...), arg)
             let node' = betaRedexStep e0
@@ -677,12 +677,12 @@ let compileIntoFiftDebug ast initialTypes nodeTypeMapping debug : string =
         ast
         |> tprintf "Making LetRec reductions..." debug
         |> letrecRedex
-        // |> tprintf "Making ETA reductions..." debug
-        // |> etaRedex
-        // |> tprintf "Making BETA reductions..." debug
-        // |> (fun n -> betaRedexFullDebug n debug)
-        // |> tprintf "Making Arith reductions..." debug
-        // |> arithSimplRedex
+        |> tprintf "Making ETA reductions..." debug
+        |> etaRedex
+        |> tprintf "Making BETA reductions..." debug
+        |> (fun n -> betaRedexFullDebug n debug)
+        |> tprintf "Making Arith reductions..." debug
+        |> arithSimplRedex
     if debug then
         printfn "AST after beta and eta redex : %A" (ast'.toSExpr ())
     if debug then

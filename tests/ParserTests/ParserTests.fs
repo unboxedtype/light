@@ -127,7 +127,7 @@ let testLetMain4 () =
     let resAst = getLetAst res.Value 0
     let expected =
           SLetRec ("factorial",
-            SFunc ("n", SIf (SGt (SVar "n", SNum 1),
+            SFunc (("n",None), SIf (SGt (SVar "n", SNum 1),
                              SMul (SVar "n", SAp (SVar "factorial",
                                                   SSub (SVar "n", SNum 1))),
                              SNum 1)),
@@ -139,10 +139,10 @@ let testApAssoc0 () =
     let res = parse "contract test
                      let f f1 f2 x y = f2 (f1 x) (f1 y) ;;"
     let resAst = getLetAst res.Value 0
-    let expected = SFunc ("f1",
-                    SFunc ("f2",
-                     SFunc ("x",
-                      SFunc ("y",
+    let expected = SFunc (("f1", None),
+                    SFunc (("f2", None),
+                     SFunc (("x", None),
+                      SFunc (("y", None),
                        SAp (SAp (SVar "f2",
                              SAp (SVar "f1", SVar "x")),
                        SAp (SVar "f1", SVar "y"))))))
@@ -156,7 +156,7 @@ let testHandler4 () =
                           if ( (1 + 1) > 2) then 1 else 0 "
 
     match res with
-    | Some (Module ("test", [HandlerDef ("test", [("x", Int 256)], decls)])) ->
+    | Some (Module ("test", [HandlerDef ("test", [("x", Some (Int 256))], decls)])) ->
         Assert.AreEqual(SIf (SGt (SAdd (SNum 1, SNum 1), SNum 2),
                              SNum 1,
                              SNum 0),
@@ -232,9 +232,9 @@ let testLetBindings0 () =
                             s + length l
                      ;;
                     "
-    let expected = SFunc ("l",
+    let expected = SFunc (("l", None),
                     SLet ("s", SAp (SVar "sum", SVar "l"),
-                     SLetRec ("length", SFunc ("l", SVar "l"),
+                     SLetRec ("length", SFunc (("l", None), SVar "l"),
                       SAdd (SVar "s", SAp (SVar "length", SVar "l")))))
     Assert.AreEqual( expected, getLetAst res.Value 0 );
 
@@ -245,6 +245,16 @@ let testStr0 () =
     "
     let expected = SStr ("abcd")
     Assert.AreEqual( expected, getLetAst res.Value 0  );
+
+[<Test>]
+let testLetBindings1 () =
+    let res = parse "contract test
+                     let sum (x:int) (y:int) = x + y ;;
+                    "
+    let expected = SFunc (("x", Some (Int 256)),
+                    SFunc (("y", Some (Int 256)),
+                     SAdd (SVar "x", SVar "y")))
+    Assert.AreEqual( expected, getLetAst res.Value 0 );
 
 [<Test>]
 let testActorInit () =
@@ -264,8 +274,8 @@ let testActorInit () =
      ;;"
 
     let expected =
-      SFunc ("msg",
-       SFunc ("is_external",
+      SFunc (("msg", None),
+       SFunc (("is_external", None),
         SLet ("act_st", SAp (SVar "actorStateRead", SNull),
          SLet ("msg_seqno", SAp (SVar "msgSeqNo", SVar "msg"),
            SIf (SEq (SVar "msg_seqno", SSelect (SVar "act_st", SVar "seqno")),

@@ -6,8 +6,12 @@
 
 module LHExpr
 
+open type LHTypes.Type
+
 // global counter for generating new AST IDs
 let private currentId = ref 0
+
+type Type = LHTypes.Type
 
 type Name = string
 
@@ -18,7 +22,7 @@ type SExpr =
     | SStr of s:string
     | SBool of b:bool
     | SNull                             // value Null (unit)
-    | SFunc of arg:Name * body:SExpr     // value of type Function<T1,T2>
+    | SFunc of arg:(Name*option<Type>) * body:SExpr     // value of type Function<T1,T2>
     | SVar of name:Name                 // value of the variable
     | SEval of e:SExpr                   // evaluate saturated function
     | SAp of e1:SExpr * e2:SExpr
@@ -54,7 +58,7 @@ type Expr =
     | EStr of s:string                  // value of type String
     | EBool of b:bool
     | ENull                             // value Null (Unit)
-    | EFunc of arg:Name * body:ASTNode  // value of type Function<T1,T2>
+    | EFunc of arg:(Name*option<Type>) * body:ASTNode  // value of type Function<T1,T2>
     | EVar of name:Name                 // value of the variable
     | EEval of e:ASTNode                   // evaluate saturated function
     | EAp of e1:ASTNode * e2:ASTNode

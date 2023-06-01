@@ -54,7 +54,7 @@ let testAdd () =
 let testLet1 () =
     // let main = \n -> n + 1000 in
     // main 2000
-    let expr = SLet ("main", SFunc ("n", SAdd (SVar "n", SNum 1000)), SAp (SVar "main", SNum 2000))
+    let expr = SLet ("main", SFunc (("n",None), SAdd (SVar "n", SNum 1000)), SAp (SVar "main", SNum 2000))
     execAndCheck (toAST expr) "3000"
 
 [<Test>]
@@ -64,9 +64,9 @@ let testLet2 () =
       // in add n
     // in main 1000
     let expr = SLet ("main",
-                SFunc ("n",
+                SFunc (("n", None),
                  SLet ("add",
-                  SFunc ("x",
+                  SFunc (("x", None),
                    SAdd (SVar "x", SNum 1000)), SAp (SVar "add", SVar "n"))),
                      SAp (SVar "main", SNum 1000))
     execAndCheck (toAST expr) "2000"
@@ -76,7 +76,7 @@ let testFactorial () =
     // let rec fact = \n -> if n > 1 then n * (fact (n - 1)) else 1
     // in fact 5
     let expr = SLetRec ("fact",
-                  SFunc ("n",
+                  SFunc (("n", None),
                     SIf (SGt (SVar "n", SNum 1),
                          SMul (SVar "n", SAp (SVar "fact", SSub (SVar "n", SNum 1))),
                          SNum 1)), SAp (SVar "fact", SNum 5))
@@ -153,10 +153,10 @@ let testBetaRedex2 () =
 let testBetaRedex3 () =
     // let apply = \f.\x.f x in (apply plus1)
       // --> (\f.\x.f x) plus1
-    let sexpr = SLet ("apply", SFunc ("f", SFunc ("x", SAp (SVar "f", SVar "x"))),
+    let sexpr = SLet ("apply", SFunc (("f",None), SFunc (("x",None), SAp (SVar "f", SVar "x"))),
                       SAp (SVar "apply", SVar "plus1"))
     let res = (betaRedexStep (toAST sexpr)).toSExpr ()
-    let expected = SAp (SFunc ("f", SFunc ("x", SAp (SVar "f", SVar "x"))), SVar "plus1")
+    let expected = SAp (SFunc (("f",None), SFunc (("x",None), SAp (SVar "f", SVar "x"))), SVar "plus1")
     Assert.AreEqual (expected, res)
 
 [<Test>]
@@ -164,10 +164,10 @@ let testBetaRedex4 () =
     // let apply = \f.\x.f x in (apply plus1)
       // --> (\f.\x.f x) plus1
       // --> \x plus1 x
-    let sexpr = SLet ("apply", SFunc ("f", SFunc ("x", SAp (SVar "f", SVar "x"))),
+    let sexpr = SLet ("apply", SFunc (("f",None), SFunc (("x",None), SAp (SVar "f", SVar "x"))),
                       SAp (SVar "apply", SVar "plus1"))
     let res = (betaRedexStep (betaRedexStep (toAST sexpr))).toSExpr ()
-    let expected = SFunc ("x", SAp (SVar "plus1", SVar "x"))
+    let expected = SFunc (("x",None), SAp (SVar "plus1", SVar "x"))
     Assert.AreEqual (expected, res)
 
 [<Test>]
@@ -176,7 +176,7 @@ let testBetaRedex5 () =
       // --> ((\f.\x.f x) plus1) 5
       // --> (\x plus1 x) 5
       // --> plus1 5
-    let sexpr = SLet ("apply", SFunc ("f", SFunc ("x", SAp (SVar "f", SVar "x"))),
+    let sexpr = SLet ("apply", SFunc (("f", None), SFunc (("x", None), SAp (SVar "f", SVar "x"))),
                       SAp (SAp (SVar "apply", SVar "plus1"), SNum 5))
     let res = (betaRedexStep (betaRedexStep (betaRedexStep (toAST sexpr)))).toSExpr ()
     let expected = SAp (SVar "plus1", SNum 5)
@@ -185,22 +185,22 @@ let testBetaRedex5 () =
 [<Test>]
 let testBetaRedex6 () =
     // (\y .(\x . y + 1)) (x + 1) 1
-    let sexpr =  SAp (SAp (SFunc ("y", SFunc ("x", SAdd (SVar "y", SNum 1))),
+    let sexpr =  SAp (SAp (SFunc (("y", None), SFunc (("x", None), SAdd (SVar "y", SNum 1))),
                            SAdd (SVar "x", SNum 1)),
                       SNum 1)
     let res = (betaRedexStep (toAST sexpr)).toSExpr ()
-    let expected = SAp (SFunc ("z0", SAdd (SAdd (SVar "x", SNum 1), SNum 1)), SNum 1)
+    let expected = SAp (SFunc (("z0", None), SAdd (SAdd (SVar "x", SNum 1), SNum 1)), SNum 1)
     Assert.AreEqual (expected, res)
 
 [<Test>]
 let testBetaRedex7 () =
     // (\x . (\x . x + 1) (x + 1) ) 1
-    let sexpr = SAp (SFunc ("x",
-                       SAp (SFunc ("x", SAdd (SVar "x", SNum 1)),
+    let sexpr = SAp (SFunc ( ("x", None),
+                       SAp (SFunc ( ("x", None), SAdd (SVar "x", SNum 1)),
                             SAdd (SVar "x", SNum 1))),
                      SNum 1)
     let res = (betaRedexStep (toAST sexpr)).toSExpr ()
-    let expected = SAp (SFunc ("x", SAdd (SVar "x", SNum 1)), SAdd (SNum 1, SNum 1))
+    let expected = SAp (SFunc (("x", None), SAdd (SVar "x", SNum 1)), SAdd (SNum 1, SNum 1))
     Assert.AreEqual (expected, res)
 
 

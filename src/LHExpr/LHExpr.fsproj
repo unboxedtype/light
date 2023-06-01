@@ -6,6 +6,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../../src/LHTypes/LHTypes.fsproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Include="LHExpr.fs" />
   </ItemGroup>
   

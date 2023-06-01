@@ -118,16 +118,17 @@ type VariablesMapping =
     Map<Name,int>
 
 // map an LH elementary type into Type
-let mapType (str : string) : Type =
+let mapType (str : string) : option<Type> =
     match str with
-    | "int" -> Int 256
-    | "string" -> String
-    | "bool" -> Bool
-    | "VMCell" -> VMCell
-    | "VMSlice" -> VMSlice
-    | "Coins" -> Coins
-    | "unit" -> Unit
-    | S -> UserType (S, None)
+    | "int" -> Some (Int 256)
+    | "string" -> Some String
+    | "bool" -> Some Bool
+    | "VMCell" -> Some VMCell
+    | "VMSlice" -> Some VMSlice
+    | "Coins" -> Some Coins
+    | "unit" -> Some Unit
+    | "" -> None
+    | S -> Some (UserType (S, None))
     | _ -> failwithf "Undefined type %s" str
 
 // t = PT [("x",Int);("y",List Int);("z",Bool)]

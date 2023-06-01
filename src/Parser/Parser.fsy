@@ -4,11 +4,16 @@ open type LHExpr.Expr
 open LHExpr
 open FSharp.Text.Parsing
 
-// EFunc of arg:Name * body:Expr
-// ["x","y","z"], body ->
-//   --> EFunc ("x", EFunc ("y", EFunc ("z", body)))
+// EFunc of arg:(Name*option<Type>) * body:Expr
+// [("x",None),("y",Some Int 256)], body ->
+//   --> EFunc (("x",None), EFunc (("y", Some Int 256), ...))
 // [], body ->
 //   --> body
+let rec unfoldFunction argsTypes body =
+    match argsTypes with
+    | [] -> body
+    | (name, typ) :: t -> mkAST (EFunc ((name, typ), unfoldFunction t body))
+
 %}
 
 %start start
@@ -135,7 +140,8 @@ sumType:
                          (c,
                           args
                           |> List.map snd
-                          |> List.map LHTypes.mapType))
+                          |> List.map (fun i -> (LHTypes.mapType i).Value)))
+
       LHTypes.ST sumC
   }
 
@@ -148,7 +154,7 @@ sumType:
 prodType:
   | LEFT_BRACE typedVarDecls RIGHT_BRACE
   {
-      LHTypes.PT ($2 |> List.map (fun (n,t) -> (n, LHTypes.mapType t)))
+      LHTypes.PT ($2 |> List.map (fun (n,t) -> (n, (LHTypes.mapType t).Value)))
   }
 
 // =================================================
@@ -237,14 +243,16 @@ expr:
 
   | LET LIDENT funcArgs EQ expr IN expr
   {
-    let argNames = List.map fst $3
-    mkAST (ELet ($2, unfoldFunction argNames $5, $7))
+    let args =
+       $3 |> List.map (fun (n, s) -> (n, LHTypes.mapType s))
+    mkAST (ELet ($2, unfoldFunction args $5, $7))
   }
 
   | LET RECURSIVE LIDENT funcArgs EQ expr IN expr
   {
-    let argNames = List.map fst $4
-    mkAST (ELetRec ($3, unfoldFunction argNames $6, $8))
+    let args =
+       $4 |> List.map (fun (n, s) -> (n, LHTypes.mapType s))
+    mkAST (ELetRec ($3, unfoldFunction args $6, $8))
   }
 
   | MATCH expr WITH matchPatterns
@@ -330,16 +338,14 @@ decl:
 
   | LET LIDENT funcArgs EQ expr DSCOLON
   {
-    let argNames = List.map fst $3
-    let vars = $3 |> List.map (fun (n,t) -> (n, LHTypes.mapType t))
-    LetBinding ($2, vars, false, unfoldFunction argNames $5)
+    let args = $3 |> List.map (fun (n,t) -> (n, LHTypes.mapType t))
+    LetBinding ($2, args, false, unfoldFunction args $5)
   }
 
   | LET RECURSIVE LIDENT funcArgs EQ expr DSCOLON
   {
-    let argNames = List.map fst $4
-    let argNameType = $4 |> List.map (fun (n,t) -> (n, LHTypes.mapType t))
-    LetBinding ($3, argNameType, true, unfoldFunction argNames $6)
+    let args = $4 |> List.map (fun (n,t) -> (n, LHTypes.mapType t))
+    LetBinding ($3, args, true, unfoldFunction args $6)
   }
 
 

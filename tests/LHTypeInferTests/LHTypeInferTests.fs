@@ -27,7 +27,7 @@ let testLet1 () =
 
 [<Test>]
 let testAp1 () =
-    let se = SAp ( SFunc ("x", SVar "x"), SNum 1 )
+    let se = SAp ( SFunc (("x",None), SVar "x"), SNum 1 )
     let env = Map []
     Assert.AreEqual(Int 256, fst (typeInfer env (toAST se)))
 
@@ -45,13 +45,13 @@ let testIf1 () =
 
 [<Test>]
 let testIf2 () =
-    let se = SFunc ("x", SIf (SVar "x", SNum 10, SNum 20))
+    let se = SFunc (("x",None), SIf (SVar "x", SNum 10, SNum 20))
     let env = Map []
     Assert.AreEqual(Function (Bool, Int 256), fst (typeInfer env (toAST se)))
 
 [<Test>]
 let testIf3 () =
-    let se = SFunc ("x", SIf (SVar "x", SFunc ("y", SVar "y"), SFunc ("z", SVar "z")))
+    let se = SFunc (("x",None), SIf (SVar "x", SFunc (("y", None), SVar "y"), SFunc (("z", None), SVar "z")))
     let env = Map []
     match fst (typeInfer env (toAST se)) with
         | Function (Bool, Function (TVar s1, TVar s2)) when s1 = s2 ->
@@ -62,7 +62,7 @@ let testIf3 () =
 [<Test>]
 let testIf4 () =
     // fun x -> if x then 10 else x
-    let se = SFunc ("x", SIf (SVar "x", SNum 10, SVar "x"))
+    let se = SFunc (("x", None), SIf (SVar "x", SNum 10, SVar "x"))
     let env = Map []
     try
         typeInfer env (toAST se) |> ignore ;
@@ -73,26 +73,26 @@ let testIf4 () =
 
 [<Test>]
 let testFunc1 () =
-    let se = SFunc ("x", SAdd (SVar "x", SNum 1))
+    let se = SFunc (("x", None), SAdd (SVar "x", SNum 1))
     let env = Map []
     Assert.AreEqual(Function (Int 256, Int 256), fst (typeInfer env (toAST se)));
 
 [<Test>]
 let testAp2 () =
-    let se = SAp (SFunc ("x", SAdd (SVar "x", SNum 1)), SNum 10)
+    let se = SAp (SFunc (("x", None), SAdd (SVar "x", SNum 1)), SNum 10)
     let env = Map []
     Assert.AreEqual(Int 256, fst (typeInfer env (toAST se)) );
 
 [<Test>]
 let testAp3 () =
-    let se = SAp (SFunc ("x", SAdd (SVar "x", SNum 1)), SNum 10)
+    let se = SAp (SFunc (("x", None), SAdd (SVar "x", SNum 1)), SNum 10)
     let env = Map []
     Assert.AreEqual(Int 256, fst (typeInfer env (toAST se)));
 
 [<Test>]
 let testAp4 () =
     // fun f -> fun n -> f (n + 1)
-    let ast = SFunc ("f", SFunc ("n", SAp (SVar "f", SAdd (SVar "n", SNum 1))))
+    let ast = SFunc (("f", None), SFunc (("n", None), SAp (SVar "f", SAdd (SVar "n", SNum 1))))
     let env = Map []
     match fst (typeInfer env (toAST ast)) with
         | Function (Function (Int 256, TVar s1), Function (Int 256, TVar s2)) when s1 = s2 ->
@@ -103,7 +103,7 @@ let testAp4 () =
 [<Test>]
 let testRecFunc1 () =
     let ast = SLetRec ("fact",
-               SFunc ("n",
+               SFunc (("n", None),
                 SIf (SGt (SVar "n", SNum 1),
                      SMul (SVar "n",
                        SAp (SVar "fact", SSub (SVar "n", SNum 1))),
@@ -119,8 +119,8 @@ let testRecFunc2 () =
     // let rec fact n res = if (n > 1) then fact (n-1) (n*res) else res
     let ast =
         SLetRec ("fact",
-          SFunc ("n",
-           SFunc ("res",
+          SFunc ( ("n", None),
+           SFunc ( ("res", None),
             SIf (SGt (SVar "n", SNum 1),
                  SAp (SAp (SVar "fact", SSub (SVar "n", SNum 1)), SMul (SVar "res", SVar "n")),
                  SNum 1))),
@@ -135,8 +135,8 @@ let testRecFunc3 () =
     // let rec fact n res = if (n > 1) then fact (n-1) (n*res) else res
     let ast =
         SLetRec ("fact",
-          SFunc ("n",
-           SFunc ("res",
+          SFunc ( ("n", None),
+           SFunc ( ("res", None),
             SIf (SGt (SVar "n", SNum 1),
                  SAp (SAp (SVar "fact", SSub (SVar "n", SNum 1)), SMul (SVar "res", SVar "n")),
                  SNum 1))),
@@ -149,7 +149,7 @@ let testRecFunc3 () =
 let testEval1 () =
     // f x = x - 1  : Int -> Int
     // main _ = (f 5) : Int
-    let ast = SLet ("f", SFunc ("x", SSub (SVar "x", SNum 1)),
+    let ast = SLet ("f", SFunc ( ("x", None), SSub (SVar "x", SNum 1)),
                  SLet ("main", SAp (SVar "f", SNum 5), SVar "main"))
     let env = Map []
     Assert.AreEqual(Int 256,
@@ -159,21 +159,21 @@ let testEvalCurry1 () =
     // f = \f1 -> \f2 -> \x -> \y -> f2 (f1 x) (f1 y)
     let f cont =
         SLet ("f",
-          SFunc ("f1",
-           SFunc ("f2",
-            SFunc ("x",
-             SFunc ("y", SAp (SAp (SVar "f2", SAp (SVar "f1", SVar "x")),
+          SFunc (("f1", None),
+           SFunc (("f2", None),
+            SFunc (("x", None),
+             SFunc (("y", None), SAp (SAp (SVar "f2", SAp (SVar "f1", SVar "x")),
                                     SAp (SVar "f1", SVar "y")))))), cont)
     // sum = \x -> \y -> x + y
     let sum cont =
         SLet ("sum",
-          SFunc ("x",
-           SFunc ("y",
+          SFunc (("x", None),
+           SFunc (("y", None),
             SAdd (SVar "x", SVar "y"))), cont)
     // let inc = \x -> x + 1
     let inc cont =
         SLet ("inc",
-          SFunc ("x",
+          SFunc (("x", None),
            SAdd (SVar "x", SNum 1)), cont)
 
     // main = f inc sum 10 20 = sum (inc 10) (inc 20) : Int
@@ -193,10 +193,10 @@ let testCurryInc () =
   //     (apply inc) ;;"
   let sexpr =
       SLet ("apply",
-        SFunc ("func",
-          SFunc ("x", SAp (SVar "func", SVar "x"))),
+        SFunc (("func", None),
+          SFunc (("x", None), SAp (SVar "func", SVar "x"))),
         SLet ("inc",
-          SFunc ("x", SAdd (SVar "x", SNum 1)),
+          SFunc (("x", None), SAdd (SVar "x", SNum 1)),
             SAp (SVar "apply", SVar "inc")))
   let env = Map []
   let ast = (toAST sexpr)

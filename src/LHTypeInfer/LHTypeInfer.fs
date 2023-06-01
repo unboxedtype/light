@@ -178,10 +178,13 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
         let tme = Map.add node.Id t2 tm''
         // printfn "%A : s' = %A" exp.Name  s'
         (s', Int 256, tme)
-    | EFunc (n, e) ->
-        let tv = newTyVar "a"
-        let env1 = TypeEnv.remove env n
-        let env2 = mapUnion env1 (mapSingleton n (Scheme([], tv) ))
+    | EFunc ((name, optType), e) ->
+        let tv =
+            match optType with
+            | None -> newTyVar "a"
+            | Some t -> t
+        let env1 = TypeEnv.remove env name
+        let env2 = mapUnion env1 (mapSingleton name (Scheme([], tv) ))
         let (s', t1, tm') = ti env2 e tm debug
         let tm'' = Map.add node.Id t1 tm'
         // printfn "%A : s' = %A" exp.Name  s'
@@ -225,7 +228,7 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
         let tm3 = Map.add node.Id t2 tm2
         (s', t2, tm3)
     | ELetRec (x, e1, e2) ->
-        let node1 = mkAST (EFunc (x, e1))
+        let node1 = mkAST (EFunc ((x,None), e1))
         let node2 = mkAST (EFix node1)
         let node3 = mkAST (ELet (x, node2, e2))
         let (s', t', tm1) = ti env node3 tm debug

@@ -6,13 +6,15 @@ open LHTypes
 open LHExpr
 open FSharp.Text.Lexing
 
+type Type = LHTypes.Type
+
 type Expr =
     LHExpr.Expr
 
 type Decl =
-    | TypeDef of name:string * t:LHTypes.Type
-    | HandlerDef of name:string * pars:LHTypes.VariableList * body:ASTNode
-    | LetBinding of name:string * pars:LHTypes.VariableList * recs:bool * body:ASTNode
+    | TypeDef of name:string * t:Type
+    | HandlerDef of name:string * pars:list<string*option<Type>> * body:ASTNode
+    | LetBinding of name:string * pars:list<string*option<Type>> * recs:bool * body:ASTNode
     member this.typeDef =
         match this with
         | TypeDef (n, t) -> (n, t)
