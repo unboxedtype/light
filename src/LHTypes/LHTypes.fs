@@ -86,13 +86,21 @@ type Type =
     | String
     | PT of e:ProductType               // product type
     | ST of e:SumType                   // sum type
-    | Function of inp:Type * out:Type   // function type
     | UserType of name:Name * typ:option<Type>  // user-defined type with name s
+    | Function of inp:Type * out:Type   // function type
     | TVar of s:Name // type variable
     member this.usertypeName =
         match this with
-            | UserType (s, _) -> s
-            | _ -> failwith "not a UserType type"
+        | UserType (s, _) -> s
+        | _ -> failwith "not a UserType type"
+    member this.baseType =
+        match this with
+        | UserType (_, None) ->
+            failwithf "baseType not defined for %A" this
+        | UserType (_, Some t) ->
+            t.baseType
+        | _ ->
+            this
 
 and Variable =
     VarName * Type

@@ -143,6 +143,8 @@ let testRecord4 () =
 let testRecord5 () =
     let prog = "contract Simple
                 type State = { bal:int }
+                let stateDefault = { bal = 0 } ;;
                 let func1 (x:State) = x.bal ;;
-                let main msgCell st = 0 ;; "
-    execAndCheckPrint prog true true "1000"
+                let main msgCell (st:State) =
+                    { bal = func1 st + 1000 } ;; "
+    execAndCheckPrint prog true false "[ 1000 ]"

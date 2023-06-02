@@ -626,8 +626,11 @@ let rec insertEval (ast:ASTNode) (ty:Map<int,LHType>) : ASTNode =
             let t =
                 match (Map.tryFind node.Id ty) with
                 | Some v -> v
-                | None -> failwithf "failed to find type for node %A, expression: %s" node.Id ((ast.toSExpr ()).ToString())
-            match t with
+                | None ->
+                    failwithf "failed to find type for node %A, expression: %s"
+                               node.Id
+                               ((ast.toSExpr ()).ToString())
+            match t.baseType with
             | LHType.Function _
             | LHType.TVar _ ->
                 node
@@ -686,7 +689,7 @@ let compileIntoFiftDebug ast initialTypes nodeTypeMapping debug : string =
         |> tprintf "Making Arith reductions..." debug
         |> arithSimplRedex
     if debug then
-        printfn "AST after beta and eta redex:\n%A" (ast'.toSExpr ())
+        printfn "AST after beta and eta redex:\n%A" ast'
         printfn "Running type inference..."
         printfn "Node type mapping: %A" (Map.toList nodeTypeMapping)
     let (ty, (oldMap, newMap)) =
@@ -706,8 +709,7 @@ let compileIntoFiftDebug ast initialTypes nodeTypeMapping debug : string =
         printfn "SExpr AST:\n%O" (ast''.toSExpr()) ;
         printfn "Types:\n%A" (Map.toList newMap) ;
     let ir = compileWithTypes ast'' [] newMap
-    if debug then
-        printfn "IR:\n%A" ir
+    printfn "IR:\n%A" ir
     List.singleton "\"Asm.fif\" include" @
     List.singleton "<{ " @
     (if hasFixpoint then [fixpointImpl] else []) @

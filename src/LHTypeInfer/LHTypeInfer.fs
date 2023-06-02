@@ -35,6 +35,7 @@ module Typ =
         | VMCell
         | VMSlice
         | Coins
+        | UserType (_, None)
         | Bool -> Set.empty
         | UserType (_, Some v) ->
             ftv v
@@ -58,6 +59,7 @@ module Typ =
         | VMSlice
         | VMCell
         | Coins
+        | UserType (_, None)
         | Unit ->
             typ
         | UserType (name, Some t1) ->
@@ -82,10 +84,10 @@ module TypeEnv =
      let remove (env: TypeEnv) (var : string)=
          Map.remove var env
      let ftv (typEnv: TypeEnv) =
-        Seq.foldBack (fun (KeyValue(_key ,v)) state ->
-            Set.union state (Scheme.ftv v)) typEnv Set.empty
+         Seq.foldBack (fun (KeyValue(_key ,v)) state ->
+                       Set.union state (Scheme.ftv v)) typEnv Set.empty
      let apply (s : Subst) (env: TypeEnv) : TypeEnv =
-        Map.map (fun _k v -> Scheme.apply s v) env
+         Map.map (fun _k v -> Scheme.apply s v) env
      let ofProgramTypes (pr:LHTypes.ProgramTypes) : TypeEnv =
          pr
          |> List.map (fun (name, typ) -> (name, Scheme ([""], typ)))
@@ -140,16 +142,13 @@ let rec unify (t1 : Typ) (t2 : Typ) : Subst =
     | TVar u, t
     | t, TVar u -> varBind u t
     // TODO: This may be not correct. Consider breaking into sep cases.
-    | x, y when x = y -> Map.empty
+    | UserType (name1, None), UserType (name2, Some t)
+    | UserType (name1, Some t), UserType (name2, None) when name1 = name2 ->
+        Map.empty
+    // TODO: This may be not correct. Consider breaking into sep cases.
+    | x, y when x.baseType = y.baseType -> Map.empty
     | _ -> failwithf "Types do not unify: %A vs %A" t1 t2
 
-
-let rec baseType (t:Typ) : Typ =
-    match t with
-    | UserType (_, Some t1) ->
-        baseType t1
-    | _ ->
-        t
 
 // We need to reconstruct the type of a record by comparing
 // the set of provided record fields in the record constructor to
@@ -163,7 +162,7 @@ let recoverRecordType env (node:ASTNode) : Type =
     let es =
         match node with
         | ASTNode (_, ERecord es) -> es
-        | _ -> failwith "ERecord node expected, but was given: %A" (node.toSExpr())
+        | _ -> failwithf "ERecord node expected, but was given: %A" (node.toSExpr())
     let varNames = Set.ofList (List.map fst es)
     // Find all types that define records, and whose set of fields
     // correspond to varNames.
@@ -314,9 +313,12 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
         (s', Bool, tm3)
     | ESelect (expr, ASTNode (_, EVar field)) ->
         let s', t1, tm1 = ti env expr tm debug
-        match (baseType t1) with
+        match t1.baseType with
         | PT fields ->
-            let t2 = (Map.ofList fields).[field]
+            let t2 =
+                match Map.tryFind field (Map.ofList fields) with
+                | Some r -> r
+                | None -> failwithf "The field %A not found in the record %A definition" field t1
             let tm2 = Map.add node.Id t2 tm1
             (s', t2, tm2)
         | _ ->

@@ -38,10 +38,15 @@ let actorInitCode =
    let msgReadSeqNo (msg:VMSlice) =
        assembly \"CTOS 32 LDU DROP\" ;;
 
+   let actorStateRead () =
+       { seqno = 1;
+         deployed = false;
+         state = stateDefault } ;;
+
+   let actorStateWrite (st:ActorState) =
+       () ;;
+
    let actorInit (initArgs:ActorInitParams) =
-     let actorStateRead () =
-        { seqno = 0; state = (); deployed = false } in
-     let actorStateWrite st = () in
      let actState = actorStateRead () in
      let msgSeqNo = msgReadSeqNo initArgs.msgBody in
      if msgSeqNo  = actState.seqno then
@@ -49,7 +54,10 @@ let actorInitCode =
      else
         let st = actState.state in
         let st' = main initArgs.msgCell st in
-        let actState' = { seqno = msgSeqNo; state = st'; deployed = true } in
+        let actState' =
+            { seqno = msgSeqNo;
+              state = st';
+              deployed = true } in
         actorStateWrite actState'
    ;;
 "
