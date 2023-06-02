@@ -123,16 +123,22 @@ let prepareAstWithInitFunction letBnds types  =
                              others
     astNode
 
+// Sometimes we may want to compile only the main function, without ActorInit code.
+// For example, for tests. This function compiles a set of let bindings with
+// types definitions into a big Let-expression.
 let prepareAstMain letBnds types =
     let mainLet =
         letBnds
         |> List.filter (fun (name, _, _, _) -> name = "main")
     if mainLet.Length <> 1 then
         failwith "main not found"
-    let ("main", _, _, mainExpr) = List.head mainLet
-    // Sometimes we may want to compile only the main function, without ActorInit code.
-    // For example, for tests.
-    mainExpr
+    let rec expandLet letBind =
+        match letBind with
+        | [("main", [], false, body)] -> body
+        | (name, args, isRec, body) :: t ->
+            mkAST (ELet (name, body, expandLet t))
+        | _ -> failwith "incorrect let structure of the program"
+    expandLet letBnds
 
 
 // The function compiles Lighthouse source code

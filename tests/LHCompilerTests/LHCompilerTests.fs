@@ -156,4 +156,4 @@ let testLet0() =
     let prog = "contract Simple
                    let other x = x + 1 ;;
                    let main = other 10 ;;"
-    execAndCheckPrint prog false true "11"
+    execAndCheckPrint prog false false "11"
