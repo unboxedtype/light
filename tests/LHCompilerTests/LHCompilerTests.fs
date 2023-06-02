@@ -140,7 +140,6 @@ let testRecord4 () =
     execAndCheckPrint prog true true "[ [ 15 ] ]"
 
 [<Test>]
-[<Ignore("bug")>]
 let testRecord5 () =
     let prog = "contract Simple
                 type State = { bal:int }

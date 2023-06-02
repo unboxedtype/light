@@ -107,7 +107,16 @@ let patchLetBindingsFuncTypes letBnds types =
                      (name, argTypes, isRec, exprAst)
                 )
 
+// "main" or "actorInit" shall be used as finalFunctionName
+let rec expandLet finalFunctionName letBind =
+    match letBind with
+    | [(finalFunctionName, _, false, body)] -> body
+    | (name, args, isRec, body) :: t ->
+        mkAST (ELet (name, body, expandLet finalFunctionName t))
+    | _ -> failwith "incorrect let structure of the program"
+
 let prepareAstWithInitFunction letBnds types  =
+    // TODO!!: shall we check main presence as well?
     let actorInitLet =
         letBnds
         |> List.filter (fun (name, _, _, _) -> name = "actorInit")
@@ -116,12 +125,7 @@ let prepareAstWithInitFunction letBnds types  =
     let (lastLetName, _, _, _) = List.last letBnds
     if (lastLetName <> "actorInit") then
         failwith "actorInit let block shall be the last in the series of let-definitions"
-    let ("actorInit", _, _, actorInitAST) :: others = List.rev letBnds
-    let astNode = List.fold (fun acc (name, _, _, exprAst) ->
-                             mkAST (ELet (name, exprAst, acc)))
-                             actorInitAST
-                             others
-    astNode
+    expandLet "actorInit" letBnds
 
 // Sometimes we may want to compile only the main function, without ActorInit code.
 // For example, for tests. This function compiles a set of let bindings with
@@ -132,13 +136,7 @@ let prepareAstMain letBnds types =
         |> List.filter (fun (name, _, _, _) -> name = "main")
     if mainLet.Length <> 1 then
         failwith "main not found"
-    let rec expandLet letBind =
-        match letBind with
-        | [("main", [], false, body)] -> body
-        | (name, args, isRec, body) :: t ->
-            mkAST (ELet (name, body, expandLet t))
-        | _ -> failwith "incorrect let structure of the program"
-    expandLet letBnds
+    expandLet "main" letBnds
 
 
 // The function compiles Lighthouse source code
