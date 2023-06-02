@@ -674,16 +674,17 @@ let compileIntoFiftDebug ast initialTypes nodeTypeMapping debug : string =
         |> letrecRedex
         |> tprintf "Making ETA reductions..." debug
         |> etaRedex
-        |> tprintf "Making BETA reductions..." debug
+        // |> tprintf "Making BETA reductions..." debug
+        // TODO!!
         // Warning:
         // Without Beta reductions some test cases will not work.
-        |> (fun n -> betaRedexFullDebug n debug)
+        //|> (fun n -> betaRedexFullDebug n debug)
         |> tprintf "Making Arith reductions..." debug
         |> arithSimplRedex
-    if debug then
-        printfn "AST after beta and eta redex:\n%A" ast'
-        printfn "Running type inference..."
-        printfn "Node type mapping: %A" (Map.toList nodeTypeMapping)
+    // if debug then
+        // printfn "AST after beta and eta redex:\n%A" ast'
+        // printfn "Running type inference..."
+        // printfn "Node type mapping: %A" (Map.toList nodeTypeMapping)
     let typeEnv = LHTypeInfer.TypeEnv.ofProgramTypes initialTypes
     let (ty, (oldMap, newMap)) =
         LHTypeInfer.typeInferenceDebug
@@ -692,17 +693,18 @@ let compileIntoFiftDebug ast initialTypes nodeTypeMapping debug : string =
              nodeTypeMapping
              debug
     if debug then
-        printfn "newMap:\n%A" (Map.toList newMap)
+        // printfn "newMap:\n%A" (Map.toList newMap)
         printfn "Inserting Eval nodes..."
     let ast'' = insertEval ast' typeEnv newMap // AST with EEval nodes inserted into the right places
     let hasFixpoint = true // ast''.hasNode (function | SFix _ -> true | _ -> false)
-    if debug then
-        printfn "Compiling reduced AST into assembly..."
-        printfn "Expr AST:\n%A" ast ;
-        printfn "SExpr AST:\n%O" (ast''.toSExpr()) ;
-        printfn "Types:\n%A" (Map.toList newMap) ;
+    // if debug then
+        // printfn "Compiling reduced AST into assembly..."
+        // printfn "Expr AST:\n%A" ast ;
+        // printfn "SExpr AST:\n%O" (ast''.toSExpr()) ;
+        // printfn "Types:\n%A" (Map.toList newMap) ;
     let ir = compileWithTypes ast'' [] newMap
-    printfn "IR:\n%A" ir
+    if debug then
+        printfn "IR:\n%A" ir
     List.singleton "\"Asm.fif\" include" @
     List.singleton "<{ " @
     (if hasFixpoint then [fixpointImpl] else []) @

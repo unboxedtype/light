@@ -46,6 +46,95 @@ let restoreTypes (typeDefs:TypeDefs) (args:ArgList) : ArgList =
                  | None -> (name, optT)
                 )
 
+let getTypesDeclarationsRaw decls : List<LHTypes.Name * LHTypes.Type> =
+    decls
+    |> List.filter (function
+                    | TypeDef _ -> true
+                    | _         -> false)
+    |> List.map (fun n -> n.typeDef)
+
+let getPartiallyDefinedTypes types : List<(LHTypes.Name * LHTypes.Type) * List<LHTypes.Name>> =
+    types  // [(name, typ)]
+    |> List.map (fun (name, typ:LHTypes.Type) ->
+                 ((name, typ), LHTypes.hasUndefType typ))
+    |> List.filter (fun ((_, _),l) -> l <> [])
+
+let patchPartTypes partTypesNames defs =
+    partTypesNames
+    |> List.map (fun ((name, typ), undNames) ->
+                 // TODO: fixpoint is needed here, because there might
+                 // be cyclic references.
+                  let rec updateUndName undNames typ =
+                     match undNames with
+                     | n :: t ->
+                        let typ' = LHTypes.insertType n defs typ
+                        updateUndName t typ'
+                      | [] ->
+                         typ
+                  (name, updateUndName undNames typ)
+                )
+
+let getLetDeclarationsRaw types decls =
+    decls
+    |> List.collect (function
+                     | LetBinding (_, _, _, _) as p -> [p.letBinding]
+                     | _ -> [])
+    |> List.map ( fun (name, args, isrec, body) ->
+                  (name, restoreTypes types args, isrec, body) )
+
+let getHandlerDeclsRaw types decls =
+    decls
+    |> List.collect (function
+                     | HandlerDef (_, _, _) as p -> [p.handlerDef]
+                     | _ -> [])
+    |> List.map ( fun (name, args, body) ->
+                  (name, restoreTypes types args, body) )
+
+
+let patchLetBindingsTypes letBnds types =
+    letBnds
+    |> List.map (fun (name, argTypes, _, (exprAst:ASTNode)) ->
+                  match exprAst.Expr with
+                  | EFunc ((argName, Some argType), body) ->
+                     let argType2 = restoreType types argType
+                     (name, mkAST (EFunc ((argName, Some argType2), body)))
+                  | _ ->
+                     (name, exprAst)
+                )
+
+
+let prepareAstWithInitFunction letBnds types  =
+    let actorInitLet =
+        letBnds
+        |> List.filter (fun (name, _, _, _) -> name = "actorInit")
+    if actorInitLet.Length <> 1 then
+        failwith "actorInit not found or multiple definitions"
+    let (lastLetName, _, _, _) = List.last letBnds
+    if (lastLetName <> "actorInit") then
+        failwith "actorInit let block shall be the last in the series of let-definitions"
+    // Fold global Let bindings one into another, so we have a
+    // complete program definition with actorInit being the very
+    // last expression.
+    let letBndsUpdated = patchLetBindingsTypes letBnds types
+    let ("actorInit", actorInitAST) :: others = List.rev letBndsUpdated
+    let astNode = List.fold (fun acc (name, exprAst) ->
+                             mkAST (ELet (name, exprAst, acc)))
+                             actorInitAST
+                             others
+    astNode
+
+let prepareAstMain letBnds types =
+    let mainLet =
+        letBnds
+        |> List.filter (fun (name, _, _, _) -> name = "main")
+    if mainLet.Length <> 1 then
+        failwith "main not found"
+    let ("main", _, _, mainExpr) = List.head mainLet
+    // Sometimes we may want to compile only the main function, without ActorInit code.
+    // For example, for tests.
+    mainExpr
+
+
 // The function compiles Lighthouse source code
 // into the FIFT source code.
 // Arguments:
@@ -59,119 +148,33 @@ let compile (source:string) (withInit:bool) (debug:bool) : string =
     | Some (Module (modName, decls)) ->
         if debug then
             printfn "Compiling actor %A" modName ;
-        let types : List<LHTypes.Name * LHTypes.Type> =
-            decls
-            |> List.filter (function
-                            | TypeDef _ -> true
-                            | _         -> false)
-            |> List.map (fun n -> n.typeDef)
-        let undefTypesNames : List<(LHTypes.Name * LHTypes.Type) * List<LHTypes.Name>> =
-            types  // [(name, typ)]
-            |> List.map (fun (name, typ:LHTypes.Type) ->
-                         ((name, typ), LHTypes.hasUndefType typ))
-            |> List.filter (fun ((_, _),l) -> l <> [])
+        let types = getTypesDeclarationsRaw decls
+        let undefTypesNames = getPartiallyDefinedTypes types
         let undefTypesNamesList =
             undefTypesNames
             |> List.map (fun ((n, _), _) -> n)
         let defTypes =
             types
             |> List.filter (fun (n, t) -> not (List.contains n undefTypesNamesList))
-        let completeTypes =
-            undefTypesNames
-            |> List.map (fun ((name, typ), undNames) ->
-                         // TODO: fixpoint is needed here, because there might
-                         // be cyclic references.
-                         let rec updateUndName undNames typ =
-                            match undNames with
-                            | n :: t ->
-                               let typ' = LHTypes.insertType n defTypes typ
-                               updateUndName t typ'
-                            | [] ->
-                               typ
-                         (name, updateUndName undNames typ))
+        let completeTypes = patchPartTypes undefTypesNames defTypes
         if debug then
             printfn "Partially defined types:\n%A" undefTypesNames
             printfn "Fully defined types:\n%A" defTypes
             printfn "Completed types:\n%A" completeTypes
         let types2 = defTypes @ completeTypes
 
-        let letBnds =
-            decls
-            |> List.collect (function
-                             | LetBinding (_, _, _, _) as p -> [p.letBinding]
-                             | _ -> [])
-            |> List.map ( fun (name, args, isrec, body) ->
-                          (name, restoreTypes types2 args, isrec, body) )
+        let letBnds = getLetDeclarationsRaw types2 decls
         if debug then
-            printfn "let Bindings after types restored:\n%A" letBnds
+            printfn "let Bindings after types patched:\n%A"
+              (letBnds |> List.map (fun (n, args, isrec, body) ->
+                                        (n,args,isrec,body.toSExpr ())))
 
-        let handlerDefs =
-            decls
-            |> List.collect (function
-                            | HandlerDef (_, _, _) as p -> [p.handlerDef]
-                            | _ -> [])
-            |> List.map ( fun (name, args, body) ->
-                          (name, restoreTypes types2 args, body) )
-        // The actor initial state. Currently, empty.
-        // For debugging.
-        let dataCellContent = "<b b>"
-
-        (**
-        // State deserializer.
-        let stReader =
-            LHTypes.stateReader types
-            |> List.map TVM.instrToFift
-            |> String.concat "\n"
-
-        // State serializer.
-        let stWriter =
-            LHTypes.stateWriter types
-            |> List.map TVM.instrToFift
-            |> String.concat "\n"
-        **)
-        let mainLet =
-            letBnds
-            |> List.filter (fun (name, _, _, _) -> name = "main")
-        if mainLet.Length <> 1 then
-            failwith "main not found"
+        let handlerDefs = getHandlerDeclsRaw types2 decls
         let finalExpr =
-            if withInit then
-                let actorInitLet =
-                   letBnds
-                   |> List.filter (fun (name, _, _, _) -> name = "actorInit")
-                if actorInitLet.Length <> 1 then
-                    failwith "actorInit not found or multiple definitions"
-                let (lastLetName, _, _, _) = List.last letBnds
-                if (lastLetName <> "actorInit") then
-                    failwith "actorInit let block shall be the last in the series of let-definitions"
-                // Fold global Let bindings one into another, so we have a
-                // complete program definition with actorInit being the very
-                // last expression.
-                let letBndsUpdated =
-                    List.map (fun (name, argTypes, _, (exprAst:ASTNode)) ->
-                              match exprAst.Expr with
-                              | EFunc ((argName, Some argType), body) ->
-                                   printfn "processing LetBinding %A..." name
-                                   let argType2 = restoreType types2 argType
-                                   (name, mkAST (EFunc ((argName, Some argType2), body)))
-                              | _ ->
-                                   (name, exprAst)
-                              ) (List.rev letBnds)
-                let ("actorInit", actorInitAST) :: others = letBndsUpdated
-                let astNode = List.fold (fun acc (name, exprAst) ->
-                                           mkAST (ELet (name, exprAst, acc)))
-                                        actorInitAST
-                                        others
-                if debug then
-                    printfn "Full program AST:\n%A" astNode
-                astNode
-            else
-                let ("main", _, _, mainExpr) = List.head mainLet
-                // Sometimes we may want to compile only the main function, without ActorInit code.
-                // For example, for tests.
-                mainExpr
+            if withInit then prepareAstWithInitFunction letBnds types2
+            else prepareAstMain letBnds types2
         if (debug) then
-            printfn "Final expression:\n%A" ((finalExpr.toSExpr()).ToString(1000))
+            printfn "Final S-expression:\n%A" (finalExpr.toSExpr())
         LHMachine.compileWithInitialTypesDebug finalExpr types2 (Map []) debug
     | _ ->
         failwith "Actor not found"

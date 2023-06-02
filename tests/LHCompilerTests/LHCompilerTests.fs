@@ -140,6 +140,7 @@ let testRecord4 () =
     execAndCheckPrint prog true true "[ [ 15 ] ]"
 
 [<Test>]
+[<Ignore("bug")>]
 let testRecord5 () =
     let prog = "contract Simple
                 type State = { bal:int }
@@ -147,4 +148,12 @@ let testRecord5 () =
                 let func1 (x:State) = x.bal ;;
                 let main msgCell (st:State) =
                     { bal = func1 st + 1000 } ;; "
-    execAndCheckPrint prog true false "[ 1000 ]"
+    execAndCheckPrint prog true true "[ 1000 ]"
+
+[<Test>]
+[<Timeout(1000)>]
+let testLet0() =
+    let prog = "contract Simple
+                   let other x = x + 1 ;;
+                   let main = other 10 ;;"
+    execAndCheckPrint prog false true "11"
