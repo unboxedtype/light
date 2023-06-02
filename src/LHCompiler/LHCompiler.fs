@@ -147,18 +147,21 @@ let compile (source:string) (withInit:bool) (debug:bool) : string =
                 // Fold global Let bindings one into another, so we have a
                 // complete program definition with actorInit being the very
                 // last expression.
-                let ("actorInit", _, _, actorInitLetBinding) :: other = List.rev letBnds
-                let astNode =
-                    List.fold (fun acc (name, argTypes, _, (exprAst:ASTNode)) ->
-                               match exprAst.Expr with
-                               | EFunc ((argName, Some argType), body) ->
-                                   printfn "processing Let %A..." name
+                let letBndsUpdated =
+                    List.map (fun (name, argTypes, _, (exprAst:ASTNode)) ->
+                              match exprAst.Expr with
+                              | EFunc ((argName, Some argType), body) ->
+                                   printfn "processing LetBinding %A..." name
                                    let argType2 = restoreType types2 argType
-                                   let letDef = mkAST (EFunc ((argName, Some argType2), body))
-                                   mkAST (ELet (name, letDef, acc))
-                               | _ ->
-                                   mkAST (ELet (name, exprAst, acc))
-                               ) actorInitLetBinding other
+                                   (name, mkAST (EFunc ((argName, Some argType2), body)))
+                              | _ ->
+                                   (name, exprAst)
+                              ) (List.rev letBnds)
+                let ("actorInit", actorInitAST) :: others = letBndsUpdated
+                let astNode = List.fold (fun acc (name, exprAst) ->
+                                           mkAST (ELet (name, exprAst, acc)))
+                                        actorInitAST
+                                        others
                 if debug then
                     printfn "Full program AST:\n%A" astNode
                 astNode
