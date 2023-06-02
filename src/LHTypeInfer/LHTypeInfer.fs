@@ -32,6 +32,9 @@ module Typ =
         | Unit
         | String
         | PT _
+        | VMCell
+        | VMSlice
+        | Coins
         | Bool -> Set.empty
         | UserType (_, Some v) ->
             ftv v
@@ -52,12 +55,14 @@ module Typ =
         | Int _
         | Bool
         | PT _
+        | VMSlice
+        | VMCell
+        | Coins
         | Unit ->
             typ
         | UserType (name, Some t1) ->
             UserType (name, Some (apply s t1))
         | _ ->
-            printfn "Type substitutions: %A" s
             failwithf "type %A is not supported" typ
 
 module Scheme =
@@ -134,9 +139,8 @@ let rec unify (t1 : Typ) (t2 : Typ) : Subst =
         Subst.compose s2 s1
     | TVar u, t
     | t, TVar u -> varBind u t
-    | Int n, Int m when n = m -> Map.empty
-    | Bool, Bool -> Map.empty
-    | Unit, Unit -> Map.empty
+    // TODO: This may be not correct. Consider breaking into sep cases.
+    | x, y when x = y -> Map.empty
     | _ -> failwithf "Types do not unify: %A vs %A" t1 t2
 
 
@@ -154,6 +158,9 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
     | EFailWith _ ->
         let tm' = Map.add node.Id Unit tm
         (Map.empty, Unit, tm')
+    | EAsm _ ->  // TODO!!: This is a temporary hack. Type of asm block is Int256.
+        let tm' = Map.add node.Id (Int 256) tm
+        (Map.empty, Int 256, tm')
     | ENum n ->
         // printfn "%A : s' = %A" exp.Name Map.empty
         let tm' = Map.add node.Id (Int 256) tm
