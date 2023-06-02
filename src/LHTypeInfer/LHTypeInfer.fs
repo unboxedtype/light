@@ -139,6 +139,14 @@ let rec unify (t1 : Typ) (t2 : Typ) : Subst =
     | Unit, Unit -> Map.empty
     | _ -> failwithf "Types do not unify: %A vs %A" t1 t2
 
+
+let rec baseType (t:Typ) : Typ =
+    match t with
+    | UserType (_, Some t1) ->
+        baseType t1
+    | _ ->
+        t
+
 let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Subst * Typ * NodeTypeMap =
     // if debug then
     //    printfn "Visiting node %A" node.Id
@@ -263,7 +271,7 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
         (s', Bool, tm3)
     | ESelect (expr, ASTNode (_, EVar field)) ->
         let s', t1, tm1 = ti env expr tm debug
-        match t1 with
+        match (baseType t1) with
         | PT fields ->
             let t2 = (Map.ofList fields).[field]
             let tm2 = Map.add node.Id t2 tm1
