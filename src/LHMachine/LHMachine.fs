@@ -516,10 +516,7 @@ let rec betaRedexStep (node:ASTNode) : ASTNode =
             substFreeVar x arg.Expr body
         | term -> // EAp (EAp (...), arg)
             let node' = betaRedexStep e0
-            if term <> node'.Expr then
-                mkAST (EAp (node', arg))
-            else
-                node
+            mkAST (EAp (node', arg))
     | EAdd (e0, e1)
     | EMul (e0, e1)
     | ESub (e0, e1)
@@ -527,24 +524,17 @@ let rec betaRedexStep (node:ASTNode) : ASTNode =
     | EGt (e0, e1) ->
         let e0' = betaRedexStep e0
         let e1' = betaRedexStep e1
-        if e0'.Expr <> e0.Expr || e1'.Expr <> e1.Expr then
-            match node.Expr with
-            | EAdd _ -> mkAST (EAdd (e0', e1'))
-            | ESub _ -> mkAST (ESub (e0', e1'))
-            | EMul _ -> mkAST (EMul (e0', e1'))
-            | EGt _ -> mkAST (EGt (e0', e1'))
-        else
-            node
+        match node.Expr with
+        | EAdd _ -> mkAST (EAdd (e0', e1'))
+        | ESub _ -> mkAST (ESub (e0', e1'))
+        | EMul _ -> mkAST (EMul (e0', e1'))
+        | EGt _ -> mkAST (EGt (e0', e1'))
+        | EEq _ -> mkAST (EEq (e0', e1'))
     | EIf (e0, e1, e2) ->
         let e0' = betaRedexStep e0
         let e1' = betaRedexStep e1
         let e2' = betaRedexStep e2
-        if e0'.Expr <> e0.Expr ||
-           e1'.Expr <> e1.Expr ||
-           e2'.Expr <> e2.Expr then
-            mkAST (EIf (e0', e1', e2'))
-        else
-            node
+        mkAST (EIf (e0', e1', e2'))
     | EVar _
     | EFunc _
     | EBool _
@@ -561,14 +551,14 @@ let rec betaRedexStep (node:ASTNode) : ASTNode =
         Map.ofList vs
         |> Map.tryFind n
         |> function
-           | None ->
-               failwithf "field %A not found in the record %A" n (node.toSExpr())
-           | Some v ->
-               mkAST v.Expr
+            | None ->
+                failwithf "field %A not found in the record %A" n (node.toSExpr())
+            | Some v ->
+                mkAST v.Expr
     | ESelect (e0, e1) as e ->
         let e0' = betaRedexStep e0
         // TODO: e1 has to be EVar
-        mkAST (ESelect (e0, e1))
+        mkAST (ESelect (e0', e1))
     | _ ->
         failwithf "Beta Redex for expr %A not defined" node.Expr
 
@@ -595,9 +585,9 @@ let rec arithSimplRedex node =
         | SMul (SNum x, SNum y) ->
             mkAST (ENum (x * y))
         | SGt (SNum x, SNum y) ->
-            mkAST (ENum (if x > y then -1 else 0))
+            mkAST (EBool (x > y))
         | SEq (SNum x, SNum y) ->
-            mkAST (ENum (if x = y then -1 else 0))
+            mkAST (EBool (x = y))
         | SEq (SBool x, SBool y) ->
             mkAST (EBool (x = y))
         | _ ->
@@ -619,7 +609,7 @@ let rec letrecRedex node =
             node
     in astReducer node letrecRedexStep
 
-let rec insertEval (ast:ASTNode) (ty:Map<int,LHType>) : ASTNode =
+let rec insertEval (ast:ASTNode) (env:TypeEnv) (ty:NodeTypeMap) : ASTNode =
     let rec insertEvalInner (node:ASTNode) : ASTNode =
         match node.Expr with
         | EAp (e1, e2) ->
@@ -627,6 +617,8 @@ let rec insertEval (ast:ASTNode) (ty:Map<int,LHType>) : ASTNode =
                 match (Map.tryFind node.Id ty) with
                 | Some v -> v
                 | None ->
+                    // let (_, t, _) = LHTypeInfer.ti env node ty true
+                    // t
                     failwithf "failed to find type for node %A, expression: %s"
                                node.Id
                                ((ast.toSExpr ()).ToString())
@@ -692,16 +684,17 @@ let compileIntoFiftDebug ast initialTypes nodeTypeMapping debug : string =
         printfn "AST after beta and eta redex:\n%A" ast'
         printfn "Running type inference..."
         printfn "Node type mapping: %A" (Map.toList nodeTypeMapping)
+    let typeEnv = LHTypeInfer.TypeEnv.ofProgramTypes initialTypes
     let (ty, (oldMap, newMap)) =
         LHTypeInfer.typeInferenceDebug
-             (LHTypeInfer.TypeEnv.ofProgramTypes initialTypes)
+             typeEnv
              ast'
              nodeTypeMapping
              debug
     if debug then
         printfn "newMap:\n%A" (Map.toList newMap)
         printfn "Inserting Eval nodes..."
-    let ast'' = insertEval ast' newMap // AST with EEval nodes inserted into the right places
+    let ast'' = insertEval ast' typeEnv newMap // AST with EEval nodes inserted into the right places
     let hasFixpoint = true // ast''.hasNode (function | SFix _ -> true | _ -> false)
     if debug then
         printfn "Compiling reduced AST into assembly..."

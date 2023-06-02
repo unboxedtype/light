@@ -127,7 +127,7 @@ let testTuple3 () =
                   else
                       actorStateWrite 1
                   ;;"
-    execAndCheck prog "(null)"
+    execAndCheckPrint prog false false "(null)"
 
 [<Test>]
 [<Timeout(1000)>]
