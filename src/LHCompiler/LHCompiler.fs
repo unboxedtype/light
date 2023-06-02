@@ -74,6 +74,10 @@ let patchPartTypes partTypesNames defs =
                   (name, updateUndName undNames typ)
                 )
 
+// Parser produces collection of declarations. This
+// function extracts Let-declarations from this collection
+// but also convert it into 'raw' form. i.e. LetBinding (n,...)
+// get converted into a tuple (n,...)
 let getLetDeclarationsRaw types decls =
     decls
     |> List.collect (function
@@ -82,6 +86,7 @@ let getLetDeclarationsRaw types decls =
     |> List.map ( fun (name, args, isrec, body) ->
                   (name, restoreTypes types args, isrec, body) )
 
+// Same for Handlers. See getLetDeclarationsRaw
 let getHandlerDeclsRaw types decls =
     decls
     |> List.collect (function
@@ -91,17 +96,16 @@ let getHandlerDeclsRaw types decls =
                   (name, restoreTypes types args, body) )
 
 
-let patchLetBindingsTypes letBnds types =
+let patchLetBindingsFuncTypes letBnds types =
     letBnds
-    |> List.map (fun (name, argTypes, _, (exprAst:ASTNode)) ->
+    |> List.map (fun (name, argTypes, isRec, (exprAst:ASTNode)) ->
                   match exprAst.Expr with
                   | EFunc ((argName, Some argType), body) ->
                      let argType2 = restoreType types argType
-                     (name, mkAST (EFunc ((argName, Some argType2), body)))
+                     (name, argTypes, isRec, mkAST (EFunc ((argName, Some argType2), body)))
                   | _ ->
-                     (name, exprAst)
+                     (name, argTypes, isRec, exprAst)
                 )
-
 
 let prepareAstWithInitFunction letBnds types  =
     let actorInitLet =
@@ -112,12 +116,8 @@ let prepareAstWithInitFunction letBnds types  =
     let (lastLetName, _, _, _) = List.last letBnds
     if (lastLetName <> "actorInit") then
         failwith "actorInit let block shall be the last in the series of let-definitions"
-    // Fold global Let bindings one into another, so we have a
-    // complete program definition with actorInit being the very
-    // last expression.
-    let letBndsUpdated = patchLetBindingsTypes letBnds types
-    let ("actorInit", actorInitAST) :: others = List.rev letBndsUpdated
-    let astNode = List.fold (fun acc (name, exprAst) ->
+    let ("actorInit", _, _, actorInitAST) :: others = List.rev letBnds
+    let astNode = List.fold (fun acc (name, _, _, exprAst) ->
                              mkAST (ELet (name, exprAst, acc)))
                              actorInitAST
                              others
@@ -164,15 +164,19 @@ let compile (source:string) (withInit:bool) (debug:bool) : string =
         let types2 = defTypes @ completeTypes
 
         let letBnds = getLetDeclarationsRaw types2 decls
+        let letBndsUpd = patchLetBindingsFuncTypes letBnds types
         if debug then
             printfn "let Bindings after types patched:\n%A"
-              (letBnds |> List.map (fun (n, args, isrec, body) ->
-                                        (n,args,isrec,body.toSExpr ())))
+              (letBndsUpd |> List.map (fun (n, args, isrec, body) ->
+                                       (n,args,isrec,body.toSExpr ())))
+        // TODO!!:
+        // Handlers would need to be converted into 'receive' cases in
+        // the main function. As for now, they are completely ignored.
+        // let handlerDefs = getHandlerDeclsRaw types2 decls
 
-        let handlerDefs = getHandlerDeclsRaw types2 decls
         let finalExpr =
-            if withInit then prepareAstWithInitFunction letBnds types2
-            else prepareAstMain letBnds types2
+            if withInit then prepareAstWithInitFunction letBndsUpd types2
+            else prepareAstMain letBndsUpd types2
         if (debug) then
             printfn "Final S-expression:\n%A" (finalExpr.toSExpr())
         LHMachine.compileWithInitialTypesDebug finalExpr types2 (Map []) debug
