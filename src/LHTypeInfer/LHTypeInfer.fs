@@ -151,6 +151,42 @@ let rec baseType (t:Typ) : Typ =
     | _ ->
         t
 
+// We need to reconstruct the type of a record by comparing
+// the set of provided record fields in the record constructor to
+// all available records. The comparison is made on set-basis, not
+// sequence basis, because the order is not important, i.e.
+// { name = "John", surname = "Smith" } is the same record as
+// { surname = "Smith", name = "John" }
+// It is not allowed to define records with same field names,
+// but distinct types.
+let recoverRecordType env (node:ASTNode) : Type =
+    let es =
+        match node with
+        | ASTNode (_, ERecord es) -> es
+        | _ -> failwith "ERecord node expected, but was given: %A" (node.toSExpr())
+    let varNames = Set.ofList (List.map fst es)
+    // Find all types that define records, and whose set of fields
+    // correspond to varNames.
+    let recsInEnv =
+        env  // (typeName,typeDef)
+        |> Map.toList
+        |> List.filter (fun (name, scheme) ->
+                          let (Scheme (names, typ)) = scheme in
+                          match typ with
+                          | PT flds ->  // product type = record
+                            let fldNames = Set.ofList (List.map fst flds) in
+                            fldNames = varNames
+                          | _ ->
+                            false)
+        |> List.map (fun (name, Scheme (names, typ)) -> typ)
+        |> List.distinct
+    if recsInEnv.Length = 0 then
+        failwithf "Record with the given fields not defined : %A" (node.toSExpr ())
+    if recsInEnv.Length > 1 then
+        failwithf "Several record definitions with the same fields: %A %A" (node.toSExpr ()) recsInEnv
+    recsInEnv.[0]
+
+
 let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Subst * Typ * NodeTypeMap =
     // if debug then
     //    printfn "Visiting node %A" node.Id
@@ -286,51 +322,27 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
         | _ ->
             failwithf "Expected record type in expression %A, but received %A" ((node.toSExpr()).ToString()) t1
     | ERecord es ->
-        // First of all, derive all types of record var expressions.
+        // Derive the type of the record being constructed. It is needed
+        // to unify types of assignment expressions inside record constructor.
+        let recType = recoverRecordType env node
+        // Derive all types of record var expressions.
         // For { a = expr1; b = expr2; ... }, derive type(expr1), type(expr2), ...
-        let rec deriveNextRecType (exprs:List<ASTNode>) substs tm =
+        let rec deriveNextRecType (exprs:List<Name*ASTNode>) substs tm =
             match exprs with
             | [] -> (substs, tm)
-            | expr :: es ->
-                let s', t', tm1 = ti env expr tm debug
-                let tm2 = tm1 |> Map.add expr.Id t'
-                let s2 = Subst.compose substs s'
+            | (name, expr) :: es ->
+                let varType = (
+                    let (PT l) = recType in (Map.ofList l).[name]
+                )
+                let s', exprType, tm1 = ti env expr tm debug
+                // unify record field type with assignment expression type
+                let s'' = unify varType exprType
+                let tm2 = tm1 |> Map.add expr.Id exprType
+                let s2 = Subst.compose (Subst.compose substs s') s''
                 deriveNextRecType es s2 tm2
-        let recExprs = es |> List.map snd
-        let (s', tm') = deriveNextRecType recExprs (Map []) tm
-        // We need to reconstruct the type of a record by comparing
-        // the set of provided record fields in the record constructor to
-        // all available records. The comparison is made on set-basis, not
-        // sequence basis, because the order is not important, i.e.
-        // { name = "John", surname = "Smith" } is the same record as
-        // { surname = "Smith", name = "John" }
-        // It is not allowed to define records with same field names,
-        // but distinct types.
-        let varNames = Set.ofList (List.map fst es)
-
-        // Find all types that define records, and whose set of fields
-        // correspond to varNames.
-        let recsInEnv =
-            env  // (typeName,typeDef)
-            |> Map.toList
-            |> List.filter (fun (name, scheme) ->
-                            let (Scheme (names, typ)) = scheme in
-                            match typ with
-                            | PT flds ->  // product type = record
-                               let fldNames = Set.ofList (List.map fst flds) in
-                               fldNames = varNames
-                            | _ ->
-                               false)
-            |> List.map (fun (name, Scheme (names, typ)) -> typ)
-            |> List.distinct
-        if recsInEnv.Length = 0 then
-            failwithf "Record with the given fields not defined : %A" (node.toSExpr ())
-        elif recsInEnv.Length > 1 then
-            failwithf "Several record definitions with the same fields: %A %A" (node.toSExpr ()) recsInEnv
-        else
-            let recordType = recsInEnv.[0]
-            let tm2 = Map.add node.Id recordType tm'
-            (s', recordType, tm2)
+        let (s', tm') = deriveNextRecType es (Map []) tm
+        let tm2 = Map.add node.Id recType tm'
+        (s', recType, tm2)
     | _ ->
         failwithf "Unsupported expression %A" (node.toSExpr ())
 
