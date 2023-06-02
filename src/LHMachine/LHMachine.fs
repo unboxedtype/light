@@ -680,14 +680,14 @@ let compileIntoFiftDebug ast initialTypes nodeTypeMapping debug : string =
         |> tprintf "Making ETA reductions..." debug
         |> etaRedex
         |> tprintf "Making BETA reductions..." debug
+        // Warning:
+        // Without Beta reductions some test cases will not work.
         |> (fun n -> betaRedexFullDebug n debug)
         |> tprintf "Making Arith reductions..." debug
         |> arithSimplRedex
     if debug then
-        printfn "AST after beta and eta redex : %A" (ast'.toSExpr ())
-    if debug then
+        printfn "AST after beta and eta redex:\n%A" (ast'.toSExpr ())
         printfn "Running type inference..."
-    if debug then
         printfn "Node type mapping: %A" (Map.toList nodeTypeMapping)
     let (ty, (oldMap, newMap)) =
         LHTypeInfer.typeInferenceDebug
@@ -697,17 +697,16 @@ let compileIntoFiftDebug ast initialTypes nodeTypeMapping debug : string =
              debug
     if debug then
         printfn "newMap:\n%A" (Map.toList newMap)
-    if debug then
         printfn "Inserting Eval nodes..."
     let ast'' = insertEval ast' newMap // AST with EEval nodes inserted into the right places
     let hasFixpoint = true // ast''.hasNode (function | SFix _ -> true | _ -> false)
     if debug then
         printfn "Compiling reduced AST into assembly..."
-    let ir = compileWithTypes ast'' [] newMap
-    if debug then
         printfn "Expr AST:\n%A" ast ;
         printfn "SExpr AST:\n%O" (ast''.toSExpr()) ;
         printfn "Types:\n%A" (Map.toList newMap) ;
+    let ir = compileWithTypes ast'' [] newMap
+    if debug then
         printfn "IR:\n%A" ir
     List.singleton "\"Asm.fif\" include" @
     List.singleton "<{ " @

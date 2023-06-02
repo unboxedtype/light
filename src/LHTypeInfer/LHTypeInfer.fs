@@ -56,7 +56,9 @@ module Typ =
             typ
         | UserType (name, Some t1) ->
             UserType (name, Some (apply s t1))
-        | _ -> failwithf "type %A is not supported" typ
+        | _ ->
+            printfn "Type substitutions: %A" s
+            failwithf "type %A is not supported" typ
 
 module Scheme =
    let ftv (scheme: Scheme) =

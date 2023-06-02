@@ -18,6 +18,34 @@ let parse source =
     let res = Parser.start Lexer.read lexbuf
     res
 
+
+type TypeDefs = list<string*Type>
+type ArgList = list<string*option<Type>>
+
+let restoreType (typeDefs:TypeDefs) (arg:Type) : Type =
+    match arg with
+    | UserType (n, None) ->   // partially defined type
+       let typ =
+          match Map.tryFind n (Map.ofList typeDefs) with
+          | Some t -> t
+          | None -> failwithf "Cant find type definition for type %A" n
+       UserType (n, Some typ)
+    | _ ->
+        arg
+
+// Returns a list of (name, type) pairs, where partially
+// defined types like UserType ("ActorState", None) were
+// reconstructed into full types like
+// ("ActorState, PT [("balance",Int 256);...])
+// based on info from 'types'.
+let restoreTypes (typeDefs:TypeDefs) (args:ArgList) : ArgList =
+    args
+    |> List.map (fun (name, optT) ->
+                 match optT with
+                 | Some t -> (name, Some (restoreType typeDefs t))
+                 | None -> (name, optT)
+                )
+
 // The function compiles Lighthouse source code
 // into the FIFT source code.
 // Arguments:
@@ -67,22 +95,6 @@ let compile (source:string) (withInit:bool) (debug:bool) : string =
             printfn "Completed types:\n%A" completeTypes
         let types2 = defTypes @ completeTypes
 
-        // return a list of (name, type) pairs, where partially
-        // defined types like UserType ("ActorState", None) were
-        // reconstructed based on info from 'types'.
-        let restoreTypes (types:list<string*Type>) (args:list<string*option<Type>>) =
-            let restoreType arg =
-                match arg with
-                | (name, Some (UserType (n, None))) ->
-                    let typ =
-                        match Map.tryFind n (Map.ofList types2) with
-                        | Some t -> t
-                        | None -> failwithf "Cant find type definition for type %A of var %A" n name
-                    (name, Some (UserType (n, Some typ)))
-                | _ ->
-                    arg
-            args |> List.map restoreType
-
         let letBnds =
             decls
             |> List.collect (function
@@ -90,6 +102,9 @@ let compile (source:string) (withInit:bool) (debug:bool) : string =
                              | _ -> [])
             |> List.map ( fun (name, args, isrec, body) ->
                           (name, restoreTypes types2 args, isrec, body) )
+        if debug then
+            printfn "let Bindings after types restored:\n%A" letBnds
+
         let handlerDefs =
             decls
             |> List.collect (function
@@ -134,8 +149,16 @@ let compile (source:string) (withInit:bool) (debug:bool) : string =
                 // last expression.
                 let ("actorInit", _, _, actorInitLetBinding) :: other = List.rev letBnds
                 let astNode =
-                    List.fold (fun acc (name, _, _, expr) ->
-                               mkAST (ELet (name, expr, acc))) actorInitLetBinding other
+                    List.fold (fun acc (name, argTypes, _, (exprAst:ASTNode)) ->
+                               match exprAst.Expr with
+                               | EFunc ((argName, Some argType), body) ->
+                                   printfn "processing Let %A..." name
+                                   let argType2 = restoreType types2 argType
+                                   let letDef = mkAST (EFunc ((argName, Some argType2), body))
+                                   mkAST (ELet (name, letDef, acc))
+                               | _ ->
+                                   mkAST (ELet (name, exprAst, acc))
+                               ) actorInitLetBinding other
                 if debug then
                     printfn "Full program AST:\n%A" astNode
                 astNode

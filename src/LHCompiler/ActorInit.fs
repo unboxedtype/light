@@ -24,7 +24,7 @@ let actorInitCode =
    type ActorInitParams = {
      accBalance : Coins;
      msgBalance : Coins;
-     msg: VMCell;
+     msgCell: VMCell;
      msgBody: VMSlice;
      isExternal: bool
    }
@@ -42,14 +42,14 @@ let actorInitCode =
      let actorStateRead () =
         { seqno = 0; state = (); deployed = false } in
      let actorStateWrite st = () in
-     let act_st = actorStateRead () in
-     let msg_seqno = initArgs.msgBody in
-     if msg_seqno  = act_st.seqno then
+     let actState = actorStateRead () in
+     let msgSeqNo = initArgs.msgBody in
+     if msgSeqNo  = actState.seqno then
         failwith 100
      else
-        let st = act_st.state in
-        let st' = main msgCell st in
-        let act_st' = { seqno = msg_seqno; state = st'; deployed = true } in
-        actorStateWrite act_st'
+        let st = actState.state in
+        let st' = main initArgs.msgCell st in
+        let actState' = { seqno = msgSeqno; state = st'; deployed = true } in
+        actorStateWrite actState'
    ;;
 "
