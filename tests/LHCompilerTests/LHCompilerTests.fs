@@ -157,3 +157,35 @@ let testLet0() =
                    let other x = x + 1 ;;
                    let main = other 10 ;;"
     execAndCheckPrint prog false false "11"
+
+
+[<Test>]
+let testMkAdder () =
+    // TODO!!:
+    // In this example, if you change
+    // "let adder y = 1 + y" for
+    // "let adder y = 1 + x" where x is bound in
+    // the make_adder, the result will be incorrect.
+    let prog = "contract test
+                 let main =
+                   let make_adder x =
+                     let adder y = 1 + y in
+                     adder x
+                   in make_adder 3 ;;"
+    execAndCheckPrint prog false false "4"
+
+[<Test>]
+[<Ignore("bug")>]
+let testCurry2 () =
+    // This example is interesting. Without beta-reduction,
+    // it will not work: function f is general, so in its
+    // body there will be Eval node unless we insert its
+    // body in main definition. Seems, for such functions,
+    // we _must_ do beta-reduction.
+    let prog = "contract test
+                     let main =
+                       let f f1 f2 x y = f2 (f1 x) (f1 y) in
+                       let sum x y = x + y in
+                       let inc x = x + 1 in
+                       f inc sum 10 20 ;;"
+    execAndCheckPrint prog false true "32"

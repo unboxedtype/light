@@ -183,8 +183,6 @@ let compile (source:string) (withInit:bool) (debug:bool) : string =
         let finalExpr =
             if withInit then prepareAstWithInitFunction letBndsUpd types2
             else prepareAstMain letBndsUpd types2
-        if (debug) then
-            printfn "Final S-expression:\n%A" (finalExpr.toSExpr())
         LHMachine.compileWithInitialTypesDebug finalExpr types2 (Map []) debug
     | _ ->
         failwith "Actor not found"

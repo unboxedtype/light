@@ -696,6 +696,8 @@ let compileIntoFiftDebug ast initialTypes nodeTypeMapping debug : string =
         // printfn "newMap:\n%A" (Map.toList newMap)
         printfn "Inserting Eval nodes..."
     let ast'' = insertEval ast' typeEnv newMap // AST with EEval nodes inserted into the right places
+    if (debug) then
+        printfn "Final S-expression:\n%A" (ast''.toSExpr())
     let hasFixpoint = true // ast''.hasNode (function | SFix _ -> true | _ -> false)
     // if debug then
         // printfn "Compiling reduced AST into assembly..."
