@@ -248,7 +248,7 @@ let testLet0() =
     let prog = "contract Simple
                    let other x = x + 1 ;;
                    let main = other 10 ;;"
-    execAndCheckPrint prog false false "11"
+    execAndCheck prog "11"
 
 
 [<Test>]
@@ -281,3 +281,36 @@ let testCurry2 () =
                        let inc x = x + 1 in
                        f inc sum 10 20 ;;"
     execAndCheckPrint prog false true "32"
+
+[<Test>]
+let testFactorialParse () =
+    let prog ="contract test
+                let main =
+                 let rec factorial n =
+                      if (n > 1) then (n * factorial (n - 1)) else 1 in
+                 factorial 5 ;;
+    "
+    execAndCheck prog "120"
+
+[<Test>]
+let testFunc2Args () =
+    // let rec sum n m = if (n > 0) then (n + sum (n - 1) m) else m
+    // let sum = fixpoint \sum . \n . \m -> if (...)
+    // sum 10 20
+    let prog = "contract test
+                let main =
+                  let rec sum n m =
+                       if (n > 0) then (n + ((sum (n - 1)) m)) else m
+                  in ((sum 10) 20) ;;"
+    execAndCheck prog "75"
+
+[<Test>]
+let testGlobals () =
+    let prog = "contract test
+                     let main =
+                       let mArg = 20 in
+                       let nArg = 10 in
+                       let rec sum n m =
+                           if (n > 0) then (n + ((sum (n - 1)) m)) else m
+                       in ((sum nArg) mArg) ;;"
+    execAndCheck prog "75"

@@ -50,7 +50,7 @@ let testAdd () =
 let testLet1 () =
     // let main = \n -> n + 1000 in
     // main 2000
-    let expr = SLet ("main", SFunc (("n",None), SAdd (SVar "n", SNum 1000)), SAp (SVar "main", SNum 2000))
+    let expr = SLet ("main", SFunc (("n",None), SAdd (SVar "n", SNum 1000)), SEval (SAp (SVar "main", SNum 2000)))
     execAndCheck (toAST expr) "3000"
 
 [<Test>]
@@ -63,8 +63,8 @@ let testLet2 () =
                 SFunc (("n", None),
                  SLet ("add",
                   SFunc (("x", None),
-                   SAdd (SVar "x", SNum 1000)), SAp (SVar "add", SVar "n"))),
-                     SAp (SVar "main", SNum 1000))
+                   SAdd (SVar "x", SNum 1000)), SEval (SAp (SVar "add", SVar "n")))),
+                     SEval (SAp (SVar "main", SNum 1000)))
     execAndCheck (toAST expr) "2000"
 
 [<Test>]
@@ -74,52 +74,6 @@ let testFactorial () =
     let expr = SLetRec ("fact",
                   SFunc (("n", None),
                     SIf (SGt (SVar "n", SNum 1),
-                         SMul (SVar "n", SAp (SVar "fact", SSub (SVar "n", SNum 1))),
-                         SNum 1)), SAp (SVar "fact", SNum 5))
+                         SMul (SVar "n", SEval (SAp (SVar "fact", SSub (SVar "n", SNum 1)))),
+                         SNum 1)), SEval (SAp (SVar "fact", SNum 5)))
     execAndCheck (toAST expr) "120"
-
-[<Test>]
-let testFactorialParse () =
-    let res = parse "contract test
-                     let main =
-                       let rec factorial n =
-                          if (n > 1) then (n * factorial (n - 1)) else 1 in
-                       factorial 5 ;;
-    "
-    let resAst = getLetAst res.Value 0
-    execAndCheck resAst "120"
-
-[<Test>]
-let testFunc2Args () =
-    // let rec sum n m = if (n > 0) then (n + sum (n - 1) m) else m
-    // let sum = fixpoint \sum . \n . \m -> if (...)
-    // sum 10 20
-    let res = parse "contract test
-                     let main =
-                       let rec sum n m =
-                           if (n > 0) then (n + ((sum (n - 1)) m)) else m
-                       in ((sum 10) 20) ;;"
-    let resAst = getLetAst res.Value 0
-    execAndCheck resAst "75"
-
-[<Test>]
-let testGlobals () =
-    let res = parse "contract test
-                     let main =
-                       let mArg = 20 in
-                       let nArg = 10 in
-                       let rec sum n m =
-                           if (n > 0) then (n + ((sum (n - 1)) m)) else m
-                       in ((sum nArg) mArg) ;;"
-    let resAst = getLetAst res.Value 0
-    execAndCheckPrint resAst "75" false
-
-[<Test>]
-let testCurry0 () =
-    let res = parse "contract test
-                     let main =
-                       let inc x = x + 1 in
-                       let apply_inc x = inc x in
-                         apply_inc 2 ;;"
-    let resAst = getLetAst res.Value 0
-    execAndCheckPrint resAst "3" false
