@@ -36,6 +36,8 @@ type SExpr =
     | SMul of e0:SExpr * e1:SExpr
     | SEq of e0:SExpr * e1:SExpr
     | SGt of e0:SExpr * e1:SExpr
+    | SLt of e0:SExpr * e1:SExpr
+    | SNot of e0:SExpr
     | SCase of c:SExpr * cs:(int * (Name list) * SExpr) list
     | SPack of tag:int * arity:int * args:SExpr list
     | SSelect of e0:SExpr * e1:SExpr
@@ -73,6 +75,8 @@ type Expr =
     | EMul of e0:ASTNode * e1:ASTNode
     | EEq of e0:ASTNode * e1:ASTNode
     | EGt of e0:ASTNode * e1:ASTNode
+    | ELt of e0:ASTNode * e1:ASTNode
+    | ENot of e0:ASTNode
     | ECase of c:ASTNode * cs:(int * (Name list) * ASTNode) list
     | EPack of tag:int * arity:int * args:ASTNode list
     | ESelect of e0:ASTNode * e1:ASTNode
@@ -101,6 +105,8 @@ type Expr =
         | ESub (_, _) -> "ESub"
         | EMul (_, _) -> "EMul"
         | EGt (_, _) -> "EGt"
+        | ELt (_, _) -> "ELt"
+        | ENot (_) -> "ENot"
         | EEq (_, _) -> "EEq"
         | EFix _ -> "EFix"
         | ETypeCast (_, _) -> sprintf "%A" this
@@ -135,6 +141,8 @@ and ASTNode =
         | EMul (e0, e1) -> SMul (e0.toSExpr(), e1.toSExpr())
         | EGt (e0, e1) -> SGt (e0.toSExpr(), e1.toSExpr())
         | EEq (e0, e1) -> SEq (e0.toSExpr(), e1.toSExpr())
+        | ELt (e0, e1) -> SLt (e0.toSExpr(), e1.toSExpr())
+        | ENot (e0) -> SNot (e0.toSExpr())
         | ESelect (e0, e1) -> SSelect (e0.toSExpr(), e1.toSExpr())
         | ERecord es -> SRecord (List.map (fun (name, (e:ASTNode)) -> (name, e.toSExpr())) es)
         | EAsm s -> SAsm s
@@ -163,6 +171,8 @@ let rec toAST sexp : ASTNode =
     | SSub (e0, e1) -> mkAST (ESub (toAST e0, toAST e1))
     | SMul (e0, e1) -> mkAST (EMul (toAST e0, toAST e1))
     | SGt (e0, e1) -> mkAST (EGt (toAST e0, toAST e1))
+    | SLt (e0, e1) -> mkAST (ELt (toAST e0, toAST e1))
+    | SNot (e0) -> mkAST (ENot (toAST e0))
     | SVar n -> mkAST (EVar n)
     | SNum n -> mkAST (ENum n)
     | SStr s -> mkAST (EStr s)

@@ -196,6 +196,7 @@ let rec astReducerDebug debug (ast:ASTNode) red =
     | ESub (e0, e1)
     | EMul (e0, e1)
     | EGt (e0, e1)
+    | ELt (e0, e1)
     | EEq (e0, e1)
     | ESelect (e0, e1) ->
         let e0' = astReducerDebug debug e0 red
@@ -206,6 +207,7 @@ let rec astReducerDebug debug (ast:ASTNode) red =
         | ESub _ -> mkAST (ESub (e0', e1'))
         | EMul _ -> mkAST (EMul (e0', e1'))
         | EGt _ -> mkAST (EGt (e0', e1'))
+        | ELt _ -> mkAST (ELt (e0', e1'))
         | EEq _ -> mkAST (EEq (e0', e1'))
         | ESelect _ -> mkAST (ESelect (e0', e1'))
     | ERecord es ->
@@ -213,6 +215,8 @@ let rec astReducerDebug debug (ast:ASTNode) red =
         |> List.map (fun (name, e) -> (name, astReducerDebug debug e red))
         |> ERecord
         |> mkAST
+    | ENot e ->
+        mkAST (ENot (astReducerDebug debug e red))
     | _ ->
         failwithf "unrecognised node %A" ast.Expr
     |> (fun ast' ->
@@ -260,11 +264,14 @@ let rec freeVarsAST (ast:ASTNode) : ASTNode list =
     | EVar x -> List.singleton ast
     | ETypeCast (expr, _) ->
         freeVarsAST expr
+    | ENot expr ->
+        freeVarsAST expr
     | EFunc ((argName, _), body) ->
         freeVarsAST body
         |> List.filter (fun (ASTNode (_, EVar n)) -> n <> argName)   //List.except [y]
     | EAp (e1, e2)
     | EGt (e1, e2)
+    | ELt (e1, e2)
     | EEq (e1, e2)
     | EAdd (e1, e2)
     | ESub (e1, e2)
@@ -305,6 +312,7 @@ let rec substFreeVar (x:string) (y:Expr) (node:ASTNode) : ASTNode =
     | ENull ->
         node
     | EGt (e0, e1)
+    | ELt (e0, e1)
     | ESub (e0, e1)
     | EMul (e0, e1)
     | EAdd (e0, e1)
@@ -322,6 +330,8 @@ let rec substFreeVar (x:string) (y:Expr) (node:ASTNode) : ASTNode =
               )
     | ETypeCast (e0, typ) ->
         mkAST (ETypeCast (substFreeVar x y e0, typ))
+    | ENot (e0) ->
+        mkAST (ENot (substFreeVar x y e0))
     | EIf (e0, e1, e2) ->
         mkAST (EIf (substFreeVar x y e0,
                     substFreeVar x y e1,
@@ -367,6 +377,7 @@ let rec betaRedexStep (node:ASTNode) : ASTNode =
     | EMul (e0, e1)
     | ESub (e0, e1)
     | EEq (e0, e1)
+    | ELt (e0, e1)
     | EGt (e0, e1) ->
         let e0' = betaRedexStep e0
         let e1' = betaRedexStep e1
@@ -375,6 +386,7 @@ let rec betaRedexStep (node:ASTNode) : ASTNode =
         | ESub _ -> mkAST (ESub (e0', e1'))
         | EMul _ -> mkAST (EMul (e0', e1'))
         | EGt _ -> mkAST (EGt (e0', e1'))
+        | ELt _ -> mkAST (ELt (e0', e1'))
         | EEq _ -> mkAST (EEq (e0', e1'))
     | EIf (e0, e1, e2) ->
         let e0' = betaRedexStep e0
@@ -410,6 +422,9 @@ let rec betaRedexStep (node:ASTNode) : ASTNode =
     | ETypeCast (e0, typ) ->
         let e0' = betaRedexStep e0
         mkAST (ETypeCast (e0', typ))
+    | ENot (e0) ->
+        let e0' = betaRedexStep e0
+        mkAST (ENot e0')
     | _ ->
         failwithf "Beta Redex for expr %A not defined" node.Expr
 

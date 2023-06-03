@@ -26,6 +26,7 @@ type Instruction =
     | Null
     | True
     | False
+    | Not
     | GetGlob of name: Name
     | SetGlob of name: Name
     | Integer of v: int
@@ -39,6 +40,7 @@ type Instruction =
     | Add | Sub | Mul
     | Equal
     | Greater
+    | Less
     | IfElse of t:LHCode * f:LHCode
     | Pack of tag:int * n:int
     | Record of n:int    // a1 .. an -> { a1, ..., an }
@@ -123,9 +125,12 @@ let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) evalNo
     | EFix f ->
         (compileWithTypes f env ty evalNodes) @
         [Fixpoint]
-    // | EEval f ->
-    //    (compileWithTypes f env ty) @
-    //    [Execute]
+    // We leave EEval node only for test purposes.
+    // Real compiler will not insert those into AST anymore.
+    // It uses external list of node IDs that has to be "executed".
+    | EEval f ->
+        (compileWithTypes f env ty evalNodes) @
+        [Execute]
     | EIf (e0, t, f) ->
         (compileWithTypes e0 env ty evalNodes) @
         [IfElse (compileWithTypes t env ty evalNodes,
@@ -150,6 +155,10 @@ let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) evalNo
         (compileWithTypes e0 env ty evalNodes) @
         (compileWithTypes e1 (argOffset 1 env) ty evalNodes) @
         [Greater]
+    | ELt (e0, e1) ->
+        (compileWithTypes e0 env ty evalNodes) @
+        (compileWithTypes e1 (argOffset 1 env) ty evalNodes) @
+        [Less]
     | EPack (tag, arity, args) ->
         List.concat
           (List.map (fun (i, e) ->
@@ -208,6 +217,8 @@ let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) evalNo
         [Asm s]
     | ETypeCast (e, _) ->
         compileWithTypes e env ty evalNodes
+    | ENot e ->
+        (compileWithTypes e env ty evalNodes) @ [Not]
     | EFailWith n ->
         [FailWith n]
     | _ ->
@@ -272,11 +283,13 @@ let rec instrToTVM (i:Instruction) : string =
     | Function b -> "<{ " + (compileToTVM b) + " }> PUSHCONT"
     | Fixpoint -> " 2 GETGLOB 1 1 CALLXARGS"
     | Execute -> " 0 1 CALLXARGS" // execute a saturated function
+    | Not -> "INC NEGATE"   // 0 --> -1, -1 --> 0
     | Add -> "ADD"
     | Sub -> "SUB"
     | Mul -> "MUL"
     | Equal -> "EQUAL"
     | Greater -> "GREATER"
+    | Less -> "LESS"
     | IfElse (t, f) ->
         "<{ " + (compileToTVM t) + " }> PUSHCONT " +
         "<{ " + (compileToTVM f) + " }> PUSHCONT IFELSE"

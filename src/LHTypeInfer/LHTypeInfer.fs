@@ -355,6 +355,7 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
             printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id t'
         (s', t', tm2)
     | EGt (e1, e2)
+    | ELt (e1, e2)
     | EEq (e1, e2) ->
         let s1, t1, tm1 = ti env e1 tm debug
         let s2, t2, tm2 = ti env e2 tm1 debug
@@ -367,6 +368,15 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
         if debug then
             printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id Bool
         (s', Bool, tm3)
+    | ENot e1 ->
+        // printfn "%A : s' = %A" exp.Name Map.empty
+        let s1, t1, tm1 = ti env e1 tm debug
+        let s2 = unify t1 Bool
+        let s' = Subst.compose s1 s2
+        let tm' = Map.add node.Id (Bool) tm
+        if debug then
+            printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id Bool
+        (s', Bool, tm')
     | ESelect (expr, ASTNode (_, EVar field)) ->
         let s', t1, tm1 = ti env expr tm debug
         match t1.baseType with

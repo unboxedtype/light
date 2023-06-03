@@ -340,6 +340,13 @@ let testBoolCheck () =
                 let main =
                   let x = 5 in
                   let y = 3 in
-                  let z = x = y in
+                  let z = (x = y) in
                   z ;;"
     execAndCheck prog "0"
+
+[<Test>]
+let testNotLtCheck () =
+    let prog = "contract test
+                let main = not false ;;"
+
+    execAndCheck prog "-1"

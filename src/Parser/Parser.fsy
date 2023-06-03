@@ -19,6 +19,7 @@ let rec unfoldFunction argsTypes body =
 %start start
 
 %token <int> INT
+%token NOT
 %token <string> UIDENT
 %token <string> LIDENT
 %token <string> IDENT
@@ -26,7 +27,7 @@ let rec unfoldFunction argsTypes body =
 %token TRUE FALSE
 %token DSCOLON
 %token MODULE TYPEDEF OF IF THEN ELSE HANDLER LET RECURSIVE IN
-%token EQ GT PLUS MINUS SEMICOLON VBAR STAR COLON COMMA EOF
+%token EQ GT LT PLUS MINUS SEMICOLON VBAR STAR COLON COMMA EOF
 %token LEFT_BRACE RIGHT_BRACE LPAREN RPAREN RARROW LARROW
 %token MATCH WITH UNDERSCORE DOT FAILWITH ASM
 %token TYPECAST
@@ -35,7 +36,7 @@ let rec unfoldFunction argsTypes body =
 %nonassoc LET IN ELSE RECURSIVE
 %left PLUS MINUS
 %left STAR
-%left EQ GT
+%left EQ GT LESS
 %left prec_app
 
 %%
@@ -226,6 +227,13 @@ expr:
   {
       let (ASTNode (_, EVar typeName)) = $3
       mkAST (ETypeCast ($1, (LHTypes.mapType typeName).Value)) }  // it must have a type
+
+  | NOT expr
+    %prec prec_app
+  { mkAST (ENot $2) }
+
+  | expr LT expr
+  { mkAST (ELt ($1, $3)) }
 
   | expr GT expr
   { mkAST (EGt ($1, $3))  }

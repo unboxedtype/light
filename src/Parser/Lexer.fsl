@@ -45,6 +45,7 @@ rule read =
   | "failwith" { FAILWITH }
   | "true"   { TRUE }
   | "false"  { FALSE }
+  | "not"    { NOT }
   | ucaseIdentifier  { UIDENT (string (lexeme lexbuf)) }
   | lcaseIdentifier  { LIDENT (string (lexeme lexbuf)) }
   | identifier { IDENT (string (lexeme lexbuf)) }
@@ -66,6 +67,7 @@ rule read =
   | '+'      { PLUS }
   | '-'      { MINUS }
   | '>'      { GT }
+  | '<'      { LT }
   | '_'      { UNDERSCORE }
   | '"'      { read_string "" false lexbuf }
   | eof      { EOF }
