@@ -223,16 +223,7 @@ let testTuple3 () =
     execAndCheckPrint prog false false "(null)"
 
 [<Test>]
-[<Timeout(1000)>]
 [<Ignore("bug")>]
-let testRecord4 () =
-    let prog = "contract Simple
-                type State = { bal:int }
-                type Data = { st:State }
-                let main msgCell st = { bal = 1000 } ;;"
-    execAndCheckPrint prog true true "[ [ 15 ] ]"
-
-[<Test>]
 let testRecord5 () =
     let prog = "contract Simple
                 type State = { bal:int }
@@ -314,3 +305,14 @@ let testGlobals () =
                            if (n > 0) then (n + ((sum (n - 1)) m)) else m
                        in ((sum nArg) mArg) ;;"
     execAndCheck prog "75"
+
+[<Test>]
+let testGlobals2 () =
+    let prog = "contract test
+                     let mArg n = n + 20 ;;
+                     let nArg n = n + 10 ;;
+                     let main =
+                       let rec sum n m =
+                           if (n > 0) then (n + ((sum (n - 1)) m)) else m
+                       in ((sum (nArg 0)) (mArg 0)) ;;"
+    execAndCheckPrint prog false true "75"

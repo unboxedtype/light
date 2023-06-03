@@ -138,8 +138,8 @@ and ASTNode =
         | ESelect (e0, e1) -> SSelect (e0.toSExpr(), e1.toSExpr())
         | ERecord es -> SRecord (List.map (fun (name, (e:ASTNode)) -> (name, e.toSExpr())) es)
         | EAsm s -> SAsm s
-        | ETypeCast (e0, typ) ->
-            STypeCast (e0.toSExpr(), typ)
+        | ETypeCast (e0, typ) -> STypeCast (e0.toSExpr(), typ)
+        | EFix e0 -> SFix (e0.toSExpr())
         | _ -> failwithf "unsupported expr : %A" this.Expr
 
     static member newId () =

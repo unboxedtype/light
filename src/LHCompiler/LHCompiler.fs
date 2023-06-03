@@ -483,15 +483,9 @@ let rec insertEval (ast:ASTNode) (env:TypeEnv) (ty:NodeTypeMap) : ASTNode =
                 match (Map.tryFind node.Id ty) with
                 | Some v -> v
                 | None ->
-                    // let (_, t, _) = LHTypeInfer.ti env node ty true
-                    // t
                     failwithf "failed to find type for node %A, expression: %s"
                                node.Id
                                ((ast.toSExpr ()).ToString())
-            // TODO!!
-            // dirty hack for debugging. TO be removed.
-            if (e1.toSExpr () = SVar "actorInitPost") then
-                printfn "type t = %A; env = %A" t (Map.toList env)
             match t.baseType with
             | LHType.Function _
             | LHType.TVar _ ->
@@ -547,6 +541,8 @@ let compileModule modName decls withInit debug : string =
           ast1
           (Map [])
           debug
+    if debug then
+        printfn "Nodes type map:\n%A" (Map.toList newMap)
     if debug then
         printfn "Inserting Eval nodes..."
     // We now need to insert EEval nodes in places where
