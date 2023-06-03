@@ -323,7 +323,9 @@ let rec substFreeVar (x:string) (y:Expr) (node:ASTNode) : ASTNode =
     | ETypeCast (e0, typ) ->
         mkAST (ETypeCast (substFreeVar x y e0, typ))
     | EIf (e0, e1, e2) ->
-        mkAST (EIf (substFreeVar x y e0, substFreeVar x y e1, substFreeVar x y e2))
+        mkAST (EIf (substFreeVar x y e0,
+                    substFreeVar x y e1,
+                    substFreeVar x y e2))
     | EFunc ((argName,_), body) when argName = x ->
         node
     | EFunc ((name,typ), body) ->  // here name <> x
@@ -506,12 +508,12 @@ let rec insertEval (ast:ASTNode) (env:TypeEnv) (ty:NodeTypeMap) : ASTNode =
             node
     in astReducer ast insertEvalInner
 
-let makeReductions (ast:ASTNode) : ASTNode =
+let makeReductions debug (ast:ASTNode) : ASTNode =
     ast
     |> letrecRedex
     |> etaRedex
-    |> betaRedexFullDebug true
-    |> arithSimplRedexDebug true
+    |> betaRedexFullDebug debug
+    |> arithSimplRedexDebug debug
 
 let compileModule modName decls withInit debug : string =
     if debug then
@@ -543,7 +545,7 @@ let compileModule modName decls withInit debug : string =
     let finalExpr =
         if withInit then prepareAstWithInitFunction letBndsUpd typesFull
         else prepareAstMain letBndsUpd typesFull
-    let ast1 = makeReductions finalExpr
+    let ast1 = makeReductions debug finalExpr
     let typeEnv = LHTypeInfer.TypeEnv.ofProgramTypes typesFull
     let (ty, (oldMap, newMap)) =
         LHTypeInfer.typeInferenceDebug

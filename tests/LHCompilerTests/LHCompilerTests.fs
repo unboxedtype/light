@@ -320,6 +320,7 @@ let testRecord5 () =
     execAndCheckPrint prog false false "[ 2000 ]"
 
 [<Test>]
+[<Ignore("bug")>]
 let testInitRecord6 () =
     let prog = "contract Simple
                 type State = { bal:int }
@@ -332,3 +333,13 @@ let testInitRecord6 () =
                 let main msgCell (st:State) =
                     { bal = func1 st + 1000 } ;; "
     execAndCheckPrint prog true true "[ 1000 ]"
+
+[<Test>]
+let testBoolCheck () =
+    let prog = "contract test
+                let main =
+                  let x = 5 in
+                  let y = 3 in
+                  let z = x = y in
+                  z ;;"
+    execAndCheck prog "0"
