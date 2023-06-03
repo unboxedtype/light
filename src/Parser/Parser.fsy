@@ -228,9 +228,9 @@ expr:
       let (ASTNode (_, EVar typeName)) = $3
       mkAST (ETypeCast ($1, (LHTypes.mapType typeName).Value)) }  // it must have a type
 
-  | NOT LPAREN expr RPAREN
+  | NOT expr
     %prec prec_app
-  { mkAST (ENot $3) }
+  { mkAST (ENot $2) }
 
   | expr LT expr
   { mkAST (ELt ($1, $3)) }

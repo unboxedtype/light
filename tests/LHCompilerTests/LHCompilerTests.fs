@@ -345,8 +345,36 @@ let testBoolCheck () =
     execAndCheck prog "0"
 
 [<Test>]
-let testNotLtCheck () =
+let testNotFalse () =
     let prog = "contract test
                 let main = not (false) ;;"
+
+    execAndCheck prog "-1"
+
+[<Test>]
+let testNotLt () =
+    let prog = "contract test
+                let main = not (1 < 3) ;;"
+
+    execAndCheck prog "0"
+
+[<Test>]
+let testNotNotLt () =
+    let prog = "contract test
+                let main = not not 1 < 3 ;;"
+
+    execAndCheck prog "-1"
+
+[<Test>]
+let testCmpBool () =
+    let prog = "contract test
+                let main = true = false ;;"
+
+    execAndCheck prog "0"
+
+[<Test>]
+let testCmpBool2 () =
+    let prog = "contract test
+                let main = true = true ;;"
 
     execAndCheck prog "-1"
