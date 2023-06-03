@@ -202,3 +202,21 @@ let testCurryInc () =
   let ast = (toAST sexpr)
   Assert.AreEqual(Function (Int 256, Int 256),
                   fst (typeInfer env ast))
+
+[<Test>]
+let testCurryInc2 () =
+  // let main =
+  //  let apply func x = (func x) in
+  //  let inc x = x + 1 in
+  //     apply inc 1 ;;"
+  let sexpr =
+      SLet ("apply",
+        SFunc (("func", None),
+          SFunc (("x", None), SAp (SVar "func", SVar "x"))),
+        SLet ("inc",
+          SFunc (("x", None), SAdd (SVar "x", SNum 1)),
+            SAp (SAp (SVar "apply", SVar "inc"), SNum 1)))
+  let env = Map []
+  let ast = (toAST sexpr)
+  Assert.AreEqual(Int 256,
+                  fst (typeInfer env ast))

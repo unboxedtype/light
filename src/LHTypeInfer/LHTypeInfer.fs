@@ -191,32 +191,57 @@ let recoverRecordType env (node:ASTNode) : Type =
 
 
 let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Subst * Typ * NodeTypeMap =
-    // if debug then
-    //    printfn "Visiting node %A" node.Id
     match node.Expr with
     | EEval e ->
+        if debug then
+            printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id tm.[e.Id]
         (Map.empty, tm.[e.Id], tm)
     | ETypeCast (e0, typ) ->
-        let tm' = Map.add e0.Id typ (Map.add node.Id typ tm)
-        (Map.empty, typ, tm')
+        match e0.Expr with
+        // For assembly blocks, we allow to do cast to whatever type
+        // they want.
+        | EAsm _ ->
+            let tm' = Map.add e0.Id typ (Map.add node.Id typ tm)
+            if debug then
+                printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id typ
+            (Map.empty, typ, tm')
+        // For other expressions, the type of expression and specified
+        // type must unify; otherwise cast isn't going to work.
+        | _ ->
+            let s1, t1, tm' = ti env e0 tm debug
+            let s2 = unify t1 typ
+            let s' = Subst.compose s1 s2
+            if debug then
+                printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id typ
+            (s', typ, tm')
     | EFailWith _ ->
         let tm' = Map.add node.Id Unit tm
+        if debug then
+            printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id Unit
         (Map.empty, Unit, tm')
     | EAsm _ ->  // TODO!!: This is a temporary hack. Type of asm block is Int256.
         let typ = newTyVar "a"
         let tm' = Map.add node.Id typ tm
+        if debug then
+            printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id typ
         (Map.empty, typ, tm')
     | ENum n ->
         // printfn "%A : s' = %A" exp.Name Map.empty
         let tm' = Map.add node.Id (Int 256) tm
+        if debug then
+            printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id (Int 256)
         (Map.empty, Int 256, tm')
     | EBool _ ->
         // printfn "%A : s' = %A" exp.Name Map.empty
         let tm' = Map.add node.Id (Bool) tm
+        if debug then
+            printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id Bool
         (Map.empty, Bool, tm')
     | ENull  ->
         // printfn "%A : s' = %A" exp.Name Map.empty
         let tm' = Map.add node.Id Unit tm
+        if debug then
+            printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id Unit
         (Map.empty, Unit, tm')
     | EVar name ->
         match Map.tryFind name env with
@@ -226,6 +251,8 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
             let t = instantiate sigma
             // printfn "%A : s' = %A" exp.Name Map.empty
             let tm' = Map.add node.Id t tm
+            if debug then
+                printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id t
             (Map.empty, t, tm')
     | EAdd (e1, e2)
     | EMul (e1, e2)
@@ -239,6 +266,8 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
         let s' = Subst.compose (Subst.compose s1 s2) (Subst.compose st1 st2)
         let tme = Map.add node.Id t2 tm''
         // printfn "%A : s' = %A" exp.Name  s'
+        if debug then
+            printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id (Int 256)
         (s', Int 256, tme)
     | EFunc ((name, optType), e) ->
         let tv =
@@ -250,7 +279,10 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
         let (s', t1, tm') = ti env2 e tm debug
         let tm'' = Map.add node.Id t1 tm'
         // printfn "%A : s' = %A" exp.Name  s'
-        (s', Function (Typ.apply s' tv, t1), tm'')
+        let typ = Function (Typ.apply s' tv, t1)
+        if debug then
+            printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id typ
+        (s', typ, tm'')
     | EAp (e1, e2) ->
         let s1, t1, tm' = ti env e1 tm debug
         let s2, t2, tm'' = ti (TypeEnv.apply s1 env) e2 tm' debug
@@ -260,6 +292,8 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
         // printfn "%A : s' = %A" exp.Name  s'
         let t' = Typ.apply s3 tv
         let tme = Map.add node.Id t' tm''
+        if debug then
+            printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id t'
         (s', t', tme)
     | EIf (cond, e1, e2) ->
         let t' = newTyVar "a"       // if expression type, fresh var
@@ -278,7 +312,10 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
                                    (Subst.compose s2' s3')))
         // printfn "%A : s' = %A" exp.Name  s'
         let tm4 = Map.add node.Id t' tm3
-        (s', t', tm4)
+        let t'' = Typ.apply s' t'
+        if debug then
+            printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id t''
+        (s', t'', tm4)
     | ELet (x, e1, e2) ->
         let s1, t1, tm1 = ti env e1 tm debug
         let env1 = TypeEnv.remove env x
@@ -288,6 +325,8 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
         let s' = Subst.compose s2 s1
         // printfn "%A : s' = %A" exp.Name  s'
         let tm3 = Map.add node.Id t2 tm2
+        if debug then
+            printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id t2
         (s', t2, tm3)
     | ELetRec (x, e1, e2) ->
         let node1 = mkAST (EFunc ((x,None), e1))
@@ -299,6 +338,8 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
             tm1
             |> Map.add node3.Id t'
             |> Map.add node.Id t'
+        if debug then
+            printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id t'
         (s', t', tm2)
     | EFix e ->
         let (s', t, tm1) = ti env e tm debug
@@ -310,6 +351,8 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
               failwithf "Unexpected type for a fix point argument: %A" t
         // printfn "%A : s' = %A" exp.Name  s'
         let tm2 = Map.add node.Id t' tm1
+        if debug then
+            printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id t'
         (s', t', tm2)
     | EGt (e1, e2)
     | EEq (e1, e2) ->
@@ -321,6 +364,8 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
         let s' = Subst.compose (Subst.compose s1 s2) (Subst.compose s1' s2')
         // printfn "%A : s' = %A" exp.Name  s'
         let tm3 = Map.add node.Id Bool tm2
+        if debug then
+            printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id Bool
         (s', Bool, tm3)
     | ESelect (expr, ASTNode (_, EVar field)) ->
         let s', t1, tm1 = ti env expr tm debug
@@ -331,6 +376,8 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
                 | Some r -> r
                 | None -> failwithf "The field %A not found in the record %A definition" field t1
             let tm2 = Map.add node.Id t2 tm1
+            if debug then
+                printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id t2
             (s', t2, tm2)
         | _ ->
             failwithf "Expected record type in expression %A, but received %A" ((node.toSExpr()).ToString()) t1
@@ -355,6 +402,8 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
                 deriveNextRecType es s2 tm2
         let (s', tm') = deriveNextRecType es (Map []) tm
         let tm2 = Map.add node.Id recType tm'
+        if debug then
+            printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id recType
         (s', recType, tm2)
     | _ ->
         failwithf "Unsupported expression %A" (node.toSExpr ())

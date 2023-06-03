@@ -110,6 +110,7 @@ let getHandlerDeclsRaw types decls =
     |> List.map ( fun (name, args, body) ->
                   (name, restoreTypes types args, body) )
 
+(**
 let patchLetBindingsFuncTypes letBnds types =
     let rec patchLetBodyFuncType (letBody:ASTNode) types =
         match letBody.Expr with
@@ -124,7 +125,7 @@ let patchLetBindingsFuncTypes letBnds types =
     letBnds
     |> List.map ( fun (name, vars, isRec, body) ->
                   (name, vars, isRec, patchLetBodyFuncType body types) )
-
+**)
 // "main" or "actorInit" shall be used as finalFunctionName
 let rec expandLet finalFunctionName letBind =
     match letBind with
@@ -461,6 +462,19 @@ let rec letrecRedex node =
             node
     in astReducer node letrecRedexStep
 
+let patchLetBindingsFuncTypes letBnds types =
+    let rec patchLetBodyFuncType (letBody:ASTNode) =
+        match letBody.Expr with
+        | EFunc ((argName, Some argType), body) ->
+            // patch the argument
+            let argType2 = restoreType types argType
+            mkAST (EFunc ((argName, Some argType2), body))
+        | _ ->
+            letBody
+    letBnds
+    |> List.map ( fun (name, vars, isRec, body) ->
+                  (name, vars, isRec, astReducer body patchLetBodyFuncType) )
+
 let rec insertEval (ast:ASTNode) (env:TypeEnv) (ty:NodeTypeMap) : ASTNode =
     let rec insertEvalInner (node:ASTNode) : ASTNode =
         match node.Expr with
@@ -474,6 +488,10 @@ let rec insertEval (ast:ASTNode) (env:TypeEnv) (ty:NodeTypeMap) : ASTNode =
                     failwithf "failed to find type for node %A, expression: %s"
                                node.Id
                                ((ast.toSExpr ()).ToString())
+            // TODO!!
+            // dirty hack for debugging. TO be removed.
+            if (e1.toSExpr () = SVar "actorInitPost") then
+                printfn "type t = %A; env = %A" t (Map.toList env)
             match t.baseType with
             | LHType.Function _
             | LHType.TVar _ ->
