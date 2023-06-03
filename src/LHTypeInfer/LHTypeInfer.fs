@@ -145,6 +145,10 @@ let rec unify (t1 : Typ) (t2 : Typ) : Subst =
     | UserType (name1, None), UserType (name2, Some t)
     | UserType (name1, Some t), UserType (name2, None) when name1 = name2 ->
         Map.empty
+    | UserType (name, Some t1), t2 ->
+        unify t1 t2
+    | t1, UserType (name, Some t2) ->
+        unify t1 t2
     // TODO: This may be not correct. Consider breaking into sep cases.
     | x, y when x.baseType = y.baseType -> Map.empty
     | _ -> failwithf "Types do not unify: %A vs %A" t1 t2

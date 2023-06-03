@@ -36,7 +36,7 @@ let actorInitCode =
    }
 
    let msgReadSeqNo (msg:VMSlice) =
-       assembly \"CTOS 32 LDU DROP\" ;;
+       assembly \"CTOS 32 LDU DROP\" :> int ;;
 
    let actorStateRead () =
        { seqno = 1;
@@ -46,7 +46,7 @@ let actorInitCode =
    let actorStateWrite (st:ActorState) =
        () ;;
 
-   let actorInit (initArgs:ActorInitParams) =
+   let actorInitPost (initArgs:ActorInitParams) =
      let actState = actorStateRead () in
      let msgSeqNo = msgReadSeqNo initArgs.msgBody in
      if msgSeqNo  = actState.seqno then
@@ -60,4 +60,9 @@ let actorInitCode =
               deployed = true } in
         actorStateWrite actState'
    ;;
+
+   let actorInit =
+       let actorArgs =
+           (assembly \" 5 TUPLE \" :> ActorInitParams)
+       in actorInitPost actorArgs
 "

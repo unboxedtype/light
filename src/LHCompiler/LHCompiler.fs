@@ -22,7 +22,7 @@ let parse source =
 type TypeDefs = list<string*Type>
 type ArgList = list<string*option<Type>>
 
-let restoreType (typeDefs:TypeDefs) (arg:Type) : Type =
+let rec restoreType (typeDefs:TypeDefs) (arg:Type) : Type =
     match arg with
     | UserType (n, None) ->   // partially defined type
        let typ =
@@ -30,6 +30,17 @@ let restoreType (typeDefs:TypeDefs) (arg:Type) : Type =
           | Some t -> t
           | None -> failwithf "Cant find type definition for type %A" n
        UserType (n, Some typ)
+    // TODO: ST type also shall be implemented here.
+    | UserType (n, Some t) ->   // restore types in the nested definition
+       UserType (n, Some (restoreType typeDefs t))
+    | PT pts ->
+        pts
+        |> List.map ( fun (fn,ft) -> (fn, restoreType typeDefs ft) )
+        |> PT
+    | Function (t1, t2) ->
+        (restoreType typeDefs t1,
+         restoreType typeDefs t2)
+        |> Function
     | _ ->
         arg
 
@@ -95,17 +106,20 @@ let getHandlerDeclsRaw types decls =
     |> List.map ( fun (name, args, body) ->
                   (name, restoreTypes types args, body) )
 
-
 let patchLetBindingsFuncTypes letBnds types =
+    let rec patchLetBodyFuncType (letBody:ASTNode) types =
+        match letBody.Expr with
+        | EFunc ((argName, Some argType), body) ->
+            // patch the argument
+            let argType2 = restoreType types argType
+            // patch the body
+            let body' = patchLetBodyFuncType body types
+            mkAST (EFunc ((argName, Some argType2), body'))
+        | _ ->
+            letBody
     letBnds
-    |> List.map (fun (name, argTypes, isRec, (exprAst:ASTNode)) ->
-                  match exprAst.Expr with
-                  | EFunc ((argName, Some argType), body) ->
-                     let argType2 = restoreType types argType
-                     (name, argTypes, isRec, mkAST (EFunc ((argName, Some argType2), body)))
-                  | _ ->
-                     (name, argTypes, isRec, exprAst)
-                )
+    |> List.map ( fun (name, vars, isRec, body) ->
+                  (name, vars, isRec, patchLetBodyFuncType body types) )
 
 // "main" or "actorInit" shall be used as finalFunctionName
 let rec expandLet finalFunctionName letBind =
@@ -164,15 +178,14 @@ let compile (source:string) (withInit:bool) (debug:bool) : string =
         if debug then
             printfn "Partially defined types:\n%A" undefTypesNames
             printfn "Fully defined types:\n%A" defTypes
-            printfn "Completed types:\n%A" completeTypes
+            printfn "Completed types:\n%A\n\n" completeTypes
         let types2 = defTypes @ completeTypes
-
         let letBnds = getLetDeclarationsRaw types2 decls
-        let letBndsUpd = patchLetBindingsFuncTypes letBnds types
+        let letBndsUpd = patchLetBindingsFuncTypes letBnds types2
         if debug then
-            printfn "let Bindings after types patched:\n%A"
+            printfn "Let Bindings after types patched:\n%A"
               (letBndsUpd |> List.map (fun (n, args, isrec, body) ->
-                                       (n,args,isrec,body.toSExpr ())))
+                                       (n, args, isrec, body.toSExpr ())))
         // TODO!!:
         // Handlers would need to be converted into 'receive' cases in
         // the main function. As for now, they are completely ignored.
