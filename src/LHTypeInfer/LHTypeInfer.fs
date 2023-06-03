@@ -361,17 +361,12 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
     | EEq (e1, e2) ->
         let s1, t1, tm1 = ti env e1 tm debug
         let s2, t2, tm2 = ti env e2 tm1 debug
-        // TODO!! EEq may be used with BOOLs as well.
-        let s1' = unify t1 (Int 256)
-        let s2' = unify t2 (Int 256)
-        let s' = Subst.compose (Subst.compose s1 s2) (Subst.compose s1' s2')
-        // printfn "%A : s' = %A" exp.Name  s'
+        let s' = Subst.compose s1 s2
         let tm3 = Map.add node.Id Bool tm2
         if debug then
             printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id Bool
         (s', Bool, tm3)
     | ENot e1 ->
-        // printfn "%A : s' = %A" exp.Name Map.empty
         let s1, t1, tm1 = ti env e1 tm debug
         let s2 = unify t1 Bool
         let s' = Subst.compose s1 s2
