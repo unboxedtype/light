@@ -347,6 +347,6 @@ let testBoolCheck () =
 [<Test>]
 let testNotLtCheck () =
     let prog = "contract test
-                let main = not false ;;"
+                let main = not (false) ;;"
 
     execAndCheck prog "-1"

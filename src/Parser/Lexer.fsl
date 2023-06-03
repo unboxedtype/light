@@ -21,14 +21,38 @@ let ucaseIdentifier = ucase (lcase | digit | ucase | '_' | '\'' )*
 let lcaseIdentifier = lcase (ucase | digit | lcase | '_' | '\'' )*
 let identifier = lcaseIdentifier | ucaseIdentifier
 let string = '\"' (lcase)* '\"'
-let white = [' ' '\t']+
+let white = [' ' '\t']
 let newline = '\r' | '\n' | "\r\n"
 
 rule read =
   parse
-  | white    { read lexbuf }
+  | white+    { read lexbuf }
   | newline  { newline lexbuf; read lexbuf }
+  | '('      { LPAREN }
+  | ')'      { RPAREN }
+  | "true"   { TRUE }
+  | "false"  { FALSE }
+  | "not"    { NOT }
   | int      { INT (int (lexeme lexbuf)) }
+  | ":>"     { TYPECAST }
+  | ";;"     { DSCOLON }
+  | "->"     { RARROW  }  // function type
+  | "<-"     { LARROW  }  // assignment operator
+  | '{'      { LEFT_BRACE }
+  | '}'      { RIGHT_BRACE }
+  | '|'      { VBAR }
+  | ':'      { COLON }
+  | '.'      { DOT }
+  | '*'      { STAR }
+  | ','      { COMMA }
+  | ';'      { SEMICOLON }
+  | '='      { EQ }
+  | '+'      { PLUS }
+  | '-'      { MINUS }
+  | '>'      { GT }
+  | '<'      { LT }
+  | '_'      { UNDERSCORE }
+  | '"'      { read_string "" false lexbuf }
   | "assembly" { ASM }
   | "contract" { MODULE }
   | "type"   { TYPEDEF }
@@ -43,33 +67,9 @@ rule read =
   | "match"  { MATCH }
   | "with"   { WITH }
   | "failwith" { FAILWITH }
-  | "true"   { TRUE }
-  | "false"  { FALSE }
-  | "not"    { NOT }
   | ucaseIdentifier  { UIDENT (string (lexeme lexbuf)) }
   | lcaseIdentifier  { LIDENT (string (lexeme lexbuf)) }
-  | identifier { IDENT (string (lexeme lexbuf)) }
-  | ":>"     { TYPECAST }
-  | ";;"     { DSCOLON }
-  | "->"     { RARROW  }  // function type
-  | "<-"     { LARROW  }  // assignment operator
-  | '{'      { LEFT_BRACE }
-  | '}'      { RIGHT_BRACE }
-  | '('      { LPAREN }
-  | ')'      { RPAREN }
-  | '|'      { VBAR }
-  | ':'      { COLON }
-  | '.'      { DOT }
-  | '*'      { STAR }
-  | ','      { COMMA }
-  | ';'      { SEMICOLON }
-  | '='      { EQ }
-  | '+'      { PLUS }
-  | '-'      { MINUS }
-  | '>'      { GT }
-  | '<'      { LT }
-  | '_'      { UNDERSCORE }
-  | '"'      { read_string "" false lexbuf }
+//  | identifier { IDENT (string (lexeme lexbuf)) }
   | eof      { EOF }
   | _
      {
