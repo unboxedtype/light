@@ -207,6 +207,8 @@ basicExpr:
     { mkAST (EStr $1) }
   | LIDENT
     { mkAST (EVar $1) }
+  | UIDENT
+    { mkAST (EVar $1) }
   | basicExpr DOT LIDENT
   {
     // Here, we shall translate the field identifier into its index.

@@ -196,12 +196,16 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
     match node.Expr with
     | EEval e ->
         (Map.empty, tm.[e.Id], tm)
+    | ETypeCast (e0, typ) ->
+        let tm' = Map.add e0.Id typ (Map.add node.Id typ tm)
+        (Map.empty, typ, tm')
     | EFailWith _ ->
         let tm' = Map.add node.Id Unit tm
         (Map.empty, Unit, tm')
     | EAsm _ ->  // TODO!!: This is a temporary hack. Type of asm block is Int256.
-        let tm' = Map.add node.Id (Int 256) tm
-        (Map.empty, Int 256, tm')
+        let typ = newTyVar "a"
+        let tm' = Map.add node.Id typ tm
+        (Map.empty, typ, tm')
     | ENum n ->
         // printfn "%A : s' = %A" exp.Name Map.empty
         let tm' = Map.add node.Id (Int 256) tm

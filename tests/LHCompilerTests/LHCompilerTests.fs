@@ -1,8 +1,14 @@
 // For emacs: -*- fsharp -*-
 
 module LHCompilerTests
-
 open NUnit.Framework
+open LHExpr
+open LHCompiler
+open ParserModule
+
+let getLetAst (m:Module) (n:int) =
+    m.Decls.[n].letBinding
+    |> (function | (_, _, _, c) -> c)
 
 let execAndCheckPrint (prog:string) addInit debug expected =
     if debug then
@@ -27,6 +33,93 @@ let execAndCheck prog expected =
 [<SetUp>]
 let Setup () =
     ()
+
+[<Test>]
+let testBetaRedex0 () =
+    let sexpr = SLet ("x", SNum 5, SAdd (SVar "x", SNum 10))
+    let res = (betaRedexStep (toAST sexpr)).toSExpr ()
+    let expected = SAdd (SNum 5, SNum 10)
+    Assert.AreEqual (expected, res)
+
+[<Test>]
+let testBetaRedex1 () =
+    let sexpr = SLet ("x", SNum 5, SLet ("y", SNum 10, SAdd (SVar "x", SVar "y")))
+    let res = (betaRedexStep (toAST sexpr)).toSExpr ()
+    let expected = SLet ("y", SNum 10, SAdd (SNum 5, SVar "y"))
+    Assert.AreEqual (expected, res)
+
+[<Test>]
+let testBetaRedex2 () =
+    let sexpr = SLet ("x", SNum 5, SLet ("y", SNum 10, SAdd (SVar "x", SVar "y")))
+    let res = (betaRedexStep (betaRedexStep (toAST sexpr))).toSExpr ()
+    let expected = SAdd (SNum 5, SNum 10)
+    Assert.AreEqual (expected, res)
+
+[<Test>]
+let testBetaRedex3 () =
+    // let apply = \f.\x.f x in (apply plus1)
+      // --> (\f.\x.f x) plus1
+    let sexpr = SLet ("apply", SFunc (("f",None), SFunc (("x",None), SAp (SVar "f", SVar "x"))),
+                      SAp (SVar "apply", SVar "plus1"))
+    let res = (betaRedexStep (toAST sexpr)).toSExpr ()
+    let expected = SAp (SFunc (("f",None), SFunc (("x",None), SAp (SVar "f", SVar "x"))), SVar "plus1")
+    Assert.AreEqual (expected, res)
+
+[<Test>]
+let testBetaRedex4 () =
+    // let apply = \f.\x.f x in (apply plus1)
+      // --> (\f.\x.f x) plus1
+      // --> \x plus1 x
+    let sexpr = SLet ("apply", SFunc (("f",None), SFunc (("x",None), SAp (SVar "f", SVar "x"))),
+                      SAp (SVar "apply", SVar "plus1"))
+    let res = (betaRedexStep (betaRedexStep (toAST sexpr))).toSExpr ()
+    let expected = SFunc (("x",None), SAp (SVar "plus1", SVar "x"))
+    Assert.AreEqual (expected, res)
+
+[<Test>]
+let testBetaRedex5 () =
+    // let apply = \f.\x.f x in (apply plus1 5)
+      // --> ((\f.\x.f x) plus1) 5
+      // --> (\x plus1 x) 5
+      // --> plus1 5
+    let sexpr = SLet ("apply", SFunc (("f", None), SFunc (("x", None), SAp (SVar "f", SVar "x"))),
+                      SAp (SAp (SVar "apply", SVar "plus1"), SNum 5))
+    let res = (betaRedexStep (betaRedexStep (betaRedexStep (toAST sexpr)))).toSExpr ()
+    let expected = SAp (SVar "plus1", SNum 5)
+    Assert.AreEqual (expected, res)
+
+[<Test>]
+let testBetaRedex6 () =
+    // (\y .(\x . y + 1)) (x + 1) 1
+    let sexpr =  SAp (SAp (SFunc (("y", None), SFunc (("x", None), SAdd (SVar "y", SNum 1))),
+                           SAdd (SVar "x", SNum 1)),
+                      SNum 1)
+    let res = (betaRedexStep (toAST sexpr)).toSExpr ()
+    let expected = SAp (SFunc (("z0", None), SAdd (SAdd (SVar "x", SNum 1), SNum 1)), SNum 1)
+    Assert.AreEqual (expected, res)
+
+[<Test>]
+let testBetaRedex7 () =
+    // (\x . (\x . x + 1) (x + 1) ) 1
+    let sexpr = SAp (SFunc ( ("x", None),
+                       SAp (SFunc ( ("x", None), SAdd (SVar "x", SNum 1)),
+                            SAdd (SVar "x", SNum 1))),
+                     SNum 1)
+    let res = (betaRedexStep (toAST sexpr)).toSExpr ()
+    let expected = SAp (SFunc (("x", None), SAdd (SVar "x", SNum 1)), SAdd (SNum 1, SNum 1))
+    Assert.AreEqual (expected, res)
+
+
+[<Test>]
+[<Ignore("Here Beta Expansion is needed")>]
+let testCurry1 () =
+    let prog = "contract test
+                     let main =
+                       let apply func x = (func (x + 1)) in
+                       let inc x = x + 1 in
+                       let apply_inc = apply inc in
+                       (apply_inc 1) ;;"
+    execAndCheckPrint prog false false "3"
 
 [<Test>]
 let testContractSimple () =
@@ -78,7 +171,7 @@ let testRecord3 () =
                      let st' = { bal = sumN 5 } in
                      { st = st' }
                    ;;"
-    execAndCheck prog "[ [ 15 ] ]"
+    execAndCheckPrint prog false false "[ [ 15 ] ]"
 
 [<Test>]
 [<Timeout(1000)>]

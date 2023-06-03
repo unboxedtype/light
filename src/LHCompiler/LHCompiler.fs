@@ -7,10 +7,14 @@ open Parser
 open FSharp.Text.Lexing
 open ActorInit
 open LHExpr
-
+open LHTypeInfer
+open type LHTypes.ProgramTypes
+open type LHTypes.Type
+type LHType = LHTypes.Type
 open type ParserModule.Decl
 open type ParserModule.Module
-open type LHTypes.Type
+
+// open type LHTypes.Type
 
 // TODO: put all parse functions into a single module
 let parse source =
@@ -19,10 +23,10 @@ let parse source =
     res
 
 
-type TypeDefs = list<string*Type>
-type ArgList = list<string*option<Type>>
+type TypeDefs = list<string*LHType>
+type ArgList = list<string*option<LHType>>
 
-let rec restoreType (typeDefs:TypeDefs) (arg:Type) : Type =
+let rec restoreType (typeDefs:TypeDefs) (arg:LHType) : LHType =
     match arg with
     | UserType (n, None) ->   // partially defined type
        let typ =
@@ -57,16 +61,16 @@ let restoreTypes (typeDefs:TypeDefs) (args:ArgList) : ArgList =
                  | None -> (name, optT)
                 )
 
-let getTypesDeclarationsRaw decls : List<LHTypes.Name * LHTypes.Type> =
+let getTypesDeclarationsRaw decls : List<LHTypes.Name * LHType> =
     decls
     |> List.filter (function
                     | TypeDef _ -> true
                     | _         -> false)
     |> List.map (fun n -> n.typeDef)
 
-let getPartiallyDefinedTypes types : List<(LHTypes.Name * LHTypes.Type) * List<LHTypes.Name>> =
+let getPartiallyDefinedTypes types : List<(LHTypes.Name * LHType) * List<LHTypes.Name>> =
     types  // [(name, typ)]
-    |> List.map (fun (name, typ:LHTypes.Type) ->
+    |> List.map (fun (name, typ:LHType) ->
                  ((name, typ), LHTypes.hasUndefType typ))
     |> List.filter (fun ((_, _),l) -> l <> [])
 
@@ -139,7 +143,14 @@ let prepareAstWithInitFunction letBnds types  =
     let (lastLetName, _, _, _) = List.last letBnds
     if (lastLetName <> "actorInit") then
         failwith "actorInit let block shall be the last in the series of let-definitions"
-    expandLet "actorInit" letBnds
+    let expr1 = expandLet "actorInit" letBnds
+    // We also need to pack 5 arguments that came from VM on the stack.
+    // We have to do it at the very beginning of SmC execution.
+    // let actorArgs =
+    //     assembly \" 5 TUPLE \" :> ActorInitParams
+    let  actArgsTyp = UserType ("ActorInitParams", None)
+    let  actArgsBody = mkAST (ETypeCast (EAsm "5 TUPLE" |> mkAST, actArgsTyp))
+    mkAST (ELet ("actorArgs", actArgsBody, expr1))
 
 // Sometimes we may want to compile only the main function, without ActorInit code.
 // For example, for tests. This function compiles a set of let bindings with
@@ -152,6 +163,381 @@ let prepareAstMain letBnds types =
         failwith "main not found"
     expandLet "main" letBnds
 
+let rec astReducer (ast:ASTNode) (red: ASTNode -> ASTNode) : ASTNode =
+    match ast.Expr with
+    // leaf nodes
+    | EVar _
+    | ENull
+    | EStr _
+    | EFailWith _
+    | EBool _
+    | EAsm _
+    | ENum _ ->
+        ast
+    | ETypeCast (e0, typ) ->
+        let e0' = astReducer e0 red
+        if e0'.toSExpr () <> e0.toSExpr() then mkAST (ETypeCast (e0', typ))
+        else ast
+    | EFunc (arg, body) ->
+        let body' = astReducer body red
+        if body'.toSExpr () <> body.toSExpr () then mkAST (EFunc (arg, body'))
+        else ast
+    | ELet (name, bind, body)
+    | ELetRec (name, bind, body) ->
+        let bind' = astReducer bind red
+        let body' = astReducer body red
+        if bind'.toSExpr () <> bind.toSExpr () || (body'.toSExpr () <> body.toSExpr ()) then
+            match ast.Expr with
+            | ELet _ ->
+                mkAST (ELet (name, bind', body'))
+            | ELetRec _ ->
+                mkAST (ELetRec (name, bind', body'))
+        else ast
+    | EIf (e0, e1, e2) ->
+        let e0' = astReducer e0 red
+        let e1' = astReducer e1 red
+        let e2' = astReducer e2 red
+        if e0'.toSExpr () <> e0.toSExpr () ||
+           e1'.toSExpr () <> e1.toSExpr () ||
+           e2'.toSExpr () <> e2.toSExpr () then
+              mkAST (EIf (e0', e1', e2'))
+        else ast
+    | EAp (e0, e1)
+    | EAdd (e0, e1)
+    | ESub (e0, e1)
+    | EMul (e0, e1)
+    | EGt (e0, e1)
+    | EEq (e0, e1)
+    | ESelect (e0, e1) ->
+        let e0' = astReducer e0 red
+        let e1' = astReducer e1 red
+        if e0'.toSExpr () <> e0.toSExpr () ||
+           e1'.toSExpr () <> e1.toSExpr () then
+            match ast.Expr with
+            | EAp _ -> mkAST (EAp (e0', e1'))
+            | EAdd _ -> mkAST (EAdd (e0', e1'))
+            | ESub _ -> mkAST (ESub (e0', e1'))
+            | EMul _ -> mkAST (EMul (e0', e1'))
+            | EGt _ -> mkAST (EGt (e0', e1'))
+            | EEq _ -> mkAST (EEq (e0', e1'))
+            | ESelect _ -> mkAST (ESelect (e0', e1'))
+        else ast
+    | ERecord es ->
+        let node' =
+          es
+          |> List.map (fun (name, e) -> (name, astReducer e red))
+          |> ERecord
+          |> mkAST
+        if node'.toSExpr () <> ast.toSExpr () then node'
+        else ast
+    | _ ->
+        failwithf "unrecognised node %A" ast.Expr
+    |> red
+
+// eta reduction step:
+// (\x -> f x) ==> f
+let rec etaStep (node:ASTNode) : ASTNode =
+    match node.Expr with
+    | EFunc ((argName,argType), body) ->
+        match body.Expr with
+        | EAp (f, f_arg) ->
+            match f_arg.Expr with
+            | EVar arg1 when arg1 = argName ->
+                etaStep f
+            | _ ->
+                node
+        | _ ->
+            let red = etaStep body
+            if red = body then node
+            else etaStep (mkAST (EFunc ((argName, argType), red)))
+    | _ ->
+        node
+
+let etaRedex node =
+    astReducer node etaStep
+
+// Find all free variables (i.e. nodes of type (EVar n)) inside the
+// given AST node. Return found nodes in a list form.
+let rec freeVarsAST (ast:ASTNode) : ASTNode list =
+    match ast.Expr with
+    | ENull
+    | ENum _
+    | EAsm _
+    | EFailWith _
+    | EBool _ -> []
+    | EVar x -> List.singleton ast
+    | ETypeCast (expr, _) ->
+        freeVarsAST expr
+    | EFunc ((argName, _), body) ->
+        freeVarsAST body
+        |> List.filter (fun (ASTNode (_, EVar n)) -> n <> argName)   //List.except [y]
+    | EAp (e1, e2)
+    | EGt (e1, e2)
+    | EEq (e1, e2)
+    | EAdd (e1, e2)
+    | ESub (e1, e2)
+    | EMul (e1, e2) ->
+        (freeVarsAST e1) @ (freeVarsAST e2)
+    | ELet (x, bind, body) ->
+        (freeVarsAST bind) @ (freeVarsAST body)
+    | ELetRec (x, bind, body) ->
+        (freeVarsAST bind) @ (freeVarsAST body)
+    | EIf (e1, e2, e3) ->
+        (freeVarsAST e1) @ (freeVarsAST e2) @ (freeVarsAST e3)
+    | ERecord vs ->
+        vs
+        |> List.map snd
+        |> List.map freeVarsAST
+        |> List.concat
+    | ESelect (e0, e1) ->
+        freeVarsAST e0
+    | _ ->
+        failwithf "freeVars for %20A not implemented" ast.Expr
+
+// global counter for generating unique variable names
+let private nameId = ref 0
+
+// Substitute a free variable 'x' for the term y in the 'node'
+let rec substFreeVar (x:string) (y:Expr) (node:ASTNode) : ASTNode =
+    let newVarName () =
+        let id = !nameId
+        nameId := id + 1 ;
+        "z" + (string id)
+    match node.Expr with
+    | EVar x' ->
+        if x' = x then mkAST y
+        else node
+    | ENum _
+    | EBool _
+    | EAsm _
+    | ENull ->
+        node
+    | EGt (e0, e1)
+    | ESub (e0, e1)
+    | EMul (e0, e1)
+    | EAdd (e0, e1)
+    | EEq (e0, e1)
+    | EAp (e0, e1) ->
+        let e0' = substFreeVar x y e0
+        let e1' = substFreeVar x y e1
+        mkAST ( match node.Expr with
+                | EGt _ -> EGt (e0', e1')
+                | EEq _ -> EEq (e0', e1')
+                | ESub _ -> ESub (e0', e1')
+                | EMul _ -> EMul (e0', e1')
+                | EAdd _ -> EAdd (e0', e1')
+                | EAp _ -> EAp (e0', e1')
+              )
+    | ETypeCast (e0, typ) ->
+        mkAST (ETypeCast (substFreeVar x y e0, typ))
+    | EIf (e0, e1, e2) ->
+        mkAST (EIf (substFreeVar x y e0, substFreeVar x y e1, substFreeVar x y e2))
+    | EFunc ((argName,_), body) when argName = x ->
+        node
+    | EFunc ((name,typ), body) ->  // here name <> x
+        let yFreeVars = freeVarsAST (mkAST y)
+        if List.exists (fun (ASTNode (_, EVar n)) -> n = name) yFreeVars then
+            let z = newVarName ()
+            let newBody = substFreeVar name (EVar z) body
+            mkAST (EFunc ((z,typ), substFreeVar x y newBody))
+        else
+            mkAST (EFunc ((name,typ), substFreeVar x y body))
+    | ELet (arg, bind, body) ->
+        mkAST (ELet (arg, substFreeVar x y bind, substFreeVar x y body))
+    | ELetRec (arg, bind, body) ->
+        mkAST (ELetRec (arg, substFreeVar x y bind, substFreeVar x y body))
+    | ERecord es ->
+        let es' = List.map (fun (name, term) -> (name, substFreeVar x y term)) es
+        mkAST (ERecord es')
+    | ESelect (e0, e1) ->
+        mkAST (ESelect ((substFreeVar x y e0), e1))
+    | EFailWith _ ->
+        node
+    | _ ->
+        failwithf "substFreeVar not implemented for %A" node.Expr
+
+let rec betaRedexStep (node:ASTNode) : ASTNode =
+    match node.Expr with
+    | ELetRec (x, bind, body) ->
+        mkAST (ELetRec (x, betaRedexStep bind, betaRedexStep body))
+    | ELet (x, bind, body) ->
+        substFreeVar x bind.Expr body
+    | EAp (e0, arg) ->
+        match e0.Expr with
+        | EFunc ((x,_), body) ->
+            substFreeVar x arg.Expr body
+        | term -> // EAp (EAp (...), arg)
+            let node' = betaRedexStep e0
+            mkAST (EAp (node', arg))
+    | EAdd (e0, e1)
+    | EMul (e0, e1)
+    | ESub (e0, e1)
+    | EEq (e0, e1)
+    | EGt (e0, e1) ->
+        let e0' = betaRedexStep e0
+        let e1' = betaRedexStep e1
+        match node.Expr with
+        | EAdd _ -> mkAST (EAdd (e0', e1'))
+        | ESub _ -> mkAST (ESub (e0', e1'))
+        | EMul _ -> mkAST (EMul (e0', e1'))
+        | EGt _ -> mkAST (EGt (e0', e1'))
+        | EEq _ -> mkAST (EEq (e0', e1'))
+    | EIf (e0, e1, e2) ->
+        let e0' = betaRedexStep e0
+        let e1' = betaRedexStep e1
+        let e2' = betaRedexStep e2
+        mkAST (EIf (e0', e1', e2'))
+    | EVar _
+    | EFunc _
+    | EBool _
+    | ENull
+    | EFailWith _
+    | ENum _ ->
+        node
+    | ERecord vs ->  // record instance: [(name,expr)]
+        let vs' =
+            vs
+            |> List.map ( fun (n, e) -> (n, betaRedexStep e) )
+        mkAST (ERecord vs')
+    | ESelect (ASTNode (_, ERecord vs), ASTNode (_, EVar n)) ->
+        Map.ofList vs
+        |> Map.tryFind n
+        |> function
+            | None ->
+                failwithf "field %A not found in the record %A" n (node.toSExpr())
+            | Some v ->
+                mkAST v.Expr
+    | ESelect (e0, e1) as e ->
+        let e0' = betaRedexStep e0
+        // TODO: e1 has to be EVar
+        mkAST (ESelect (e0', e1))
+    | _ ->
+        failwithf "Beta Redex for expr %A not defined" node.Expr
+
+let rec betaRedexFullDebug node debug =
+    let node' = betaRedexStep node
+    if node'.toSExpr () <> node.toSExpr () then
+        if debug then
+            printfn "*** %s" ((node'.toSExpr ()).ToString())
+        betaRedexFullDebug node' debug
+    else node
+
+// Do redexes until progress stops. We assume that fixpoints
+// do not get expanded.
+let rec betaRedexFull node =
+    betaRedexFullDebug node false
+
+let rec arithSimplRedex node =
+    let arithSimpl (node : ASTNode) =
+        match (node.toSExpr ()) with
+        | SAdd (SNum x, SNum y) ->
+            mkAST (ENum (x + y))
+        | SSub (SNum x, SNum y) ->
+            mkAST (ENum (x - y))
+        | SMul (SNum x, SNum y) ->
+            mkAST (ENum (x * y))
+        | SGt (SNum x, SNum y) ->
+            mkAST (EBool (x > y))
+        | SEq (SNum x, SNum y) ->
+            mkAST (EBool (x = y))
+        | SEq (SBool x, SBool y) ->
+            mkAST (EBool (x = y))
+        | _ ->
+            node
+    in astReducer node arithSimpl
+
+
+// Here we substitute 'false' letrecs (with no recursion in them),
+// for ordinary let expressions; this step has to be done before
+// type inference.
+let rec letrecRedex node =
+    let letrecRedexStep (node:ASTNode) =
+        match node.Expr with
+        | ELetRec (name, bind, body) ->
+            if not (List.exists (fun (ASTNode (_, EVar n)) -> n = name) (freeVarsAST bind)) then
+                mkAST (ELet (name, bind, body))
+            else node
+        | _ ->
+            node
+    in astReducer node letrecRedexStep
+
+let rec insertEval (ast:ASTNode) (env:TypeEnv) (ty:NodeTypeMap) : ASTNode =
+    let rec insertEvalInner (node:ASTNode) : ASTNode =
+        match node.Expr with
+        | EAp (e1, e2) ->
+            let t =
+                match (Map.tryFind node.Id ty) with
+                | Some v -> v
+                | None ->
+                    // let (_, t, _) = LHTypeInfer.ti env node ty true
+                    // t
+                    failwithf "failed to find type for node %A, expression: %s"
+                               node.Id
+                               ((ast.toSExpr ()).ToString())
+            match t.baseType with
+            | LHType.Function _
+            | LHType.TVar _ ->
+                node
+            | _ ->
+                mkAST (EEval node)
+        | _ ->
+            node
+    in astReducer ast insertEvalInner
+
+let makeReductions (ast:ASTNode) : ASTNode =
+    ast
+    |> letrecRedex
+    |> etaRedex
+    //|> (fun n -> betaRedexFullDebug n debug)
+    |> arithSimplRedex
+
+let compileModule modName decls withInit debug : string =
+    if debug then
+        printfn "Compiling actor %A" modName ;
+    let types = getTypesDeclarationsRaw decls
+    let undefTypesNames = getPartiallyDefinedTypes types
+    let undefTypesNamesList =
+        undefTypesNames
+        |> List.map (fun ((n, _), _) -> n)
+    let defTypes =
+        types
+        |> List.filter (fun (n, t) -> not (List.contains n undefTypesNamesList))
+    let completeTypes = patchPartTypes undefTypesNames defTypes
+    if debug then
+        printfn "Partially defined types:\n%A" undefTypesNames
+        printfn "Fully defined types:\n%A" defTypes
+        printfn "Completed types:\n%A\n\n" completeTypes
+    let typesFull = defTypes @ completeTypes
+    let letBnds = getLetDeclarationsRaw typesFull decls
+    let letBndsUpd = patchLetBindingsFuncTypes letBnds typesFull
+    if debug then
+        printfn "Let Bindings after types patched:\n%A"
+                 (letBndsUpd |> List.map (fun (n, args, isrec, body) ->
+                                 (n, args, isrec, body.toSExpr ())))
+    // TODO!!:
+    // Handlers would need to be converted into 'receive' cases in
+    // the main function. As for now, they are completely ignored.
+    // let handlerDefs = getHandlerDeclsRaw types2 decls
+    let finalExpr =
+        if withInit then prepareAstWithInitFunction letBndsUpd typesFull
+        else prepareAstMain letBndsUpd typesFull
+    let ast1 = makeReductions finalExpr
+    let typeEnv = LHTypeInfer.TypeEnv.ofProgramTypes typesFull
+    let (ty, (oldMap, newMap)) =
+        LHTypeInfer.typeInferenceDebug
+          typeEnv
+          ast1
+          (Map [])
+          debug
+    if debug then
+        printfn "Inserting Eval nodes..."
+    // We now need to insert EEval nodes in places where
+    // continuations are fully saturated and ready to be
+    // evaluated into a value (not a partial function).
+    let astWithEval = insertEval ast1 typeEnv newMap
+    if (debug) then
+        printfn "Final S-expression:\n%A" (astWithEval.toSExpr())
+    LHMachine.compileWithInitialTypesDebug astWithEval typesFull newMap debug
 
 // The function compiles Lighthouse source code
 // into the FIFT source code.
@@ -164,37 +550,7 @@ let compile (source:string) (withInit:bool) (debug:bool) : string =
     let res = parse prog
     match res with
     | Some (Module (modName, decls)) ->
-        if debug then
-            printfn "Compiling actor %A" modName ;
-        let types = getTypesDeclarationsRaw decls
-        let undefTypesNames = getPartiallyDefinedTypes types
-        let undefTypesNamesList =
-            undefTypesNames
-            |> List.map (fun ((n, _), _) -> n)
-        let defTypes =
-            types
-            |> List.filter (fun (n, t) -> not (List.contains n undefTypesNamesList))
-        let completeTypes = patchPartTypes undefTypesNames defTypes
-        if debug then
-            printfn "Partially defined types:\n%A" undefTypesNames
-            printfn "Fully defined types:\n%A" defTypes
-            printfn "Completed types:\n%A\n\n" completeTypes
-        let types2 = defTypes @ completeTypes
-        let letBnds = getLetDeclarationsRaw types2 decls
-        let letBndsUpd = patchLetBindingsFuncTypes letBnds types2
-        if debug then
-            printfn "Let Bindings after types patched:\n%A"
-              (letBndsUpd |> List.map (fun (n, args, isrec, body) ->
-                                       (n, args, isrec, body.toSExpr ())))
-        // TODO!!:
-        // Handlers would need to be converted into 'receive' cases in
-        // the main function. As for now, they are completely ignored.
-        // let handlerDefs = getHandlerDeclsRaw types2 decls
-
-        let finalExpr =
-            if withInit then prepareAstWithInitFunction letBndsUpd types2
-            else prepareAstMain letBndsUpd types2
-        LHMachine.compileWithInitialTypesDebug finalExpr types2 (Map []) debug
+        compileModule modName decls withInit debug
     | _ ->
         failwith "Actor not found"
 

@@ -27,10 +27,6 @@ let execAndCheckPrint (expr:ASTNode) expected ifPrint =
 let execAndCheck g expected =
     execAndCheckPrint g expected false
 
-let getLetAst (m:Module) (n:int) =
-    m.Decls.[n].letBinding
-    |> (function | (_, _, _, c) -> c)
-
 [<Test>]
 let testTrivial () =
     let code = compile (ASTNode (ASTNode.newId (), ENum 0)) []
@@ -127,93 +123,3 @@ let testCurry0 () =
                          apply_inc 2 ;;"
     let resAst = getLetAst res.Value 0
     execAndCheckPrint resAst "3" false
-
-[<Test>]
-let testBetaRedex0 () =
-    let sexpr = SLet ("x", SNum 5, SAdd (SVar "x", SNum 10))
-    let res = (betaRedexStep (toAST sexpr)).toSExpr ()
-    let expected = SAdd (SNum 5, SNum 10)
-    Assert.AreEqual (expected, res)
-
-[<Test>]
-let testBetaRedex1 () =
-    let sexpr = SLet ("x", SNum 5, SLet ("y", SNum 10, SAdd (SVar "x", SVar "y")))
-    let res = (betaRedexStep (toAST sexpr)).toSExpr ()
-    let expected = SLet ("y", SNum 10, SAdd (SNum 5, SVar "y"))
-    Assert.AreEqual (expected, res)
-
-[<Test>]
-let testBetaRedex2 () =
-    let sexpr = SLet ("x", SNum 5, SLet ("y", SNum 10, SAdd (SVar "x", SVar "y")))
-    let res = (betaRedexStep (betaRedexStep (toAST sexpr))).toSExpr ()
-    let expected = SAdd (SNum 5, SNum 10)
-    Assert.AreEqual (expected, res)
-
-[<Test>]
-let testBetaRedex3 () =
-    // let apply = \f.\x.f x in (apply plus1)
-      // --> (\f.\x.f x) plus1
-    let sexpr = SLet ("apply", SFunc (("f",None), SFunc (("x",None), SAp (SVar "f", SVar "x"))),
-                      SAp (SVar "apply", SVar "plus1"))
-    let res = (betaRedexStep (toAST sexpr)).toSExpr ()
-    let expected = SAp (SFunc (("f",None), SFunc (("x",None), SAp (SVar "f", SVar "x"))), SVar "plus1")
-    Assert.AreEqual (expected, res)
-
-[<Test>]
-let testBetaRedex4 () =
-    // let apply = \f.\x.f x in (apply plus1)
-      // --> (\f.\x.f x) plus1
-      // --> \x plus1 x
-    let sexpr = SLet ("apply", SFunc (("f",None), SFunc (("x",None), SAp (SVar "f", SVar "x"))),
-                      SAp (SVar "apply", SVar "plus1"))
-    let res = (betaRedexStep (betaRedexStep (toAST sexpr))).toSExpr ()
-    let expected = SFunc (("x",None), SAp (SVar "plus1", SVar "x"))
-    Assert.AreEqual (expected, res)
-
-[<Test>]
-let testBetaRedex5 () =
-    // let apply = \f.\x.f x in (apply plus1 5)
-      // --> ((\f.\x.f x) plus1) 5
-      // --> (\x plus1 x) 5
-      // --> plus1 5
-    let sexpr = SLet ("apply", SFunc (("f", None), SFunc (("x", None), SAp (SVar "f", SVar "x"))),
-                      SAp (SAp (SVar "apply", SVar "plus1"), SNum 5))
-    let res = (betaRedexStep (betaRedexStep (betaRedexStep (toAST sexpr)))).toSExpr ()
-    let expected = SAp (SVar "plus1", SNum 5)
-    Assert.AreEqual (expected, res)
-
-[<Test>]
-let testBetaRedex6 () =
-    // (\y .(\x . y + 1)) (x + 1) 1
-    let sexpr =  SAp (SAp (SFunc (("y", None), SFunc (("x", None), SAdd (SVar "y", SNum 1))),
-                           SAdd (SVar "x", SNum 1)),
-                      SNum 1)
-    let res = (betaRedexStep (toAST sexpr)).toSExpr ()
-    let expected = SAp (SFunc (("z0", None), SAdd (SAdd (SVar "x", SNum 1), SNum 1)), SNum 1)
-    Assert.AreEqual (expected, res)
-
-[<Test>]
-let testBetaRedex7 () =
-    // (\x . (\x . x + 1) (x + 1) ) 1
-    let sexpr = SAp (SFunc ( ("x", None),
-                       SAp (SFunc ( ("x", None), SAdd (SVar "x", SNum 1)),
-                            SAdd (SVar "x", SNum 1))),
-                     SNum 1)
-    let res = (betaRedexStep (toAST sexpr)).toSExpr ()
-    let expected = SAp (SFunc (("x", None), SAdd (SVar "x", SNum 1)), SAdd (SNum 1, SNum 1))
-    Assert.AreEqual (expected, res)
-
-
-[<Test>]
-let testCurry1 () =
-    let res = parse "contract test
-                     let main =
-                       let apply func x = (func (x + 1)) in
-                       let inc x = x + 1 in
-                       let apply_inc = apply inc in
-                       (apply_inc 1) ;;"
-    let resAst = getLetAst res.Value 0
-    let res = LHMachine.betaRedexFullDebug resAst false
-    let expected = SAdd (SAdd (SNum 1, SNum 1), SNum 1)
-    Assert.AreEqual (expected, res.toSExpr ())
-    execAndCheckPrint res "3" false

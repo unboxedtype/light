@@ -61,9 +61,7 @@ let actorInitCode =
         actorStateWrite actState'
    ;;
 
-   let actorInit () =
-       let actorArgs =
-           assembly \" 5 TUPLE \" :> int
-       in actorInitPost actorArgs
+   let actorInit =
+       actorInitPost actorArgs
    ;;
 "
