@@ -265,7 +265,6 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
         let st2 = unify t2 (Int 256)
         let s' = Subst.compose (Subst.compose s1 s2) (Subst.compose st1 st2)
         let tme = Map.add node.Id t2 tm''
-        // printfn "%A : s' = %A" exp.Name  s'
         if debug then
             printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id (Int 256)
         (s', Int 256, tme)
@@ -278,7 +277,6 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
         let env2 = mapUnion env1 (mapSingleton name (Scheme([], tv) ))
         let (s', t1, tm') = ti env2 e tm debug
         let tm'' = Map.add node.Id t1 tm'
-        // printfn "%A : s' = %A" exp.Name  s'
         let typ = Function (Typ.apply s' tv, t1)
         if debug then
             printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id typ
@@ -289,7 +287,6 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
         let tv = newTyVar "a"
         let s3 = unify (Typ.apply s2 t1) (Function (t2, tv))
         let s' = Subst.compose s3 (Subst.compose s2 s1)
-        // printfn "%A : s' = %A" exp.Name  s'
         let t' = Typ.apply s3 tv
         let tme = Map.add node.Id t' tm''
         if debug then
@@ -310,7 +307,6 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
                                  (Subst.compose
                                    (Subst.compose s1 s2)
                                    (Subst.compose s2' s3')))
-        // printfn "%A : s' = %A" exp.Name  s'
         let tm4 = Map.add node.Id t' tm3
         let t'' = Typ.apply s' t'
         if debug then
@@ -323,7 +319,6 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
         let env2  =  Map.add x scheme env1
         let s2, t2, tm2 = ti (TypeEnv.apply s1 env2 ) e2 tm1 debug
         let s' = Subst.compose s2 s1
-        // printfn "%A : s' = %A" exp.Name  s'
         let tm3 = Map.add node.Id t2 tm2
         if debug then
             printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id t2
@@ -333,7 +328,6 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
         let node2 = mkAST (EFix node1)
         let node3 = mkAST (ELet (x, node2, e2))
         let (s', t', tm1) = ti env node3 tm debug
-        // printfn "%A : s' = %A" exp.Name  s'
         let tm2 =
             tm1
             |> Map.add node3.Id t'
@@ -343,13 +337,11 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
         (s', t', tm2)
     | EFix e ->
         let (s', t, tm1) = ti env e tm debug
-        // printfn "%A : t = %A, s' = %A, env = %A" exp.Name t s' env
         let t' =
           match (Typ.apply s' t) with
           | Function (t1, t2) when t1 = t2 -> t1
           | x ->
               failwithf "Unexpected type for a fix point argument: %A" t
-        // printfn "%A : s' = %A" exp.Name  s'
         let tm2 = Map.add node.Id t' tm1
         if debug then
             printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id t'
