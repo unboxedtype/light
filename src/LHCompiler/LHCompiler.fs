@@ -198,6 +198,8 @@ let rec astReducerDebug debug (ast:ASTNode) red =
     | EGt (e0, e1)
     | ELt (e0, e1)
     | EEq (e0, e1)
+    | EGtEq (e0, e1)
+    | ELtEq (e0, e1)
     | ESelect (e0, e1) ->
         let e0' = astReducerDebug debug e0 red
         let e1' = astReducerDebug debug e1 red
@@ -209,6 +211,8 @@ let rec astReducerDebug debug (ast:ASTNode) red =
         | EGt _ -> mkAST (EGt (e0', e1'))
         | ELt _ -> mkAST (ELt (e0', e1'))
         | EEq _ -> mkAST (EEq (e0', e1'))
+        | EGtEq _ -> mkAST (EGtEq (e0', e1'))
+        | ELtEq _ -> mkAST (ELtEq (e0', e1'))
         | ESelect _ -> mkAST (ESelect (e0', e1'))
     | ERecord es ->
         es
@@ -272,6 +276,8 @@ let rec freeVarsAST (ast:ASTNode) : ASTNode list =
     | EAp (e1, e2)
     | EGt (e1, e2)
     | ELt (e1, e2)
+    | EGtEq (e1, e2)
+    | ELtEq (e1, e2)
     | EEq (e1, e2)
     | EAdd (e1, e2)
     | ESub (e1, e2)
@@ -313,6 +319,8 @@ let rec substFreeVar (x:string) (y:Expr) (node:ASTNode) : ASTNode =
         node
     | EGt (e0, e1)
     | ELt (e0, e1)
+    | EGtEq (e0, e1)
+    | ELtEq (e0, e1)
     | ESub (e0, e1)
     | EMul (e0, e1)
     | EAdd (e0, e1)
@@ -323,6 +331,9 @@ let rec substFreeVar (x:string) (y:Expr) (node:ASTNode) : ASTNode =
         mkAST ( match node.Expr with
                 | EGt _ -> EGt (e0', e1')
                 | EEq _ -> EEq (e0', e1')
+                | ELt _ -> ELt (e0', e1')
+                | EGtEq _ -> EGtEq (e0', e1')
+                | ELtEq _ -> ELtEq (e0', e1')
                 | ESub _ -> ESub (e0', e1')
                 | EMul _ -> EMul (e0', e1')
                 | EAdd _ -> EAdd (e0', e1')
@@ -378,7 +389,9 @@ let rec betaRedexStep (node:ASTNode) : ASTNode =
     | ESub (e0, e1)
     | EEq (e0, e1)
     | ELt (e0, e1)
-    | EGt (e0, e1) ->
+    | EGt (e0, e1)
+    | EGtEq (e0, e1)
+    | ELtEq (e0, e1) ->
         let e0' = betaRedexStep e0
         let e1' = betaRedexStep e1
         match node.Expr with
@@ -388,6 +401,8 @@ let rec betaRedexStep (node:ASTNode) : ASTNode =
         | EGt _ -> mkAST (EGt (e0', e1'))
         | ELt _ -> mkAST (ELt (e0', e1'))
         | EEq _ -> mkAST (EEq (e0', e1'))
+        | EGtEq _ -> mkAST (EGtEq (e0', e1'))
+        | ELtEq _ -> mkAST (ELtEq (e0', e1'))
     | EIf (e0, e1, e2) ->
         let e0' = betaRedexStep e0
         let e1' = betaRedexStep e1

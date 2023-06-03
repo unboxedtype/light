@@ -41,6 +41,8 @@ type Instruction =
     | Equal
     | Greater
     | Less
+    | GreaterEq
+    | LessEq
     | IfElse of t:LHCode * f:LHCode
     | Pack of tag:int * n:int
     | Record of n:int    // a1 .. an -> { a1, ..., an }
@@ -135,30 +137,25 @@ let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) evalNo
         (compileWithTypes e0 env ty evalNodes) @
         [IfElse (compileWithTypes t env ty evalNodes,
                  compileWithTypes f env ty evalNodes)]
-    | EAdd (e0, e1) ->
+    | EAdd (e0, e1)
+    | ESub (e0, e1)
+    | EMul (e0, e1)
+    | EEq (e0, e1)
+    | EGt (e0, e1)
+    | ELt (e0, e1)
+    | EGtEq (e0, e1)
+    | ELtEq (e0, e1) ->
         (compileWithTypes e0 env ty evalNodes) @
         (compileWithTypes e1 (argOffset 1 env) ty evalNodes) @
-        [Add]
-    | ESub (e0, e1) ->
-        (compileWithTypes e0 env ty evalNodes) @
-        (compileWithTypes e1 (argOffset 1 env) ty evalNodes) @
-        [Sub]
-    | EMul (e0, e1) ->
-        (compileWithTypes e0 env ty evalNodes) @
-        (compileWithTypes e1 (argOffset 1 env) ty evalNodes) @
-        [Mul]
-    | EEq (e0, e1) ->
-        (compileWithTypes e0 env ty evalNodes) @
-        (compileWithTypes e1 (argOffset 1 env) ty evalNodes) @
-        [Equal]
-    | EGt (e0, e1) ->
-        (compileWithTypes e0 env ty evalNodes) @
-        (compileWithTypes e1 (argOffset 1 env) ty evalNodes) @
-        [Greater]
-    | ELt (e0, e1) ->
-        (compileWithTypes e0 env ty evalNodes) @
-        (compileWithTypes e1 (argOffset 1 env) ty evalNodes) @
-        [Less]
+        match ast.Expr with
+        | EAdd _ -> [Add]
+        | ESub _ -> [Sub]
+        | EMul _ -> [Mul]
+        | EEq _ -> [Equal]
+        | EGt _ -> [Greater]
+        | ELt _ -> [Less]
+        | EGtEq _ -> [GreaterEq]
+        | ELtEq _ -> [LessEq]
     | EPack (tag, arity, args) ->
         List.concat
           (List.map (fun (i, e) ->
@@ -290,6 +287,8 @@ let rec instrToTVM (i:Instruction) : string =
     | Equal -> "EQUAL"
     | Greater -> "GREATER"
     | Less -> "LESS"
+    | GreaterEq -> "GEQ"
+    | LessEq -> "LEQ"
     | IfElse (t, f) ->
         "<{ " + (compileToTVM t) + " }> PUSHCONT " +
         "<{ " + (compileToTVM f) + " }> PUSHCONT IFELSE"

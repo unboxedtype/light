@@ -49,8 +49,10 @@ rule read =
   | '='      { EQ }
   | '+'      { PLUS }
   | '-'      { MINUS }
-  | '>'      { GT }
+  | "<="     { LTEQ }
+  | ">="     { GTEQ }
   | '<'      { LT }
+  | '>'      { GT }
   | '_'      { UNDERSCORE }
   | '"'      { read_string "" false lexbuf }
   | "assembly" { ASM }

@@ -378,3 +378,27 @@ let testCmpBool2 () =
                 let main = true = true ;;"
 
     execAndCheck prog "-1"
+
+[<Test>]
+let testCmpGtEq () =
+    let prog1 = "contract test
+                let main = 5 >= 5 ;;"
+    execAndCheck prog1 "-1"
+    let prog2 = "contract test
+                let main = 4 >= 5 ;;"
+    execAndCheck prog2 "0"
+    let prog3 = "contract test
+                let main = 6 >= 5 ;;"
+    execAndCheck prog3 "-1"
+
+[<Test>]
+let testCmpLtEq () =
+    let prog1 = "contract test
+                let main = 5 <= 5 ;;"
+    execAndCheck prog1 "-1"
+    let prog2 = "contract test
+                let main = 4 <= 5 ;;"
+    execAndCheck prog2 "-1"
+    let prog3 = "contract test
+                let main = 6 <= 5 ;;"
+    execAndCheck prog3 "0"

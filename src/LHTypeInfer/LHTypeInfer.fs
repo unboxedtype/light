@@ -356,6 +356,8 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
         (s', t', tm2)
     | EGt (e1, e2)
     | ELt (e1, e2)
+    | EGtEq (e1, e2)
+    | ELtEq (e1, e2)
     | EEq (e1, e2) ->
         let s1, t1, tm1 = ti env e1 tm debug
         let s2, t2, tm2 = ti env e2 tm1 debug
