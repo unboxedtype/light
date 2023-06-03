@@ -147,14 +147,7 @@ let prepareAstWithInitFunction letBnds types  =
     let (lastLetName, _, _, _) = List.last letBnds
     if (lastLetName <> "actorInit") then
         failwith "actorInit let block shall be the last in the series of let-definitions"
-    let expr1 = expandLet "actorInit" letBnds
-    // We also need to pack 5 arguments that came from VM on the stack.
-    // We have to do it at the very beginning of SmC execution.
-    // let actorArgs =
-    //     assembly \" 5 TUPLE \" :> ActorInitParams
-    let  actArgsTyp = UserType ("ActorInitParams", None)
-    let  actArgsBody = mkAST (ETypeCast (EAsm "5 TUPLE" |> mkAST, actArgsTyp))
-    mkAST (ELet ("actorArgs", actArgsBody, expr1))
+    expandLet "actorInit" letBnds
 
 // Sometimes we may want to compile only the main function, without ActorInit code.
 // For example, for tests. This function compiles a set of let bindings with
@@ -167,7 +160,7 @@ let prepareAstMain letBnds types =
         failwith "main not found"
     expandLet "main" letBnds
 
-let rec astReducer (ast:ASTNode) (red: ASTNode -> ASTNode) : ASTNode =
+let rec astReducerDebug debug (ast:ASTNode) red =
     match ast.Expr with
     // leaf nodes
     | EVar _
@@ -179,24 +172,24 @@ let rec astReducer (ast:ASTNode) (red: ASTNode -> ASTNode) : ASTNode =
     | ENum _ ->
         ast
     | ETypeCast (e0, typ) ->
-        let e0' = astReducer e0 red
+        let e0' = astReducerDebug debug e0 red
         mkAST (ETypeCast (e0', typ))
     | EFunc (arg, body) ->
-        let body' = astReducer body red
+        let body' = astReducerDebug debug body red
         mkAST (EFunc (arg, body'))
     | ELet (name, bind, body)
     | ELetRec (name, bind, body) ->
-        let bind' = astReducer bind red
-        let body' = astReducer body red
+        let bind' = astReducerDebug debug bind red
+        let body' = astReducerDebug debug body red
         match ast.Expr with
         | ELet _ ->
             mkAST (ELet (name, bind', body'))
         | ELetRec _ ->
             mkAST (ELetRec (name, bind', body'))
     | EIf (e0, e1, e2) ->
-        let e0' = astReducer e0 red
-        let e1' = astReducer e1 red
-        let e2' = astReducer e2 red
+        let e0' = astReducerDebug debug e0 red
+        let e1' = astReducerDebug debug e1 red
+        let e2' = astReducerDebug debug e2 red
         mkAST (EIf (e0', e1', e2'))
     | EAp (e0, e1)
     | EAdd (e0, e1)
@@ -205,8 +198,8 @@ let rec astReducer (ast:ASTNode) (red: ASTNode -> ASTNode) : ASTNode =
     | EGt (e0, e1)
     | EEq (e0, e1)
     | ESelect (e0, e1) ->
-        let e0' = astReducer e0 red
-        let e1' = astReducer e1 red
+        let e0' = astReducerDebug debug e0 red
+        let e1' = astReducerDebug debug e1 red
         match ast.Expr with
         | EAp _ -> mkAST (EAp (e0', e1'))
         | EAdd _ -> mkAST (EAdd (e0', e1'))
@@ -217,14 +210,22 @@ let rec astReducer (ast:ASTNode) (red: ASTNode -> ASTNode) : ASTNode =
         | ESelect _ -> mkAST (ESelect (e0', e1'))
     | ERecord es ->
         es
-        |> List.map (fun (name, e) -> (name, astReducer e red))
+        |> List.map (fun (name, e) -> (name, astReducerDebug debug e red))
         |> ERecord
         |> mkAST
     | _ ->
         failwithf "unrecognised node %A" ast.Expr
-    |> (fun ast' -> if ast'.toSExpr () = ast.toSExpr () then ast else ast')
+    |> (fun ast' ->
+        if ast'.toSExpr () = ast.toSExpr () then ast
+        else
+           if debug then
+             printfn "*AR* %s" ((ast'.toSExpr ()).ToString 1000)
+           ast'
+       )
     |> red
 
+let astReducer (ast:ASTNode) (red: ASTNode -> ASTNode) : ASTNode =
+    astReducerDebug false ast red
 // eta reduction step:
 // (\x -> f x) ==> f
 let rec etaStep (node:ASTNode) : ASTNode =
@@ -382,7 +383,9 @@ let rec betaRedexStep (node:ASTNode) : ASTNode =
     | EFunc _
     | EBool _
     | ENull
+    | EStr _
     | EFailWith _
+    | EAsm _
     | ENum _ ->
         node
     | ERecord vs ->  // record instance: [(name,expr)]
@@ -394,31 +397,34 @@ let rec betaRedexStep (node:ASTNode) : ASTNode =
         Map.ofList vs
         |> Map.tryFind n
         |> function
-            | None ->
-                failwithf "field %A not found in the record %A" n (node.toSExpr())
-            | Some v ->
-                mkAST v.Expr
+           | None ->
+               failwithf "field %A not found in the record %A" n (node.toSExpr())
+           | Some v ->
+               mkAST v.Expr
     | ESelect (e0, e1) as e ->
         let e0' = betaRedexStep e0
         // TODO: e1 has to be EVar
         mkAST (ESelect (e0', e1))
+    | ETypeCast (e0, typ) ->
+        let e0' = betaRedexStep e0
+        mkAST (ETypeCast (e0', typ))
     | _ ->
         failwithf "Beta Redex for expr %A not defined" node.Expr
 
-let rec betaRedexFullDebug node debug =
+let rec betaRedexFullDebug debug node =
     let node' = betaRedexStep node
     if node'.toSExpr () <> node.toSExpr () then
         if debug then
-            printfn "*** %s" ((node'.toSExpr ()).ToString())
-        betaRedexFullDebug node' debug
+            printfn "*BR* %s" ((node'.toSExpr ()).ToString 1000)
+        betaRedexFullDebug debug node'
     else node
 
 // Do redexes until progress stops. We assume that fixpoints
 // do not get expanded.
 let rec betaRedexFull node =
-    betaRedexFullDebug node false
+    betaRedexFullDebug false node
 
-let rec arithSimplRedex node =
+let rec arithSimplRedexDebug debug node =
     let arithSimpl (node : ASTNode) =
         match (node.toSExpr ()) with
         | SAdd (SNum x, SNum y) ->
@@ -433,9 +439,12 @@ let rec arithSimplRedex node =
             mkAST (EBool (x = y))
         | SEq (SBool x, SBool y) ->
             mkAST (EBool (x = y))
+        | SIf (SBool f, x, y) ->
+            let (ASTNode (_, EIf (_, tc, fc))) = node
+            if f then tc else fc
         | _ ->
             node
-    in astReducer node arithSimpl
+    in astReducerDebug debug node arithSimpl
 
 
 // Here we substitute 'false' letrecs (with no recursion in them),
@@ -465,7 +474,13 @@ let patchLetBindingsFuncTypes letBnds types =
     |> List.map ( fun (name, vars, isRec, body) ->
                   (name, vars, isRec, astReducer body patchLetBodyFuncType) )
 
+//====================================================
+// This mutable collection is used not to alter original
+// AST with extra nodes. This collection is altered in
+// insertEval function, and cleaned after compilation
+// completes in compileModule function.
 let mutable evalNodes : list<int> = []
+//====================================================
 
 let rec insertEval (ast:ASTNode) (env:TypeEnv) (ty:NodeTypeMap) : ASTNode =
     let rec insertEvalInner (node:ASTNode) : ASTNode =
@@ -495,8 +510,8 @@ let makeReductions (ast:ASTNode) : ASTNode =
     ast
     |> letrecRedex
     |> etaRedex
-    //|> (fun n -> betaRedexFullDebug n debug)
-    |> arithSimplRedex
+    |> betaRedexFullDebug true
+    |> arithSimplRedexDebug true
 
 let compileModule modName decls withInit debug : string =
     if debug then

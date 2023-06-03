@@ -223,16 +223,6 @@ let testTuple3 () =
     execAndCheckPrint prog false false "(null)"
 
 [<Test>]
-let testRecord5 () =
-    let prog = "contract Simple
-                type State = { bal:int }
-                let stateDefault = { bal = 0 } ;;
-                let func1 (x:State) = x.bal ;;
-                let main msgCell (st:State) =
-                    { bal = func1 st + 1000 } ;; "
-    execAndCheckPrint prog true true "[ 1000 ]"
-
-[<Test>]
 [<Timeout(1000)>]
 let testLet0() =
     let prog = "contract Simple
@@ -251,13 +241,13 @@ let testMkAdder () =
     let prog = "contract test
                  let main =
                    let make_adder x =
-                     let adder y = 1 + y in
+                     let adder y = x + y in
                      adder x
                    in make_adder 3 ;;"
-    execAndCheckPrint prog false false "4"
+    execAndCheckPrint prog false false "6"
 
 [<Test>]
-[<Ignore("bug")>]
+// [<Ignore("bug")>]
 let testCurry2 () =
     // This example is interesting. Without beta-reduction,
     // it will not work: function f is general, so in its
@@ -270,7 +260,7 @@ let testCurry2 () =
                        let sum x y = x + y in
                        let inc x = x + 1 in
                        f inc sum 10 20 ;;"
-    execAndCheckPrint prog false true "32"
+    execAndCheckPrint prog false false "32"
 
 [<Test>]
 let testFactorialParse () =
@@ -314,4 +304,31 @@ let testGlobals2 () =
                        let rec sum n m =
                            if (n > 0) then (n + ((sum (n - 1)) m)) else m
                        in ((sum (nArg 0)) (mArg 0)) ;;"
-    execAndCheckPrint prog false true "75"
+    execAndCheckPrint prog false false "75"
+
+[<Test>]
+let testRecord5 () =
+    let prog = "contract Simple
+                type State = { bal:int }
+                let main =
+                  let stateDefault = { bal = 0 } in
+                  let func1 (x:State) = x.bal in
+                  let main2 func11 stdef =
+                    let func2 f x = (f x) + 1000 in
+                    { bal = func2 func11 stdef + 1000 } in
+                  main2 func1 stateDefault ;;"
+    execAndCheckPrint prog false false "[ 2000 ]"
+
+[<Test>]
+let testInitRecord6 () =
+    let prog = "contract Simple
+                type State = { bal:int }
+                let actorArgs =
+                    assembly \"1000 INT 2000 INT NEWC ENDC DUP TRUE 5 TUPLE\" ;;
+                let stateDefault =
+                    { bal = 0 } ;;
+                let func1 (x:State) =
+                    x.bal ;;
+                let main msgCell (st:State) =
+                    { bal = func1 st + 1000 } ;; "
+    execAndCheckPrint prog true true "[ 1000 ]"

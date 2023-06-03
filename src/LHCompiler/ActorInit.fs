@@ -35,14 +35,16 @@ let actorInitCode =
      state: State
    }
 
-   let actorInitPost (initArgs:ActorInitParams) =
-     let msgReadSeqNo (msg:VMSlice) =
-         assembly \"CTOS 32 LDU DROP\" :> int in
-     let actorStateRead () =
+   let msgReadSeqNo (msg:VMSlice) =
+       assembly \"CTOS 32 LDU DROP\" :> int ;;
+   let actorStateRead () =
          { seqno = 1;
            deployed = false;
-           state = stateDefault } in
-     let actorStateWrite (st:ActorState) = () in
+           state = stateDefault } ;;
+
+   let actorStateWrite (st:ActorState) = () ;;
+
+   let actorInitPost (initArgs:ActorInitParams) =
      let actState = actorStateRead () in
      let msgSeqNo = msgReadSeqNo initArgs.msgBody in
      if msgSeqNo  = actState.seqno then
