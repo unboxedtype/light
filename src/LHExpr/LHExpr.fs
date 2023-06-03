@@ -43,6 +43,7 @@ type SExpr =
     | SUpdateRec of e0:SExpr * n:int * e1:SExpr
     | SAssign of e0:SExpr
     | SAsm of s:string
+    | STypeCast of e1:SExpr * typ:Type
     | SFailWith of n:int
     member this.ToString n =
         let s = sprintf "%A" this
@@ -80,6 +81,7 @@ type Expr =
     | EAssign of e0:ASTNode
     | EFailWith of n:int
     | EAsm of s:string
+    | ETypeCast of e0:ASTNode * typ:Type
     member this.Name =
         match this with
         | EFailWith _
@@ -87,7 +89,7 @@ type Expr =
         | EBool _
         | EAsm _
         | EStr _ ->
-            sprintf "%20A" this
+            sprintf "%A" this
         | ENull -> "ENull"
         | EFunc (arg, body) -> sprintf "EFunc (%A, ...) " arg
         | EVar n -> sprintf "%A" this
@@ -101,6 +103,7 @@ type Expr =
         | EGt (_, _) -> "EGt"
         | EEq (_, _) -> "EEq"
         | EFix _ -> "EFix"
+        | ETypeCast (_, _) -> sprintf "%A" this
         | _ -> failwithf "undefined term: %A" this
 // and CaseAlt<'T> = int * (Name list) * 'T   // case (tag:0) (vars: ["x","y"]) -> x + y
 and ASTNode =
@@ -135,6 +138,8 @@ and ASTNode =
         | ESelect (e0, e1) -> SSelect (e0.toSExpr(), e1.toSExpr())
         | ERecord es -> SRecord (List.map (fun (name, (e:ASTNode)) -> (name, e.toSExpr())) es)
         | EAsm s -> SAsm s
+        | ETypeCast (e0, typ) ->
+            STypeCast (e0.toSExpr(), typ)
         | _ -> failwithf "unsupported expr : %A" this.Expr
 
     static member newId () =
@@ -164,4 +169,5 @@ let rec toAST sexp : ASTNode =
     | SBool b -> mkAST (EBool b)
     | SNull -> mkAST ENull
     | SAsm s -> mkAST (EAsm s)
+    | STypeCast (e0, typ) -> mkAST (ETypeCast (toAST e0, typ))
     | _ -> failwithf "unexpected term: %A" sexp

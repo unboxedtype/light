@@ -29,7 +29,7 @@ let rec unfoldFunction argsTypes body =
 %token EQ GT PLUS MINUS SEMICOLON VBAR STAR COLON COMMA EOF
 %token LEFT_BRACE RIGHT_BRACE LPAREN RPAREN RARROW LARROW
 %token MATCH WITH UNDERSCORE DOT FAILWITH ASM
-
+%token TYPECAST
 %type <ParserModule.Module option> start
 
 %nonassoc LET IN ELSE RECURSIVE
@@ -219,6 +219,11 @@ basicExpr:
 expr:
   | basicExpr
   { $1 }
+
+  | expr TYPECAST basicExpr
+  {
+      let (ASTNode (_, EVar typeName)) = $3
+      mkAST (ETypeCast ($1, (LHTypes.mapType typeName).Value)) }  // it must have a type
 
   | expr GT expr
   { mkAST (EGt ($1, $3))  }

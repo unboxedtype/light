@@ -48,6 +48,7 @@ rule read =
   | ucaseIdentifier  { UIDENT (string (lexeme lexbuf)) }
   | lcaseIdentifier  { LIDENT (string (lexeme lexbuf)) }
   | identifier { IDENT (string (lexeme lexbuf)) }
+  | ":>"     { TYPECAST }
   | ";;"     { DSCOLON }
   | "->"     { RARROW  }  // function type
   | "<-"     { LARROW  }  // assignment operator
