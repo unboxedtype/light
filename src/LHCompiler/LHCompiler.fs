@@ -2,6 +2,9 @@
 
 module LHCompiler
 
+// Incomplete pattern matches on this expression.
+#nowarn "25"
+
 open System.IO
 open Parser
 open FSharp.Text.Lexing
@@ -177,32 +180,24 @@ let rec astReducer (ast:ASTNode) (red: ASTNode -> ASTNode) : ASTNode =
         ast
     | ETypeCast (e0, typ) ->
         let e0' = astReducer e0 red
-        if e0'.toSExpr () <> e0.toSExpr() then mkAST (ETypeCast (e0', typ))
-        else ast
+        mkAST (ETypeCast (e0', typ))
     | EFunc (arg, body) ->
         let body' = astReducer body red
-        if body'.toSExpr () <> body.toSExpr () then mkAST (EFunc (arg, body'))
-        else ast
+        mkAST (EFunc (arg, body'))
     | ELet (name, bind, body)
     | ELetRec (name, bind, body) ->
         let bind' = astReducer bind red
         let body' = astReducer body red
-        if bind'.toSExpr () <> bind.toSExpr () || (body'.toSExpr () <> body.toSExpr ()) then
-            match ast.Expr with
-            | ELet _ ->
-                mkAST (ELet (name, bind', body'))
-            | ELetRec _ ->
-                mkAST (ELetRec (name, bind', body'))
-        else ast
+        match ast.Expr with
+        | ELet _ ->
+            mkAST (ELet (name, bind', body'))
+        | ELetRec _ ->
+            mkAST (ELetRec (name, bind', body'))
     | EIf (e0, e1, e2) ->
         let e0' = astReducer e0 red
         let e1' = astReducer e1 red
         let e2' = astReducer e2 red
-        if e0'.toSExpr () <> e0.toSExpr () ||
-           e1'.toSExpr () <> e1.toSExpr () ||
-           e2'.toSExpr () <> e2.toSExpr () then
-              mkAST (EIf (e0', e1', e2'))
-        else ast
+        mkAST (EIf (e0', e1', e2'))
     | EAp (e0, e1)
     | EAdd (e0, e1)
     | ESub (e0, e1)
@@ -212,27 +207,22 @@ let rec astReducer (ast:ASTNode) (red: ASTNode -> ASTNode) : ASTNode =
     | ESelect (e0, e1) ->
         let e0' = astReducer e0 red
         let e1' = astReducer e1 red
-        if e0'.toSExpr () <> e0.toSExpr () ||
-           e1'.toSExpr () <> e1.toSExpr () then
-            match ast.Expr with
-            | EAp _ -> mkAST (EAp (e0', e1'))
-            | EAdd _ -> mkAST (EAdd (e0', e1'))
-            | ESub _ -> mkAST (ESub (e0', e1'))
-            | EMul _ -> mkAST (EMul (e0', e1'))
-            | EGt _ -> mkAST (EGt (e0', e1'))
-            | EEq _ -> mkAST (EEq (e0', e1'))
-            | ESelect _ -> mkAST (ESelect (e0', e1'))
-        else ast
+        match ast.Expr with
+        | EAp _ -> mkAST (EAp (e0', e1'))
+        | EAdd _ -> mkAST (EAdd (e0', e1'))
+        | ESub _ -> mkAST (ESub (e0', e1'))
+        | EMul _ -> mkAST (EMul (e0', e1'))
+        | EGt _ -> mkAST (EGt (e0', e1'))
+        | EEq _ -> mkAST (EEq (e0', e1'))
+        | ESelect _ -> mkAST (ESelect (e0', e1'))
     | ERecord es ->
-        let node' =
-          es
-          |> List.map (fun (name, e) -> (name, astReducer e red))
-          |> ERecord
-          |> mkAST
-        if node'.toSExpr () <> ast.toSExpr () then node'
-        else ast
+        es
+        |> List.map (fun (name, e) -> (name, astReducer e red))
+        |> ERecord
+        |> mkAST
     | _ ->
         failwithf "unrecognised node %A" ast.Expr
+    |> (fun ast' -> if ast'.toSExpr () = ast.toSExpr () then ast else ast')
     |> red
 
 // eta reduction step:
@@ -475,6 +465,8 @@ let patchLetBindingsFuncTypes letBnds types =
     |> List.map ( fun (name, vars, isRec, body) ->
                   (name, vars, isRec, astReducer body patchLetBodyFuncType) )
 
+let mutable evalNodes : list<int> = []
+
 let rec insertEval (ast:ASTNode) (env:TypeEnv) (ty:NodeTypeMap) : ASTNode =
     let rec insertEvalInner (node:ASTNode) : ASTNode =
         match node.Expr with
@@ -491,7 +483,10 @@ let rec insertEval (ast:ASTNode) (env:TypeEnv) (ty:NodeTypeMap) : ASTNode =
             | LHType.TVar _ ->
                 node
             | _ ->
-                mkAST (EEval node)
+                // mkAST (EEval node)
+                // yes, right. Side-effect, global variable.. gee
+                evalNodes <- node.Id :: evalNodes
+                node
         | _ ->
             node
     in astReducer ast insertEvalInner
@@ -548,11 +543,14 @@ let compileModule modName decls withInit debug : string =
     // We now need to insert EEval nodes in places where
     // continuations are fully saturated and ready to be
     // evaluated into a value (not a partial function).
-    let astWithEval = insertEval ast1 typeEnv newMap
+    insertEval ast1 typeEnv newMap |> ignore // this is done for side-effect only
     if (debug) then
-        printfn "Final S-expression:\n%A" (astWithEval.toSExpr())
-    LHMachine.compileWithInitialTypesDebug astWithEval typesFull newMap debug
-
+        printfn "Final S-expression:\n%A" (ast1.toSExpr())
+    LHMachine.compileWithInitialTypesDebug ast1 newMap evalNodes debug
+    |> (fun res ->
+            // Clean the eval nodes collection for the next time
+            evalNodes <- [] ;
+            res)
 // The function compiles Lighthouse source code
 // into the FIFT source code.
 // Arguments:

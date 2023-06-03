@@ -223,7 +223,6 @@ let testTuple3 () =
     execAndCheckPrint prog false false "(null)"
 
 [<Test>]
-[<Ignore("bug")>]
 let testRecord5 () =
     let prog = "contract Simple
                 type State = { bal:int }

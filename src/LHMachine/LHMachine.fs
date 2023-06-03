@@ -75,7 +75,7 @@ let compileArgs (defs:BoundVarDefs) (env:Environment) : Environment =
     (List.zip indexes names) @ (argOffset n env)
 
 // ty is collection of types defined in the actor code
-let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) : LHCode =
+let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) evalNodes : LHCode =
     match ast.Expr with
     | EVar v ->
         let r = List.tryPick (fun (n, v') ->
@@ -97,7 +97,7 @@ let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) : LHCo
             match l with
             | [] -> []
             | h :: t ->
-                (compileWithTypes h env' ty) @
+                (compileWithTypes h env' ty evalNodes) @
                 compileExprs t (argOffset 1 env')
         let es' = List.map snd es
         let n = List.length es' // now we need only values; field names are omitted.
@@ -109,54 +109,66 @@ let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) : LHCo
         // recursively descend one level down with one env index shifted.
         match body.Expr with
         | EFunc (_, _) ->
-            compileWithTypes body env' ty
+            compileWithTypes body env' ty evalNodes
         | _ ->
-            [Function (compileWithTypes body env' ty)]
+            [Function (compileWithTypes body env' ty evalNodes)]
     | ENull ->
         [Null]
     | EAp (e1, e2) ->
-        (compileWithTypes e2 env ty) @
-        (compileWithTypes e1 (argOffset 1 env) ty) @
-        [Apply]
+        (compileWithTypes e2 env ty evalNodes) @
+        (compileWithTypes e1 (argOffset 1 env) ty evalNodes) @
+        [Apply] @
+        (if (evalNodes |> List.contains ast.Id) then [Execute]
+         else [])
     | EFix f ->
-        (compileWithTypes f env ty) @
+        (compileWithTypes f env ty evalNodes) @
         [Fixpoint]
-    | EEval f ->
-        (compileWithTypes f env ty) @
-        [Execute]
+    // | EEval f ->
+    //    (compileWithTypes f env ty) @
+    //    [Execute]
     | EIf (e0, t, f) ->
-        (compileWithTypes e0 env ty) @ [IfElse (compileWithTypes t env ty, compileWithTypes f env ty)]
+        (compileWithTypes e0 env ty evalNodes) @
+        [IfElse (compileWithTypes t env ty evalNodes,
+                 compileWithTypes f env ty evalNodes)]
     | EAdd (e0, e1) ->
-        (compileWithTypes e0 env ty) @ (compileWithTypes e1 (argOffset 1 env) ty) @ [Add]
+        (compileWithTypes e0 env ty evalNodes) @
+        (compileWithTypes e1 (argOffset 1 env) ty evalNodes) @
+        [Add]
     | ESub (e0, e1) ->
-        (compileWithTypes e0 env ty) @ (compileWithTypes e1 (argOffset 1 env) ty) @ [Sub]
+        (compileWithTypes e0 env ty evalNodes) @
+        (compileWithTypes e1 (argOffset 1 env) ty evalNodes) @
+        [Sub]
     | EMul (e0, e1) ->
-        (compileWithTypes e0 env ty) @ (compileWithTypes e1 (argOffset 1 env) ty) @ [Mul]
+        (compileWithTypes e0 env ty evalNodes) @
+        (compileWithTypes e1 (argOffset 1 env) ty evalNodes) @
+        [Mul]
     | EEq (e0, e1) ->
-        (compileWithTypes e0 env ty) @ (compileWithTypes e1 (argOffset 1 env) ty) @ [Equal]
+        (compileWithTypes e0 env ty evalNodes) @
+        (compileWithTypes e1 (argOffset 1 env) ty evalNodes) @
+        [Equal]
     | EGt (e0, e1) ->
-        (compileWithTypes e0 env ty) @ (compileWithTypes e1 (argOffset 1 env) ty) @ [Greater]
+        (compileWithTypes e0 env ty evalNodes) @
+        (compileWithTypes e1 (argOffset 1 env) ty evalNodes) @
+        [Greater]
     | EPack (tag, arity, args) ->
         List.concat
-          (List.map (fun (i, e) -> compileWithTypes e (argOffset i env) ty)
+          (List.map (fun (i, e) ->
+                     compileWithTypes e (argOffset i env) ty evalNodes)
           (List.indexed args)) @
         [Pack (tag, arity)]
     | ECase (e, alts) ->
-        (compileWithTypes e env ty) @ [ Casejump (compileAlts alts env ty) ]
+        (compileWithTypes e env ty evalNodes) @ [ Casejump (compileAlts alts env ty evalNodes) ]
     | ELet (name, def, body) ->
-        compileLet [(name,def)] body env ty
+        compileLet [(name,def)] body env ty evalNodes
     | ELetRec (name, def, body) ->
         // compileLetRec [(name,def)] body env ty
         // let rec fact = \n -> n * fact (n-1)
         //  ---> let fact = fixpoint (\fact . \n . n * fact (n - 1))
         // fact 5 --> fixpoint (fact 5)
         let expr = mkAST (ELet (name, mkAST (EFix (mkAST (EFunc ((name, None), def)))), body))
-        compileWithTypes expr env ty
+        compileWithTypes expr env ty evalNodes
     | ESelect (e0, e1) ->
-        let (e0', isEval) =
-            match e0.Expr with
-            | EEval e -> (e, true)
-            | _ -> (e0, false)
+        let isEval = evalNodes |> List.contains ast.Id
         match e1.Expr with
         | EVar x ->
             // n = lookup x position in the record definition of e0
@@ -165,10 +177,10 @@ let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) : LHCo
             // to find out the index of the "x" field. For that, we need
             // to access type information of e0.
             let stype =
-               match (Map.tryFind e0'.Id ty) with
+               match (Map.tryFind e0.Id ty) with
                | Some v -> v
                | None ->
-                   failwithf "Can't find type for the node %A, expr:%A" e0'.Id ((e0'.toSExpr()).ToString())
+                   failwithf "Can't find type for the node %A, expr:%A" e0.Id ((e0.toSExpr()).ToString())
             let ptype =
                 match stype with
                 | UserType (n, Some ty') -> ty'
@@ -180,7 +192,7 @@ let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) : LHCo
                     |> List.indexed
                     |> List.find (fun (i,e) -> fst e = x)
                     |> fst
-                (compileWithTypes e0' env ty) @
+                (compileWithTypes e0 env ty evalNodes) @
                 (if isEval then [Execute] else []) @
                 [Select n]
             | _ ->
@@ -189,59 +201,59 @@ let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) : LHCo
             failwith "For the expression 'var.id', the 'id' is an explicit
                       record field name you want to access"
     | EUpdateRec (e, n, e1) ->
-        (compileWithTypes e env ty) @
-        (compileWithTypes e1 (argOffset 1 env) ty) @
+        (compileWithTypes e env ty evalNodes) @
+        (compileWithTypes e1 (argOffset 1 env) ty evalNodes) @
         [UpdateRec n]
     | EAsm s ->
         [Asm s]
     | ETypeCast (e, _) ->
-        compileWithTypes e env ty
+        compileWithTypes e env ty evalNodes
     | EFailWith n ->
         [FailWith n]
     | _ ->
         failwithf "not implemented : %A" (ast.toSExpr())
-and compileAlts alts env ty =
+and compileAlts alts env ty evalNodes =
     List.map (fun a ->
                  let (tag, names, body) = a
                  let indexed = List.indexed (List.rev names)
                  let env_len = List.length names
                  let env' = indexed @ (argOffset env_len env)
-                 (tag, compileAlt env_len body env' ty)
+                 (tag, compileAlt env_len body env' ty evalNodes)
               ) alts
-and compileAlt offset expr env ty =
-    [Split offset] @ (compileWithTypes expr env ty) @ [Slide offset]
-and compileLet (defs: BoundVarDefs) expr env ty =
+and compileAlt offset expr env ty evalNodes =
+    [Split offset] @ (compileWithTypes expr env ty evalNodes) @ [Slide offset]
+and compileLet (defs: BoundVarDefs) expr env ty evalNodes =
     // inject new definitions into the environment
     let env' = compileArgs defs env
     let n = List.length defs
     // compile the definitions using the old environment
-    (compileLetDefs defs env ty) @
+    (compileLetDefs defs env ty evalNodes) @
       // compile the expression using the new environment
-      (compileWithTypes expr env' ty) @
+      (compileWithTypes expr env' ty evalNodes) @
       // remove local variables after the evaluation
       [Slide n]
-and compileLetDefs defs env ty =
+and compileLetDefs defs env ty evalNodes =
     match defs with
         | [] ->
             []
         | (name, expr) :: defs' ->
-            (compileWithTypes expr env ty) @ compileLetDefs defs' (argOffset 1 env) ty
+            (compileWithTypes expr env ty evalNodes) @ compileLetDefs defs' (argOffset 1 env) ty evalNodes
 // originally, this function was written to do several let-rec compilation at once,
 // but later we switched to more managable "let n = expr in" single variable construct,
 // nevertheless we didn't change the code, it still support multiple bindings
-and compileLetRec defs expr env ty =
+and compileLetRec defs expr env ty evalNodes =
     let env' = compileArgs defs env
     let n = List.length defs
-    [Alloc n] @ (compileLetRecDefs defs env' n ty) @ (compileWithTypes expr env' ty) @ [Slide n]
-and compileLetRecDefs defs env n ty =
+    [Alloc n] @ (compileLetRecDefs defs env' n ty evalNodes) @ (compileWithTypes expr env' ty evalNodes) @ [Slide n]
+and compileLetRecDefs defs env n ty evalNodes =
     match defs with
         | [] ->
             []
         | (name, node) :: defs' ->
-            (compileWithTypes node env ty) @ [Update n] @ compileLetRecDefs defs' env (n - 1) ty
+            (compileWithTypes node env ty evalNodes) @ [Update n] @ compileLetRecDefs defs' env (n - 1) ty evalNodes
 
 let compile (ast:ASTNode) (env: Environment) : LHCode =
-    compileWithTypes ast env (Map [])
+    compileWithTypes ast env (Map []) []
 
 let rec instrToTVM (i:Instruction) : string =
     match i with
@@ -358,8 +370,8 @@ let rec hasInstruction (i:Instruction) (ir:LHCode) : bool =
 
 // Translation of AST into IR language, and then into FIFT commands.
 // IR language is easier to debug in complex cases.
-let compileIntoFiftDebug ast initialTypes nodeTypeMapping debug : string =
-    let ir = compileWithTypes ast [] nodeTypeMapping
+let compileIntoFiftDebug ast nodeTypeMapping evalNodes debug : string =
+    let ir = compileWithTypes ast [] nodeTypeMapping evalNodes
     let hasFixpoint = ir |> hasInstruction Fixpoint
     if debug then
         printfn "IR:\n%A" ir
@@ -372,10 +384,10 @@ let compileIntoFiftDebug ast initialTypes nodeTypeMapping debug : string =
     |> String.concat "\n"
 
 let compileIntoFift ast =
-    compileIntoFiftDebug ast [] (Map []) false
+    compileIntoFiftDebug ast (Map []) [] false
 
-let compileWithInitialTypesDebug ast initialTypes nodeTypeMapping debug =
-    compileIntoFiftDebug ast initialTypes nodeTypeMapping debug
+let compileWithInitialTypesDebug ast nodeTypeMapping evalNodes debug =
+    compileIntoFiftDebug ast nodeTypeMapping evalNodes debug
 
-let compileWithInitialTypes ast types =
-    compileWithInitialTypesDebug ast types (Map []) false
+let compileWithInitialTypes ast =
+    compileWithInitialTypesDebug ast (Map []) [] false
