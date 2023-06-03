@@ -50,9 +50,9 @@ contract ActorSender
 handler requestItem (id:ActorId) (req:Request) (st:State) =
    match req with
    | Number ->
-      id ! ("response", (Number blkch.random()))
+      id ! ("response", (Number random()))
    | Bool ->
-      id ! ("response", (Bool (if blkch.random() % 2 = 0 then true else false)))
+      id ! ("response", (Bool (if (random() % 2 = 0) then true else false)))
    | String ->
       id ! ("response", (String "hi!"))
       

@@ -402,3 +402,10 @@ let testCmpLtEq () =
     let prog3 = "contract test
                 let main = 6 <= 5 ;;"
     execAndCheck prog3 "0"
+
+[<Test>]
+let testStr1 () =
+    let prog = "contract test
+                let main = \"test\" ;;"
+
+    execAndCheck prog "0"

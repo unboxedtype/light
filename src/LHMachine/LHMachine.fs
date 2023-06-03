@@ -30,6 +30,7 @@ type Instruction =
     | GetGlob of name: Name
     | SetGlob of name: Name
     | Integer of v: int
+    | String of s:string
     | Function of c:LHCode
     | Fixpoint
     | Apply
@@ -92,6 +93,8 @@ let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) evalNo
                 [GetGlob v]
     | ENum n ->
         [Integer n]
+    | EStr s ->
+        [String s]
     | EBool true ->
         [True]
     | EBool false ->
@@ -274,6 +277,7 @@ let rec instrToTVM (i:Instruction) : string =
     | GetGlob n -> n + " GETGLOB"
     | SetGlob n -> n + " SETGLOB"
     | Integer n -> (string n) + " INT"
+    | String s -> failwith "Strings are not implemented"
     | Push n -> "s" + (string n) + " PUSH"
     | Pop n -> "s" + (string n) + " POP"
     | Slide n -> String.concat " " [for i in [1..n] -> "NIP"]

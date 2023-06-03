@@ -27,16 +27,18 @@ let mapSingleton k v =
 module Typ =
     let rec ftv (typ: Typ) =
         match typ with
-        | TVar name -> Set.singleton name
+        | TVar name ->
+            Set.singleton name
         | Int _
-        | Unit
         | String
+        | Unit
         | PT _
         | VMCell
         | VMSlice
         | Coins
         | UserType (_, None)
-        | Bool -> Set.empty
+        | Bool ->
+            Set.empty
         | UserType (_, Some v) ->
             ftv v
         | Function (t1, t2) -> Set.union (ftv t1) (ftv t2)
@@ -54,6 +56,7 @@ module Typ =
         | Function (t1, t2) ->
             Function (apply s t1, apply s t2)
         | Int _
+        | String
         | Bool
         | PT _
         | VMSlice
@@ -226,19 +229,21 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
             printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id typ
         (Map.empty, typ, tm')
     | ENum n ->
-        // printfn "%A : s' = %A" exp.Name Map.empty
         let tm' = Map.add node.Id (Int 256) tm
         if debug then
             printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id (Int 256)
         (Map.empty, Int 256, tm')
+    | EStr s ->
+        let tm' = Map.add node.Id (String) tm
+        if debug then
+            printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id (String)
+        (Map.empty, String, tm')
     | EBool _ ->
-        // printfn "%A : s' = %A" exp.Name Map.empty
         let tm' = Map.add node.Id (Bool) tm
         if debug then
             printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id Bool
         (Map.empty, Bool, tm')
     | ENull  ->
-        // printfn "%A : s' = %A" exp.Name Map.empty
         let tm' = Map.add node.Id Unit tm
         if debug then
             printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id Unit
@@ -249,7 +254,6 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
             failwithf "Unbound variable: %s" name
         | Some sigma ->
             let t = instantiate sigma
-            // printfn "%A : s' = %A" exp.Name Map.empty
             let tm' = Map.add node.Id t tm
             if debug then
                 printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id t
