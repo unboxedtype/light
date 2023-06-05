@@ -128,7 +128,7 @@ let rec deserializeValue (t:Type) : string =
     | UInt n ->
         sprintf "%i LDU" n
     | Bool ->
-        sprintf "1 LDU"
+        sprintf "1 LDU SWAP NEGATE SWAP"
     | PT fields ->
         let n = List.length fields
         List.map snd fields // [t1; t2; ...]

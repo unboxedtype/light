@@ -52,6 +52,19 @@ let testStateGet0 () =
     |> LHTypes.deserializeValue
     |> execAndCheck debug dataCell expected
 
+[<Test>]
+let testStateGet1 () =
+    let prog = "contract StateGet
+                type State = { x : int; b : bool }"
+    let dataCell = "<b 100 256 u, 1 1 u, b>"
+    let debug = true
+    let expected = "[ 100 -1 ]"
+    parse prog
+    |> Option.get
+    |> getTypeDefAst 0
+    |> LHTypes.deserializeValue
+    |> execAndCheck debug dataCell expected
+
 (**
 [<Test>]
 [<Ignore("outdated")>]
