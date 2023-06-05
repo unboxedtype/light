@@ -35,15 +35,19 @@ let actorInitCode =
      state: State
    }
 
+   let accept () =
+     assembly \"ACCEPT\" :> unit ;;
+
    let msgReadSeqNo (msg:VMSlice) =
-       assembly \"32 LDU DROP\" :> int ;;
+     assembly \"32 LDU DROP\" :> int ;;
 
    let actorStateRead () =
-         { seqno = 1;
-           deployed = false;
-           state = stateDefault } ;;
+     { seqno = 1;
+       deployed = false;
+       state = stateDefault } ;;
 
-   let actorStateWrite (st:ActorState) = () ;;
+   let actorStateWrite (st:ActorState) =
+     () ;;
 
    let actorInitPost (initArgs:ActorInitParams) =
      let actState = actorStateRead () in

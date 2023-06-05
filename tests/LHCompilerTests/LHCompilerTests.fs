@@ -442,3 +442,27 @@ let testCurry2 () =
                        let inc x = x + 1 in
                        f inc sum 10 20 ;;"
     execAndCheckPrint prog false false "32"
+
+[<Test>]
+[<Timeout(1000)>]
+let testChain1 () =
+    let prog = "contract Simple
+                let main = () ; (1) ;;"
+    execAndCheckPrint prog false false "1"
+
+[<Test>]
+[<Timeout(1000)>]
+let testChain2 () =
+    let prog = "contract Simple
+                let someFunc x =
+                    x + 1; () ;;
+                let main = someFunc 100 ;;"
+    execAndCheckPrint prog false false "(null)"
+
+[<Test>]
+[<Timeout(1000)>]
+let testChain3 () =
+    let prog = "contract Simple
+                let someFunc x = x + 1; () ;;
+                let main = someFunc 100 ;;"
+    execAndCheckPrint prog false false "(null)"

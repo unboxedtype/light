@@ -38,8 +38,8 @@ rule read =
   | ";;"     { DSCOLON }
   | "->"     { RARROW  }  // function type
   | "<-"     { LARROW  }  // assignment operator
-  | '{'      { LEFT_BRACE }
-  | '}'      { RIGHT_BRACE }
+  | '{'      { LBRACE }
+  | '}'      { RBRACE }
   | '|'      { VBAR }
   | ':'      { COLON }
   | '.'      { DOT }
