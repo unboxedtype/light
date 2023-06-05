@@ -33,7 +33,7 @@ type Instruction =
     | String of s:string
     | Function of c:LHCode
     | Fixpoint
-    | Apply
+    | Apply of n:int
     | Push of n: int
     | Pop of n: int
     | Slide of n: int
@@ -79,12 +79,33 @@ let compileArgs (defs:BoundVarDefs) (env:Environment) : Environment =
     let names = List.map fst defs
     (List.zip indexes names) @ (argOffset n env)
 
-// ty is collection of types defined in the actor code
-let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) evalNodes : LHCode =
+// Function compilation has to consider the environment, because
+// functions are closures actually.
+// Here we have environment that has to be copied into function stack,
+// and arguments, that have to be added into the function environment
+// when we start to compile the function body.
+let rec compileFunction (ast:ASTNode) env args evalNodes ty =
+    match ast.Expr with
+    | EFunc (argNameType, body) ->
+        let args' = (fst argNameType) :: args
+        compileFunction body env args' evalNodes ty
+    | _ ->
+        let n = List.length args
+        let envLength = List.length env
+        let argsEnv = List.indexed args
+        let argsLength = List.length argsEnv
+        let env' = argsEnv @ (argOffset argsLength env)
+        (if envLength > 0 then [Asm  (sprintf "%i %i BLKPUSH" envLength (envLength - 1))]
+         else []) @
+        [Function (compileWithTypes ast env' ty evalNodes)] @
+        (if envLength > 0 then [Apply envLength] else [])
+and compileWithTypes (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) evalNodes : LHCode =
     match ast.Expr with
     | EVar v ->
-        let r = List.tryPick (fun (n, v') ->
-                              if v' = v then Some n else None) env
+        let r =
+            env
+            |> List.tryPick (fun (n, v') ->
+                             if v' = v then Some n else None)
         match r with
             | Some n ->
                 [Push n]
@@ -110,21 +131,13 @@ let rec compileWithTypes (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) evalNo
         let n = List.length es' // now we need only values; field names are omitted.
         (compileExprs es' env) @ [Record n]
     | EFunc (argNameType, body) ->
-        let env' = (0, fst argNameType) :: (argOffset 1 env)
-        // If  it is a function of a single argument, then
-        // pack it directly into a lamda abstraction; otherwise,
-        // recursively descend one level down with one env index shifted.
-        match body.Expr with
-        | EFunc (_, _) ->
-            compileWithTypes body env' ty evalNodes
-        | _ ->
-            [Function (compileWithTypes body env' ty evalNodes)]
+        compileFunction ast env [] evalNodes ty
     | ENull ->
         [Null]
     | EAp (e1, e2) ->
         (compileWithTypes e2 env ty evalNodes) @
         (compileWithTypes e1 (argOffset 1 env) ty evalNodes) @
-        [Apply] @
+        [Apply 1] @
         (if (evalNodes |> List.contains ast.Id) then [Execute]
          else [])
     | EFix f ->
@@ -272,7 +285,7 @@ let rec instrToTVM (i:Instruction) : string =
     | False -> "FALSE"
     | True -> "TRUE"
     | Alloc n -> String.concat " " [for i in [1..n] -> "NULL"]
-    | Apply ->  "1 -1 SETCONTARGS"  // inject a single value into cont stack
+    | Apply n ->  sprintf "%i -1 SETCONTARGS" n  // inject n consecutive stack values into cont
     | Update i -> "s0 s" + (string i) + " XCHG DROP"
     | GetGlob n -> n + " GETGLOB"
     | SetGlob n -> n + " SETGLOB"

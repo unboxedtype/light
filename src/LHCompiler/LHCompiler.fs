@@ -542,7 +542,7 @@ let makeReductions debug (ast:ASTNode) : ASTNode =
     ast
     |> letrecRedex
     |> etaRedex
-    |> betaRedexFullDebug debug
+//    |> betaRedexFullDebug debug
     |> arithSimplRedexDebug debug
 
 let compileModule modName decls withInit debug : string =

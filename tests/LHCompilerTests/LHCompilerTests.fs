@@ -139,172 +139,12 @@ let testRecord0 () =
     execAndCheck prog "100"
 
 [<Test>]
-let testRecord1 () =
-    let prog = "contract Simple
-                   type State = { bal:int }
-                   let main =
-                     let sum x y = x + y in
-                     let st = { bal = sum 5 10 } in
-                     st.bal
-                   ;;"
-    execAndCheck prog "15"
-
-[<Test>]
-let testRecord2 () =
-    let prog = "contract Simple
-                   type State = { bal:int }
-                   let main =
-                     let rec sumN n = if (n > 0) then n + (sumN (n - 1)) else 0 in
-                     let st = { bal = sumN 5 } in
-                     st.bal
-                   ;;"
-    execAndCheck prog "15"
-
-[<Test>]
-[<Timeout(1000)>]
-let testRecord3 () =
-    let prog = "contract Simple
-                   type State = { bal:int }
-                   type Data = { st:State }
-                   let main =
-                     let rec sumN n = if (n > 0) then n + (sumN (n - 1)) else 0 in
-                     let st' = { bal = sumN 5 } in
-                     { st = st' }
-                   ;;"
-    execAndCheckPrint prog false false "[ [ 15 ] ]"
-
-[<Test>]
 [<Timeout(1000)>]
 let testTuple0 () =
     let prog = "contract Simple
                    let main = ()
                    ;;"
     execAndCheck prog "(null)"
-
-[<Test>]
-[<Timeout(1000)>]
-let testTuple1 () =
-    let prog = "contract Simple
-                   let main =
-                      let func x y () = x + y in
-                      func 5 6 ()
-                   ;;"
-    execAndCheck prog "11"
-
-[<Test>]
-[<Timeout(1000)>]
-let testTuple2 () =
-    let prog = "contract Simple
-                type Rec = { a:int; b:int }
-                let main =
-                  let func x y () = { a = x; b = y } in
-                      func 5 6 ()
-                   ;;"
-    execAndCheck prog "[ 5 6 ]"
-
-[<Test>]
-[<Timeout(1000)>]
-let testTuple3 () =
-    let prog = "contract Simple
-                type ActorState = {
-                 seqno: int;
-                 deployed: bool
-                }
-                let main =
-                  let actorStateRead () =
-                    { seqno = 1; deployed = false } in
-                  let actorStateWrite st = () in
-                  let act_st = actorStateRead () in
-                  if act_st.seqno = 10 then
-                      failwith 100
-                  else
-                      actorStateWrite 1
-                  ;;"
-    execAndCheckPrint prog false false "(null)"
-
-[<Test>]
-[<Timeout(1000)>]
-let testLet0() =
-    let prog = "contract Simple
-                   let other x = x + 1 ;;
-                   let main = other 10 ;;"
-    execAndCheck prog "11"
-
-
-[<Test>]
-let testMkAdder () =
-    // TODO!!:
-    // In this example, if you change
-    // "let adder y = 1 + y" for
-    // "let adder y = 1 + x" where x is bound in
-    // the make_adder, the result will be incorrect.
-    let prog = "contract test
-                 let main =
-                   let make_adder x =
-                     let adder y = x + y in
-                     adder x
-                   in make_adder 3 ;;"
-    execAndCheckPrint prog false false "6"
-
-[<Test>]
-// [<Ignore("bug")>]
-let testCurry2 () =
-    // This example is interesting. Without beta-reduction,
-    // it will not work: function f is general, so in its
-    // body there will be Eval node unless we insert its
-    // body in main definition. Seems, for such functions,
-    // we _must_ do beta-reduction.
-    let prog = "contract test
-                     let main =
-                       let f f1 f2 x y = f2 (f1 x) (f1 y) in
-                       let sum x y = x + y in
-                       let inc x = x + 1 in
-                       f inc sum 10 20 ;;"
-    execAndCheckPrint prog false false "32"
-
-[<Test>]
-let testFactorialParse () =
-    let prog ="contract test
-                let main =
-                 let rec factorial n =
-                      if (n > 1) then (n * factorial (n - 1)) else 1 in
-                 factorial 5 ;;
-    "
-    execAndCheck prog "120"
-
-[<Test>]
-let testFunc2Args () =
-    // let rec sum n m = if (n > 0) then (n + sum (n - 1) m) else m
-    // let sum = fixpoint \sum . \n . \m -> if (...)
-    // sum 10 20
-    let prog = "contract test
-                let main =
-                  let rec sum n m =
-                       if (n > 0) then (n + ((sum (n - 1)) m)) else m
-                  in ((sum 10) 20) ;;"
-    execAndCheck prog "75"
-
-[<Test>]
-let testGlobals () =
-    let prog = "contract test
-                     let main =
-                       let mArg = 20 in
-                       let nArg = 10 in
-                       let rec sum n m =
-                           if (n > 0) then (n + ((sum (n - 1)) m)) else m
-                       in ((sum nArg) mArg) ;;"
-    execAndCheck prog "75"
-
-[<Test>]
-let testGlobals2 () =
-    let prog = "contract test
-                     let mArg n = n + 20 ;;
-                     let nArg n = n + 10 ;;
-                     let main =
-                       let rec sum n m =
-                           if (n > 0) then (n + ((sum (n - 1)) m)) else m
-                       in ((sum (nArg 0)) (mArg 0)) ;;"
-    execAndCheckPrint prog false false "75"
 
 [<Test>]
 let testRecord5 () =
@@ -318,21 +158,6 @@ let testRecord5 () =
                     { bal = func2 func11 stdef + 1000 } in
                   main2 func1 stateDefault ;;"
     execAndCheckPrint prog false false "[ 2000 ]"
-
-[<Test>]
-[<Ignore("bug")>]
-let testInitRecord6 () =
-    let prog = "contract Simple
-                type State = { bal:int }
-                let actorArgs =
-                    assembly \"1000 INT 2000 INT NEWC ENDC DUP TRUE 5 TUPLE\" ;;
-                let stateDefault =
-                    { bal = 0 } ;;
-                let func1 (x:State) =
-                    x.bal ;;
-                let main msgCell (st:State) =
-                    { bal = func1 st + 1000 } ;; "
-    execAndCheckPrint prog true true "[ 1000 ]"
 
 [<Test>]
 let testBoolCheck () =
@@ -404,8 +229,216 @@ let testCmpLtEq () =
     execAndCheck prog3 "0"
 
 [<Test>]
+[<Ignore("str not implemented")>]
 let testStr1 () =
     let prog = "contract test
                 let main = \"test\" ;;"
 
     execAndCheck prog "0"
+
+
+
+[<Test>]
+[<Timeout(1000)>]
+let testLet0() =
+    let prog = "contract Simple
+                   let other x = x + 1 ;;
+                   let main = other 10 ;;"
+    execAndCheck prog "11"
+
+[<Test>]
+let testRecord1 () =
+    let prog = "contract Simple
+                   type State = { bal:int }
+                   let main =
+                     let sum x y = x + y in
+                     let st = { bal = sum 5 10 } in
+                     st.bal
+                   ;;"
+    execAndCheck prog "15"
+
+[<Test>]
+[<Timeout(1000)>]
+let testTuple1 () =
+    let prog = "contract Simple
+                   let main =
+                      let func x y () = x + y in
+                      func 5 6 ()
+                   ;;"
+    execAndCheck prog "11"
+
+[<Test>]
+[<Timeout(1000)>]
+let testTuple2 () =
+    let prog = "contract Simple
+                type Rec = { a:int; b:int }
+                let main =
+                  let func x y () = { a = x; b = y } in
+                      func 5 6 ()
+                   ;;"
+    execAndCheck prog "[ 5 6 ]"
+
+[<Test>]
+[<Timeout(1000)>]
+let testTuple3 () =
+    let prog = "contract Simple
+                type ActorState = {
+                 seqno: int;
+                 deployed: bool
+                }
+                let main =
+                  let actorStateRead () =
+                    { seqno = 1; deployed = false } in
+                  let actorStateWrite st = () in
+                  let act_st = actorStateRead () in
+                  if act_st.seqno = 10 then
+                      failwith 100
+                  else
+                      actorStateWrite 1
+                  ;;"
+    execAndCheckPrint prog false false "(null)"
+
+[<Test>]
+let testMkAdder () =
+    let prog = "contract test
+                 let main =
+                   let make_adder x =
+                     let adder y = x + y in
+                     adder x
+                   in make_adder 3 ;;"
+    execAndCheckPrint prog false false "6"
+
+[<Test>]
+let testClosure1 () =
+    let prog = "contract test
+                 let main =
+                   let c = 1000 in
+                   let make_adder x = x + c in
+                     let adder y = make_adder y in
+                       adder 3 ;;"
+    execAndCheckPrint prog false false "1003"
+
+[<Test>]
+let testClosure2 () =
+    let prog = "contract test
+                let main =
+                  let c = 1000 in
+                   let make_adder x =
+                      (let adder y = y + c in adder x + c)
+                   in make_adder 3 ;;"
+    execAndCheckPrint prog false false "2003"
+
+[<Test>]
+let testClosure3 () =
+    let prog = "contract test
+                let main =
+                  let c = 1000 in
+                   let make_adder x =
+                      (let adder y = y + c in adder x + c)
+                   in make_adder 3 ;;"
+    execAndCheckPrint prog false false "2003"
+
+
+// The tests below contain fixpoint operator. We separate it into a
+// different block because it is easier to test separately. Maybe
+// it desereves a separate module altogether.
+
+[<Test>]
+let testGlobals () =
+    let prog = "contract test
+                     let main =
+                       let mArg = 20 in
+                       let nArg = 10 in
+                       let rec sum n m =
+                           if (n > 0) then (n + ((sum (n - 1)) m)) else m
+                       in ((sum nArg) mArg) ;;"
+    execAndCheck prog "75"
+
+[<Test>]
+let testRecord2 () =
+    let prog = "contract Simple
+                   type State = { bal:int }
+                   let main =
+                     let rec sumN n = if (n > 0) then n + (sumN (n - 1)) else 0 in
+                     let st = { bal = sumN 5 } in
+                     st.bal
+                   ;;"
+    execAndCheck prog "15"
+
+[<Test>]
+let testGlobals2 () =
+    let prog = "contract test
+                     let mArg n = n + 20 ;;
+                     let nArg n = n + 10 ;;
+                     let main =
+                       let rec sum n m =
+                           if (n > 0) then (n + ((sum (n - 1)) m)) else m
+                       in ((sum (nArg 0)) (mArg 0)) ;;"
+    execAndCheckPrint prog false false "75"
+
+
+[<Test>]
+let testFunc2Args () =
+    // let rec sum n m = if (n > 0) then (n + sum (n - 1) m) else m
+    // let sum = fixpoint \sum . \n . \m -> if (...)
+    // sum 10 20
+    let prog = "contract test
+                let main =
+                  let rec sum n m =
+                       if (n > 0) then (n + ((sum (n - 1)) m)) else m
+                  in ((sum 10) 20) ;;"
+    execAndCheck prog "75"
+
+[<Test>]
+let testFactorialParse () =
+    let prog ="contract test
+                let main =
+                 let rec factorial n =
+                      if (n > 1) then (n * factorial (n - 1)) else 1 in
+                 factorial 5 ;;
+    "
+    execAndCheck prog "120"
+
+[<Test>]
+[<Timeout(1000)>]
+let testRecord3 () =
+    let prog = "contract Simple
+                   type State = { bal:int }
+                   type Data = { st:State }
+                   let main =
+                     let rec sumN n = if (n > 0) then n + (sumN (n - 1)) else 0 in
+                     let st' = { bal = sumN 5 } in
+                     { st = st' }
+                   ;;"
+    execAndCheckPrint prog false false "[ [ 15 ] ]"
+
+[<Test>]
+let testInitRecord6 () =
+    let prog = "contract Simple
+                type State = { bal:int }
+                let actorArgs =
+                    assembly \"1000 INT 2000 INT NEWC ENDC DUP TRUE 5 TUPLE\" ;;
+                let stateDefault =
+                    { bal = 0 } ;;
+                let func1 (x:State) =
+                    x.bal ;;
+                let main msgCell (st:State) =
+                    { bal = func1 st + 1000 } ;; "
+    execAndCheckPrint prog true true "[ 1000 ]"
+
+
+[<Test>]
+[<Ignore("bug")>]
+let testCurry2 () =
+    // This example is interesting. Without beta-reduction,
+    // it will not work: function f is general, so in its
+    // body there will be Eval node unless we insert its
+    // body in main definition. Seems, for such functions,
+    // we _must_ do beta-reduction.
+    let prog = "contract test
+                     let main =
+                       let f f1 f2 x y = f2 (f1 x) (f1 y) in
+                       let sum x y = x + y in
+                       let inc x = x + 1 in
+                       f inc sum 10 20 ;;"
+    execAndCheckPrint prog false false "32"
