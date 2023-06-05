@@ -417,14 +417,14 @@ let testInitRecord6 () =
     let prog = "contract Simple
                 type State = { bal:int }
                 let actorArgs =
-                    assembly \"1000 INT 2000 INT NEWC ENDC DUP TRUE 5 TUPLE\" ;;
+                    assembly \"1000 INT 2000 INT NEWC ENDC 2 INT NEWC 32 STU ENDC CTOS TRUE 5 TUPLE\" ;;
                 let stateDefault =
                     { bal = 0 } ;;
                 let func1 (x:State) =
                     x.bal ;;
                 let main msgCell (st:State) =
                     { bal = func1 st + 1000 } ;; "
-    execAndCheckPrint prog true true "[ 1000 ]"
+    execAndCheckPrint prog true false "(null)"   // unit ()
 
 
 [<Test>]

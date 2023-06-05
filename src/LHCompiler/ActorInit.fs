@@ -36,7 +36,8 @@ let actorInitCode =
    }
 
    let msgReadSeqNo (msg:VMSlice) =
-       assembly \"CTOS 32 LDU DROP\" :> int ;;
+       assembly \"32 LDU DROP\" :> int ;;
+
    let actorStateRead () =
          { seqno = 1;
            deployed = false;
