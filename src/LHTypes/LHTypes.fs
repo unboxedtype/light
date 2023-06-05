@@ -46,34 +46,12 @@ module LHTypes
 
 open type TVM.Instruction
 
-type StateError =
-    | CellUnderflow = 20
-
 // variable identifier type
 type Name =
     string
 
 type VarName =
     Name
-
-// Type id is a unique type identifier; built-in
-// types have it defined initially, and user
-// data types are assigned their own typeid
-// during the compilation.
-type TypeId =
-    int
-
-// Basic types:
-// Unit        = 0001
-// Bool        = 0010
-// UInt        = 0100
-// String      = 1000
-
-// Compound types:
-// List<Int>.Cons     = 1001
-// List<Int>.Nil      = 1011
-// Map<T1,T2>         = 1100
-// Function<T1,T2>    = 1101
 
 type Type =
     | Unit
@@ -113,7 +91,7 @@ and TypeList =
     List<Name * Type>
 and ProductType =  // to construct it, you shall provide all the fields
     TypeList
-and SumType =      // to construct it, you shall provide only a single field
+and SumType =      // to construct it, you shall provide all args to a single constructor
     List<Name * List<Type>>
 
 // Type scheme is a description of all record types in the program.
@@ -175,9 +153,9 @@ let deserializeValue (t:Type) : TVM.Code =
     | UInt n ->
         [Ldu (uint n)]
     | Bool ->
-        [Ldu 2u] // is it correct?
-    | Function (_, _) ->
-        [LdRef; Swap; Ctos; Bless; Swap]
+        [Ldu 1u] // is it correct?
+    // | Function (_, _) ->
+    //    [LdCont]
     | _ ->
         failwith "not implemented"
 
@@ -190,10 +168,10 @@ let serializeValue (t:Type) : TVM.Code =
         [Stu (uint n)]
     | Bool ->
         [Stu 2u]
-    | Function (_, _) ->
+    // | Function (_, _) ->
         // TODO: temporal stub not to fail tests
         // Has to be changed for proper function serialization.
-        [Pop 1u; Newc; Endc; Swap; StRef]
+     //   [Pop 1u; Newc; Endc; Swap; StRef]
     | _ ->
         failwith "not implemented"
 

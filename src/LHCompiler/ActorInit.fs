@@ -29,27 +29,24 @@ let actorInitCode =
       3. If integer1 does not equal integer2 then proceed,
       otherwise throw (replay detected). *)
    type ActorState = {
-     seqno: int;
-     deployed: bool;
-     state: State
+     seqno: int;      (* sending actors must consequently increase this counter *)
+     deployed: bool;  (* true if put inside the blockchain; false otherwise     *)
+     state: State     (* application state of the actor                         *)
    }
 
-   let msgReadSeqNo (msg:VMSlice) =
+   let msgReadSeqNo (msg : VMSlice) =
      assembly \"32 LDU DROP\" :> int ;;
 
-   let saveToC4 (c4:VMCell) =
-     assembly \"c4 POPCTR\" :> unit ;;
-
-   let actorStateRead () =
+   let actorStateReader (cell:VMCell) =
      { seqno = 1;
        deployed = false;
        state = stateDefault } ;;
 
-   let actorStateWrite (st:ActorState) =
-     () ;;
+   let actorStateWriter (st:ActorState) =
+     assembly \"NEWC ENDC\" :> VMCell ;;
 
    let actorInitPost (initArgs:ActorInitParams) =
-     let actState = actorStateRead () in
+     let actState = actorStateReader (getC4 ()) in
      let msgSeqNo = msgReadSeqNo initArgs.msgBody in
      if msgSeqNo  = actState.seqno then
         failwith 100
@@ -60,10 +57,10 @@ let actorInitCode =
             { seqno = msgSeqNo;
               state = st';
               deployed = true } in
-        actorStateWrite actState'
+        putC4 (actorStateWriter actState')
    ;;
 
    let actorInit =
-       actorInitPost actorArgs
+       actorInitPost (actorArgs ())
    ;;
 "
