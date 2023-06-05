@@ -14,7 +14,7 @@ open LHTypeInfer
 open type LHTypes.ProgramTypes
 open type LHTypes.Type
 type LHType = LHTypes.Type
-open type ParserModule.Decl
+
 open type ParserModule.Module
 
 // open type LHTypes.Type
@@ -25,110 +25,6 @@ let parse source =
     let res = Parser.start Lexer.read lexbuf
     res
 
-
-type TypeDefs = list<string*LHType>
-type ArgList = list<string*option<LHType>>
-
-let rec restoreType (typeDefs:TypeDefs) (arg:LHType) : LHType =
-    match arg with
-    | UserType (n, None) ->   // partially defined type
-       let typ =
-          match Map.tryFind n (Map.ofList typeDefs) with
-          | Some t -> t
-          | None -> failwithf "Cant find type definition for type %A" n
-       UserType (n, Some typ)
-    // TODO: ST type also shall be implemented here.
-    | UserType (n, Some t) ->   // restore types in the nested definition
-       UserType (n, Some (restoreType typeDefs t))
-    | PT pts ->
-        pts
-        |> List.map ( fun (fn,ft) -> (fn, restoreType typeDefs ft) )
-        |> PT
-    | Function (t1, t2) ->
-        (restoreType typeDefs t1,
-         restoreType typeDefs t2)
-        |> Function
-    | _ ->
-        arg
-
-// Returns a list of (name, type) pairs, where partially
-// defined types like UserType ("ActorState", None) were
-// reconstructed into full types like
-// ("ActorState, PT [("balance",Int 256);...])
-// based on info from 'types'.
-let restoreTypes (typeDefs:TypeDefs) (args:ArgList) : ArgList =
-    args
-    |> List.map (fun (name, optT) ->
-                 match optT with
-                 | Some t -> (name, Some (restoreType typeDefs t))
-                 | None -> (name, optT)
-                )
-
-let getTypesDeclarationsRaw decls : List<LHTypes.Name * LHType> =
-    decls
-    |> List.filter (function
-                    | TypeDef _ -> true
-                    | _         -> false)
-    |> List.map (fun n -> n.typeDef)
-
-let getPartiallyDefinedTypes types : List<(LHTypes.Name * LHType) * List<LHTypes.Name>> =
-    types  // [(name, typ)]
-    |> List.map (fun (name, typ:LHType) ->
-                 ((name, typ), LHTypes.hasUndefType typ))
-    |> List.filter (fun ((_, _),l) -> l <> [])
-
-let patchPartTypes partTypesNames defs =
-    partTypesNames
-    |> List.map (fun ((name, typ), undNames) ->
-                 // TODO: fixpoint is needed here, because there might
-                 // be cyclic references.
-                  let rec updateUndName undNames typ =
-                     match undNames with
-                     | n :: t ->
-                        let typ' = LHTypes.insertType n defs typ
-                        updateUndName t typ'
-                      | [] ->
-                         typ
-                  (name, updateUndName undNames typ)
-                )
-
-// Parser produces collection of declarations. This
-// function extracts Let-declarations from this collection
-// but also convert it into 'raw' form. i.e. LetBinding (n,...)
-// get converted into a tuple (n,...)
-let getLetDeclarationsRaw types decls =
-    decls
-    |> List.collect (function
-                     | LetBinding (_, _, _, _) as p -> [p.letBinding]
-                     | _ -> [])
-    |> List.map ( fun (name, args, isrec, body) ->
-                  (name, restoreTypes types args, isrec, body) )
-
-// Same for Handlers. See getLetDeclarationsRaw
-let getHandlerDeclsRaw types decls =
-    decls
-    |> List.collect (function
-                     | HandlerDef (_, _, _) as p -> [p.handlerDef]
-                     | _ -> [])
-    |> List.map ( fun (name, args, body) ->
-                  (name, restoreTypes types args, body) )
-
-(**
-let patchLetBindingsFuncTypes letBnds types =
-    let rec patchLetBodyFuncType (letBody:ASTNode) types =
-        match letBody.Expr with
-        | EFunc ((argName, Some argType), body) ->
-            // patch the argument
-            let argType2 = restoreType types argType
-            // patch the body
-            let body' = patchLetBodyFuncType body types
-            mkAST (EFunc ((argName, Some argType2), body'))
-        | _ ->
-            letBody
-    letBnds
-    |> List.map ( fun (name, vars, isRec, body) ->
-                  (name, vars, isRec, patchLetBodyFuncType body types) )
-**)
 // "main" or "actorInit" shall be used as finalFunctionName
 let rec expandLet finalFunctionName letBind =
     match letBind with
@@ -498,7 +394,7 @@ let patchLetBindingsFuncTypes letBnds types =
         match letBody.Expr with
         | EFunc ((argName, Some argType), body) ->
             // patch the argument
-            let argType2 = restoreType types argType
+            let argType2 = ParserModule.restoreType types argType
             mkAST (EFunc ((argName, Some argType2), body))
         | _ ->
             letBody
@@ -548,21 +444,21 @@ let makeReductions debug (ast:ASTNode) : ASTNode =
 let compileModule modName decls withInit debug : string =
     if debug then
         printfn "Compiling actor %A" modName ;
-    let types = getTypesDeclarationsRaw decls
-    let undefTypesNames = getPartiallyDefinedTypes types
+    let types = ParserModule.getTypesDeclarationsRaw decls
+    let undefTypesNames = ParserModule.getPartiallyDefinedTypes types
     let undefTypesNamesList =
         undefTypesNames
         |> List.map (fun ((n, _), _) -> n)
     let defTypes =
         types
         |> List.filter (fun (n, t) -> not (List.contains n undefTypesNamesList))
-    let completeTypes = patchPartTypes undefTypesNames defTypes
+    let completeTypes = ParserModule.patchPartTypes undefTypesNames defTypes
     if debug then
         printfn "Partially defined types:\n%A" undefTypesNames
         printfn "Fully defined types:\n%A" defTypes
         printfn "Completed types:\n%A\n\n" completeTypes
     let typesFull = defTypes @ completeTypes
-    let letBnds = getLetDeclarationsRaw typesFull decls
+    let letBnds = ParserModule.getLetDeclarationsRaw typesFull decls
     let letBndsUpd = patchLetBindingsFuncTypes letBnds typesFull
     if debug then
         printfn "Let Bindings after types patched:\n%A"

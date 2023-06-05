@@ -39,6 +39,11 @@ let getTypeDefAst (n:int) (m:Module) : Type  =
     m.Decls.[n].typeDef
     |> (function | (_, t) -> t)
 
+let getTypes (m:Module) : list<string * Type> =
+    m
+    |> List.filter (function | TypeDef (n, t) -> true)
+    |> List.map (fun nt -> nt.typeDef) // unbox
+
 [<Test>]
 let testStateGet0 () =
     let prog = "contract StateGet
@@ -46,10 +51,14 @@ let testStateGet0 () =
     let dataCell = "<b 100 256 u, b>"
     let debug = true
     let expected = "[ 100 ]"
+    let ty =
+      parse prog
+      |> Option.get
+      |> getTypes
     parse prog
     |> Option.get
     |> getTypeDefAst 0
-    |> LHTypes.deserializeValue
+    |> LHTypes.deserializeValue ty
     |> execAndCheck debug dataCell expected
 
 [<Test>]
@@ -59,10 +68,30 @@ let testStateGet1 () =
     let dataCell = "<b 100 256 u, 1 1 u, b>"
     let debug = true
     let expected = "[ 100 -1 ]"
+    let ty =
+      parse prog
+      |> Option.get
+      |> getTypes
     parse prog
     |> Option.get
     |> getTypeDefAst 0
-    |> LHTypes.deserializeValue
+    |> LHTypes.deserializeValue ty
+    |> execAndCheck debug dataCell expected
+
+[<Test>]
+let testStateGet2 () =
+    let prog = "contract StateGet
+                type Data = { x : int; b : bool }
+                type State = { d : Data }"
+    let dataCell = "<b 100 256 u, 1 1 u, b>"
+    let debug = true
+    let expected = "[ [ 100 -1 ] ]"
+    let ty =
+      parse prog
+      |> Option.get
+      |> getTypes
+    (snd ty.[1])        // type without name
+    |> LHTypes.deserializeValue ty
     |> execAndCheck debug dataCell expected
 
 (**

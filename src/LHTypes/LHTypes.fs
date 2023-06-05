@@ -121,7 +121,7 @@ let mapType (str : string) : option<Type> =
 // constructs the stack object from the cell
 // corresponding to type t
 // s -> v
-let rec deserializeValue (t:Type) : string =
+let rec deserializeValue (ty:TypeList) (t:Type) : string =
     match t with
     | Int n ->
         sprintf "%i LDI" n
@@ -132,9 +132,11 @@ let rec deserializeValue (t:Type) : string =
     | PT fields ->
         let n = List.length fields
         List.map snd fields // [t1; t2; ...]
-        |> List.map deserializeValue  // [str; str; str]
+        |> List.map (deserializeValue ty)  // [str; str; str]
         |> (fun l -> ["CTOS"] @ l @ [sprintf "ENDS %i TUPLE " n])
         |> String.concat " "
+    | UserType (n, Some t) ->
+        deserializeValue ty t
     | _ ->
         failwith "not implemented"
 
@@ -149,28 +151,6 @@ let serializeValue (t:Type) : TVM.Code =
         [Stu 1u]
     | _ ->
         failwith "not implemented"
-
-// Find all partially defined types within the type term 't'.
-let rec hasUndefType (t:Type) : List<Name> =
-    match t with
-    | UserType (name, None) ->
-        List.singleton name
-    | UserType (name, Some t) ->
-        hasUndefType t
-    | PT pts ->
-        pts
-        |> List.map snd
-        |> List.map hasUndefType
-        |> List.concat
-    | ST sts ->
-        sts
-        |> List.map snd
-        |> List.concat
-        |> List.map hasUndefType
-        |> List.concat
-    | _ ->
-        // TODO: what about Function?
-        []
 
 // substitute type name with the given definition def
 // in the type t
