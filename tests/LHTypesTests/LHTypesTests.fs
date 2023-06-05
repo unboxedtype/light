@@ -40,9 +40,16 @@ let getTypeDefAst (n:int) (m:Module) : Type  =
     |> (function | (_, t) -> t)
 
 let getTypes (m:Module) : list<string * Type> =
-    m
-    |> List.filter (function | TypeDef (n, t) -> true)
-    |> List.map (fun nt -> nt.typeDef) // unbox
+    let types = ParserModule.getTypesDeclarationsRaw m.Decls
+    let undefTypesNames = ParserModule.getPartiallyDefinedTypes types
+    let undefTypesNamesList =
+        undefTypesNames
+        |> List.map (fun ((n, _), _) -> n)
+    let defTypes =
+        types
+        |> List.filter (fun (n, t) -> not (List.contains n undefTypesNamesList))
+    let completeTypes = ParserModule.patchPartTypes undefTypesNames defTypes
+    defTypes @ completeTypes
 
 [<Test>]
 let testStateGet0 () =

@@ -121,25 +121,28 @@ let mapType (str : string) : option<Type> =
 // constructs the stack object from the cell
 // corresponding to type t
 // s -> v
-let rec deserializeValue (ty:TypeList) (t:Type) : string =
-    match t with
-    | Int n ->
-        sprintf "%i LDI" n
-    | UInt n ->
-        sprintf "%i LDU" n
-    | Bool ->
-        sprintf "1 LDU SWAP NEGATE SWAP"
-    | PT fields ->
-        let n = List.length fields
-        List.map snd fields // [t1; t2; ...]
-        |> List.map (deserializeValue ty)  // [str; str; str]
-        |> (fun l -> ["CTOS"] @ l @ [sprintf "ENDS %i TUPLE " n])
-        |> String.concat " "
-    | UserType (n, Some t) ->
-        deserializeValue ty t
-    | _ ->
-        failwith "not implemented"
-
+let deserializeValue (ty:TypeList) (t:Type) : string =
+    let rec deserializeValueInner ty t : string =
+        match t with
+        | Int n ->
+            sprintf "%i LDI" n
+        | UInt n ->
+            sprintf "%i LDU" n
+        | Bool ->
+            sprintf "1 LDU SWAP NEGATE SWAP"
+        | PT fields ->
+            let n = List.length fields
+            List.map snd fields // [t1; t2; ...]
+            |> List.map (deserializeValueInner ty)  // [str; str; str]
+            |> String.concat " "
+            // v1 v2 .. vn s --> s v1 v2 .. vn --> s (v1 .. vn)
+            // --> (v1 .. vn) s
+            |> (fun s -> s + sprintf " %i ROLLREV %i TUPLE SWAP " n n)
+        | UserType (n, Some t) ->
+            deserializeValueInner ty t
+        | _ ->
+            failwithf "Parsing for type %A not implemented" t
+    "CTOS " + (deserializeValueInner ty t) + " ENDS"
 // b v -> b'
 let serializeValue (t:Type) : TVM.Code =
     match t with
