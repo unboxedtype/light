@@ -101,17 +101,22 @@ let testStateGet2 () =
     |> LHTypes.deserializeValue ty
     |> execAndCheck debug dataCell expected
 
-(**
 [<Test>]
-[<Ignore("outdated")>]
-let testStateGet1 () =
-    let types = [("state",
-                   UserType ("State", LHTypes.PT [("x", (LHTypes.UInt 256));
-                                                  ("y", LHTypes.Bool);]))]
-    let dataCell = "<b 100 256 u, 1 2 u, b>"
-    let g = [("state", [], ENum 0);  // this is a stub; will be replaced
-             ("main", [], EFunc ("", EIf (ESelect (EVar "state", EVar "y"),
-                                          EMul (ESelect (EVar "state", EVar "x"), ENum 2),
-                                          ENum 0)))]
-    execAndCheck g types dataCell "200"
-**)
+let testStateGet3 () =
+    let prog = "contract StateGet
+                 type State = { bal : int }
+                 type ActorState = {
+                    seqno: int;
+                    deployed: bool;
+                    state: State
+                 }"
+    let dataCell = "<b 1 256 u, 1 1 u, 10000 256 u, b>"
+    let debug = true
+    let expected = "[ 1 -1 [ 10000 ] ]"
+    let ty =
+      parse prog
+      |> Option.get
+      |> getTypes
+    (snd ty.[1])        // type without name
+    |> LHTypes.deserializeValue ty
+    |> execAndCheck debug dataCell expected
