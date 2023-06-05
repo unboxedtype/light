@@ -117,45 +117,24 @@ let mapType (str : string) : option<Type> =
     | S -> Some (UserType (S, None))
     | _ -> failwithf "Undefined type %s" str
 
-// t = PT [("x",Int);("y",List Int);("z",Bool)]
-// stateGlobalsMapping t = Map [("x",1);("y",2);("z",3)]
-let stateGlobalsMapping (t:ProductType) : VariablesMapping =
-    let n = List.length t
-    t
-    |> List.map fst
-    |> (fun l -> List.zip l [1..n])
-    |> Map.ofList
-
-let findType (typename:string) (pr:ProgramTypes) : Type =
-    pr
-    |> List.tryFind (fun e -> (fst e) = typename)
-    |> function
-       | None -> failwithf "typename %A not found amoung defined types %A" typename pr
-       | Some v -> v
-    |> snd
-
-let findStateType (pr:ProgramTypes) : Type =
-    let t = findType "state" pr
-    match t with
-    | UserType ("State", Some typ) ->
-        typ
-    | _ ->
-        failwithf "Unexpected state type %A" t
-
 
 // constructs the stack object from the cell
 // corresponding to type t
 // s -> v
-let deserializeValue (t:Type) : TVM.Code =
+let rec deserializeValue (t:Type) : string =
     match t with
     | Int n ->
-        [Ldi (uint n)]
+        sprintf "%i LDI" n
     | UInt n ->
-        [Ldu (uint n)]
+        sprintf "%i LDU" n
     | Bool ->
-        [Ldu 1u] // is it correct?
-    // | Function (_, _) ->
-    //    [LdCont]
+        sprintf "1 LDU"
+    | PT fields ->
+        let n = List.length fields
+        List.map snd fields // [t1; t2; ...]
+        |> List.map deserializeValue  // [str; str; str]
+        |> (fun l -> ["CTOS"] @ l @ [sprintf "ENDS %i TUPLE " n])
+        |> String.concat " "
     | _ ->
         failwith "not implemented"
 
@@ -167,57 +146,9 @@ let serializeValue (t:Type) : TVM.Code =
     | UInt n ->
         [Stu (uint n)]
     | Bool ->
-        [Stu 2u]
-    // | Function (_, _) ->
-        // TODO: temporal stub not to fail tests
-        // Has to be changed for proper function serialization.
-     //   [Pop 1u; Newc; Endc; Swap; StRef]
+        [Stu 1u]
     | _ ->
         failwith "not implemented"
-
-// Outputs the TVM code that builds the contract state
-// according to the given State description.
-let stateReader (types:ProgramTypes) : TVM.Code =
-    let statePT = findStateType types
-    match statePT with
-    | PT stateT ->
-        let n = List.length stateT
-        stateT
-        |> List.map (fun (name, typ) -> deserializeValue typ)
-        |> List.concat
-        |> List.append [PushCtr 4u; Ctos] // Cell with the State
-        |> (fun l -> List.append l [Ends; Tuple (uint n); PushInt 0; Swap; Tuple 2u])
-    | _ ->
-        failwith "State shall be a Product type"
-
-// Outputs the TVM code that assembles the C4 cell from the
-// given state variable values located on the stack. State is
-// encoded according to the given State description.
-let stateWriter (types:ProgramTypes) : TVM.Code =
-    // this function generates a pairs of swaps needed
-    // to reverse the list l. The acc is an accumulator (state)
-    // TODO!!: Use REVERSE instruction for that.
-    let rec xchgs l acc =
-        let len = List.length l
-        if len > 1 then
-            let (s,e) = (List.head l, List.last l)
-            let next = List.take (len-2) (List.tail l)
-            xchgs next ((s,e) :: acc)
-        else
-            acc
-    let statePT = findStateType types
-    match statePT with
-    | PT stateT ->
-        let n = List.length stateT
-        stateT
-        |> List.map (fun (name, typ) -> serializeValue typ)
-        |> List.concat
-        |> List.append ([GetGlob 2u; Second; Untuple (uint n)] @
-                        (let pairs = xchgs [0..(n-1)] []
-                         [for (i,j) in pairs -> Xchg2 (uint i, uint j)]) @ [Newc])
-        |> (fun l -> List.append l [Endc; PopCtr 4u])
-    | _ ->
-        failwith "State shall be a Product type"
 
 // Find all partially defined types within the type term 't'.
 let rec hasUndefType (t:Type) : List<Name> =

@@ -4,11 +4,6 @@
 // Contains basic replay protection and state reading/writing.
 module ActorInit
 
-// State type and main function shall be defined
-// before this code.
-// readActorState : () -> ActorState
-// writeActorState : ActorState -> ()
-
 let actorInitCode =
   "
   (* ActorInitParams is exactly what the Virtual Machine

@@ -13,10 +13,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../../src/Parser/Parser.fsproj" />
     <ProjectReference Include="../../src/LHTypes/LHTypes.fsproj" />
-    <ProjectReference Include="../../src/LHMachine/LHMachine.fsproj" />
     <ProjectReference Include="../../src/FiftExecutor/FiftExecutor.fsproj" />
-    <ProjectReference Include="../../src/TVM/TVM.fsproj" />
   </ItemGroup>
 
   <ItemGroup>

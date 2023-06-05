@@ -3,23 +3,18 @@
 module LHTypesTests
 
 open NUnit.Framework
+open FSharp.Text.Lexing
+open ParserModule
+open Parser
+open type LHTypes.Type
 
-open LHTypes
-open TVM
-open type LHMachine.Expr
-
-let execAndCheck g types dataCell expected =
-    let stReader =
-        stateReader types
-        |> List.map TVM.instrToFift
-        |> String.concat "\n"
-    let stWriter =
-        stateWriter types
-        |> List.map TVM.instrToFift
-        |> String.concat "\n"
-    let gs = LHMachine.compileIntoFift g types
+let execAndCheck debug dataCell expected program =
+    let fiftScript =
+        "\"Asm.fif\" include\n" +
+        dataCell + "   " +
+        "<{ " + program + " }>s 1000000 gasrunvmcode drop .dump cr .dump cr"
     let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".fif"
-    TVM.dumpFiftScript filename (LHMachine.generateFift gs stReader stWriter dataCell)
+    TVM.dumpFiftScript filename fiftScript
     let res = FiftExecutor.runFiftScript filename
     Assert.AreEqual (expected, res)
 
@@ -27,9 +22,40 @@ let execAndCheck g types dataCell expected =
 let Setup () =
     ()
 
+(* *******************************************************************
+   The algorithm will generate and add to the scope the following:
+   let stateReader (c:VMCell) : State
+   We want  to test  that it  works correctly for  any shape  of State
+   type.
+(* ******************************************************************* *) *)
+
+let parse source =
+    let lexbuf = LexBuffer<char>.FromString source
+    let res = Parser.start Lexer.read lexbuf
+    res
+
+// extract n-th type definition AST in a form of SExpr
+let getTypeDefAst (n:int) (m:Module) : Type  =
+    m.Decls.[n].typeDef
+    |> (function | (_, t) -> t)
+
+[<Test>]
+let testStateGet0 () =
+    let prog = "contract StateGet
+                type State = { x : int }"
+    let dataCell = "<b 100 256 u, b>"
+    let debug = true
+    let expected = "[ 100 ]"
+    parse prog
+    |> Option.get
+    |> getTypeDefAst 0
+    |> LHTypes.deserializeValue
+    |> execAndCheck debug dataCell expected
+
+(**
 [<Test>]
 [<Ignore("outdated")>]
-let testStateGet0 () =
+let testStateGet1 () =
     let types = [("state",
                    UserType ("State", LHTypes.PT [("x", (LHTypes.UInt 256));
                                                   ("y", LHTypes.Bool);]))]
@@ -39,47 +65,4 @@ let testStateGet0 () =
                                           EMul (ESelect (EVar "state", EVar "x"), ENum 2),
                                           ENum 0)))]
     execAndCheck g types dataCell "200"
-
-[<Test>]
-[<Ignore("outdated")>]
-let testStateGet1 () =
-    let types = [("state", UserType ("State", LHTypes.PT [("x", (LHTypes.UInt 256));
-                                                 ("y", LHTypes.Bool);]))]
-    let dataCell = "<b 100 256 u, 1 2 u, b>"
-    let g = [("state", [], ENum 0);  // this is a stub; will be replaced
-             ("main", [], EFunc ("",
-                           ELet ("s", ESelect (EVar "state", EVar "y"), EVar "s")))
-            ]
-    execAndCheck g types dataCell "1"
-
-
-[<Test>]
-[<Ignore("outdated")>]
-let testStateSet0 () =
-    // update () = if state.y then (updateState ({ state with x = state.x * 2})) else ()
-    // main () = let x = update () in state
-    let types = [("state", UserType ("State", LHTypes.PT [("x", (LHTypes.UInt 64));
-                                                          ("y", LHTypes.Bool)]))]
-    let dataCell = "<b 100 64 u, 1 2 u, b>"
-    let g = [("state", [], ENum 0);  // this is a stub; will be replaced
-             ("update", [], EFunc ("",
-                             EIf (ESelect (EVar "state", EVar "y"),
-                                   EAssign (
-                                    EUpdateRec (EVar "state", 0,
-                                                EMul (ESelect (EVar "state", EVar "x"), ENum 2))),
-                                    ENull)));
-             ("main", [], EFunc ("", ELet ("x", EEval (EVar "update"), EVar "state")))
-    ]
-    execAndCheck g types dataCell "[ 0 [ 200 1 ] ]"
-
-[<Test>]
-let testStateFunction0 () =
-    // update () = if state.y then (updateState ({ state with x = state.x * 2})) else ()
-    // main () = let x = update () in state
-    let types = [("state", LHTypes.UserType ("State", LHTypes.PT [("x", (UInt 64));
-                                                                  ("y", Bool);
-                                                                  ("fun", Function (UInt 64, UInt 64))]))]
-    let dataCell = "<b 100 64 u, 1 2 u, <{ INC }>s s>c ref,  b>"
-    let g = [("state", [], ENull);  // this is a stub; will be replaced
-             ("main", [], EFunc ("", EEval (EAp (ESelect (EVar "state", EVar "fun"), ENum 100))))]
-    execAndCheck g types dataCell "101"
+**)
