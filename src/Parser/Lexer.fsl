@@ -27,6 +27,7 @@ let newline = '\r' | '\n' | "\r\n"
 rule read =
   parse
   | white+    { read lexbuf }
+  | "(*"      { comment lexbuf; read lexbuf }
   | newline  { newline lexbuf; read lexbuf }
   | '('      { LPAREN }
   | ')'      { RPAREN }
@@ -86,3 +87,13 @@ and read_string str ignorequote =
   | '\\'          { read_string str true lexbuf }
   | [^ '"' '\\']+ { read_string (str+(lexeme lexbuf)) false lexbuf }
   | eof           { raise (Exception ("String is not terminated")) }
+and comment = parse
+| "*)"
+    { () }
+| "(*"
+    { comment lexbuf;
+      comment lexbuf }
+| eof
+    { printf "Warning: unterminated comment." }
+| _
+    { comment lexbuf }

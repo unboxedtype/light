@@ -414,8 +414,13 @@ let testRecord3 () =
 
 [<Test>]
 let testInitRecord6 () =
-    let prog = "contract Simple
-                type State = { bal:int }
+    let standardLibrary =
+        "let accept () =
+            assembly \"ACCEPT\" :> unit ;;\n"
+
+    let prog = "contract Simple\n" +
+                standardLibrary +
+               "type State = { bal:int }
                 let actorArgs =
                     assembly \"1000 INT 2000 INT NEWC ENDC 2 INT NEWC 32 STU ENDC CTOS TRUE 5 TUPLE\" ;;
                 let stateDefault =
@@ -423,6 +428,7 @@ let testInitRecord6 () =
                 let func1 (x:State) =
                     x.bal ;;
                 let main msgCell (st:State) =
+                    accept (); (* accept the message *)
                     { bal = func1 st + 1000 } ;; "
     execAndCheckPrint prog true false "(null)"   // unit ()
 

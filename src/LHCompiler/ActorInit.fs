@@ -9,18 +9,11 @@ module ActorInit
 // readActorState : () -> ActorState
 // writeActorState : ActorState -> ()
 
-// Replay protection is as follows:
-// 1. Read 4-byte integer from the message body (message identifier)
-// 2. Read 4-byte integer from the state        (last processed msg identifier)
-// 3. If integer1 does not equal integer2 then proceed,
-//    otherwise throw (replay detected).
-
-
-// ActorInitParams is exactly what virtual machine passes to the
-// smart-contract in the beginning of execution.
-// This code shall be put after user code.
 let actorInitCode =
   "
+  (* ActorInitParams is exactly what the Virtual Machine
+     passes to the smart-contract in the beginning of execution. *)
+
    type ActorInitParams = {
      accBalance : Coins;
      msgBalance : Coins;
@@ -29,17 +22,23 @@ let actorInitCode =
      isExternal: bool
    }
 
+   (* ActorState contains the system state of the Actor. *)
+   (* Replay protection is as follows:
+      1. Read 4-byte integer from the message body (message identifier)
+      2. Read 4-byte integer from the state        (last processed msg identifier)
+      3. If integer1 does not equal integer2 then proceed,
+      otherwise throw (replay detected). *)
    type ActorState = {
      seqno: int;
      deployed: bool;
      state: State
    }
 
-   let accept () =
-     assembly \"ACCEPT\" :> unit ;;
-
    let msgReadSeqNo (msg:VMSlice) =
      assembly \"32 LDU DROP\" :> int ;;
+
+   let saveToC4 (c4:VMCell) =
+     assembly \"c4 POPCTR\" :> unit ;;
 
    let actorStateRead () =
      { seqno = 1;
