@@ -149,3 +149,19 @@ let getHandlerDeclsRaw types decls =
                      | _ -> [])
     |> List.map ( fun (name, args, body) ->
                   (name, restoreTypes types args, body) )
+
+let extractTypes debug decls =
+    let types = getTypesDeclarationsRaw decls
+    let undefTypesNames = getPartiallyDefinedTypesNames types
+    let undefTypesNamesList =
+        undefTypesNames
+        |> List.map (fun ((n, _), _) -> n)
+    let defTypes =
+        types
+        |> List.filter (fun (n, t) -> not (List.contains n undefTypesNamesList))
+    let completeTypes = patchPartTypes undefTypesNames defTypes
+    if debug then
+        printfn "Partially defined types:\n%A" undefTypesNames
+        printfn "Fully defined types:\n%A" defTypes
+        printfn "Completed types:\n%A\n\n" completeTypes
+    defTypes @ completeTypes

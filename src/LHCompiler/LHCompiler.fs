@@ -444,20 +444,7 @@ let makeReductions debug (ast:ASTNode) : ASTNode =
 let compileModule modName decls withInit debug : string =
     if debug then
         printfn "Compiling actor %A" modName ;
-    let types = ParserModule.getTypesDeclarationsRaw decls
-    let undefTypesNames = ParserModule.getPartiallyDefinedTypesNames types
-    let undefTypesNamesList =
-        undefTypesNames
-        |> List.map (fun ((n, _), _) -> n)
-    let defTypes =
-        types
-        |> List.filter (fun (n, t) -> not (List.contains n undefTypesNamesList))
-    let completeTypes = ParserModule.patchPartTypes undefTypesNames defTypes
-    if debug then
-        printfn "Partially defined types:\n%A" undefTypesNames
-        printfn "Fully defined types:\n%A" defTypes
-        printfn "Completed types:\n%A\n\n" completeTypes
-    let typesFull = defTypes @ completeTypes
+    let typesFull = ParserModule.extractTypes debug decls
     let letBnds = ParserModule.getLetDeclarationsRaw typesFull decls
     let letBndsUpd = patchLetBindingsFuncTypes letBnds typesFull
     if debug then
