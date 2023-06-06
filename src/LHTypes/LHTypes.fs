@@ -129,7 +129,7 @@ let deserializeValue (ty:TypeList) (t:Type) : string =
         | UInt n ->
             sprintf "%i LDU" n
         | Bool ->
-            sprintf "1 LDU SWAP NEGATE SWAP"
+            sprintf "2 LDI"
         | PT fields ->
             let n = List.length fields
             List.map snd fields // [t1; t2; ...]
@@ -142,19 +142,30 @@ let deserializeValue (ty:TypeList) (t:Type) : string =
             deserializeValueInner ty t
         | _ ->
             failwithf "Parsing for type %A not implemented" t
-    "CTOS " + (deserializeValueInner ty t) + " ENDS"
-// b v -> b'
-let serializeValue (t:Type) : TVM.Code =
-    match t with
-    | Int n ->
-        [Sti (uint n)]
-    | UInt n ->
-        [Stu (uint n)]
-    | Bool ->
-        [Stu 1u]
-    | _ ->
-        failwith "not implemented"
-
+    "CTOS " + (deserializeValueInner ty t) + " ENDS  "
+// v b -> b'
+let serializeValue (ty:TypeList) (t:Type) : string =
+    let rec serializeValueInner ty t : string =
+        match t with
+        | Int n ->
+            sprintf "%i STI" n
+        | UInt n ->
+            sprintf "%i STU" n
+        | Bool ->
+            sprintf "2 STI"
+        | PT fields ->
+            let n = List.length fields
+            " SWAP " +
+            (sprintf " %i UNTUPLE " n) +    // b [v1; v2; ... vn] --> b v1 v2 .. vn
+            (sprintf " %i 0 REVERSE " (n+1)) +    // vn ... v1 b
+            (List.map snd fields // [t1; t2; ...]
+             |> List.map (serializeValueInner ty)  // [str; str; str]
+             |> String.concat " ") // ... -> b'
+        | UserType (n, Some t) ->
+            serializeValueInner ty t
+        | _ ->
+            failwith "not implemented"
+    "NEWC " + serializeValueInner ty t + " ENDC "
 // substitute type name with the given definition def
 // in the type t
 let rec insertType (name:Name) (typDefs:ProgramTypes) (expr:Type) : Type =

@@ -72,7 +72,7 @@ let testStateGet0 () =
 let testStateGet1 () =
     let prog = "contract StateGet
                 type State = { x : int; b : bool }"
-    let dataCell = "<b 100 256 u, 1 1 u, b>"
+    let dataCell = "<b 100 256 u, -1 2 i, b>"
     let debug = true
     let expected = "[ 100 -1 ]"
     let ty =
@@ -90,7 +90,7 @@ let testStateGet2 () =
     let prog = "contract StateGet
                 type Data = { x : int; b : bool }
                 type State = { d : Data }"
-    let dataCell = "<b 100 256 u, 1 1 u, b>"
+    let dataCell = "<b 100 256 u, -1 2 i, b>"
     let debug = true
     let expected = "[ [ 100 -1 ] ]"
     let ty =
@@ -110,13 +110,76 @@ let testStateGet3 () =
                     deployed: bool;
                     state: State
                  }"
-    let dataCell = "<b 1 256 u, 1 1 u, 10000 256 u, b>"
+    let dataCell = "<b 1 256 u, -1 2 i, 10000 256 u, b>"
     let debug = true
     let expected = "[ 1 -1 [ 10000 ] ]"
     let ty =
       parse prog
       |> Option.get
       |> getTypes
-    (snd ty.[1])        // type without name
+    (snd ty.[1])        // ActorState
     |> LHTypes.deserializeValue ty
     |> execAndCheck debug dataCell expected
+
+[<Test>]
+let testStateSet1 () =
+    let prog = "contract StateGet
+                 type State = { bal : int }
+                 type ActorState = {
+                    seqno: int;
+                    deployed: bool;
+                    state: State
+                 }"
+    let data = "100 true 1000 1 tuple 3 tuple "
+    let debug = true
+    let expected = "C{DC2A33271B62170F68949BB82FF51BAD0F41AC8C852F166354C732E950ABEE76}"
+    let ty =
+      parse prog
+      |> Option.get
+      |> getTypes
+    (snd ty.[1])        // ActorState
+    |> LHTypes.serializeValue ty
+    |> execAndCheck debug data expected
+
+[<Test>]
+let testStateSet2 () =
+    let prog = "contract StateGet
+                 type State = { bal : int }
+                 type Data = { deployed : bool }
+                 type ActorState = {
+                    seqno: int;
+                    deployed: Data;
+                    state: State
+                 }"
+    let data = "100 true 1 tuple 1000 1 tuple 3 tuple "
+    let debug = true
+    let expected = "C{DC2A33271B62170F68949BB82FF51BAD0F41AC8C852F166354C732E950ABEE76}"
+    let ty =
+      parse prog
+      |> Option.get
+      |> getTypes
+    (snd ty.[2])        // ActorState
+    |> LHTypes.serializeValue ty
+    |> execAndCheck debug data expected
+
+[<Test>]
+let testId1 () =
+    let prog = "contract StateGet
+                 type State = { bal : int }
+                 type Data = { deployed : bool }
+                 type ActorState = {
+                    seqno: int;
+                    deployed: Data;
+                    state: State
+                 }"
+    let data = "100 true 1 tuple 1000 1 tuple 3 tuple "
+    let debug = true
+    let expected = "[ 100 [ -1 ] [ 1000 ] ]"
+    let ty =
+      parse prog
+      |> Option.get
+      |> getTypes
+    (snd ty.[2])        // ActorState
+    |> (fun v -> LHTypes.serializeValue ty v +
+                 LHTypes.deserializeValue ty v)
+    |> execAndCheck debug data expected
