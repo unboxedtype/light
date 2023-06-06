@@ -14,7 +14,7 @@ let execAndCheckPrint (prog:string) addInit debug expected =
     if debug then
         printfn "%A" prog |> ignore
         printfn "Passing program to the compiler..."
-    let code = LHCompiler.compile prog addInit debug
+    let code = LHCompiler.codeAsRunVM (LHCompiler.compile prog addInit debug)
     if debug then
         printfn "Dumping compiled program into file..."
     let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".fif"
@@ -26,6 +26,22 @@ let execAndCheckPrint (prog:string) addInit debug expected =
 
 let execAndCheck prog expected =
     execAndCheckPrint prog false false expected
+
+let execReal debug prog data expected =
+    if debug then
+        printfn "%A" prog |> ignore
+        printfn "Passing program to the compiler..."
+    let code = codeAsCell (LHCompiler.compile prog true debug)
+    let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".fif"
+    if debug then
+        printfn "Dumping compiled program into file %A" filename
+    let tvcOutPath = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".tvc"
+    TVM.dumpFiftScript filename (TVM.genStateInit tvcOutPath code data)
+    if debug then
+        printfn "Executing the resulting FIFT-script..."
+    let res = FiftExecutor.runFiftScript filename
+    Assert.AreEqual (expected, res)
+
 
 //let execActorMain prog actorMainParams debug expected =
 //    execAndCheckPrintActorMain prog actorMainParams true debug expected
@@ -417,13 +433,6 @@ let testInitRecord6 () =
     let prog = "contract Simple
                 type State = { bal:int }
 
-                (* actorArgs construction must take place at the very beginning of
-                   actor execution: VM parameters are passed on the stack; in this
-                   setting, the actorArgs() function MUST be the first function in
-                   the definitions. *)
-                let actorArgs () = (* here we mimicking values put by the VM *)
-                    assembly \"1000 INT 2000 INT NEWC ENDC 2 INT NEWC 32 STU ENDC CTOS TRUE 5 TUPLE\" ;;
-
                 (************************************************)
                 (* This will go into Standard Library one day...*)
                 (************************************************)
@@ -445,7 +454,7 @@ let testInitRecord6 () =
                     accept (); (* accept the message *)
                     { bal = func1 st + 1000 } ;; "
 
-    execAndCheckPrint prog true false "(null)"   // unit ()
+    execReal true prog "<b 100 256 u, -1 2 i, 777 256 u, b>"  "(null)"   // unit ()
 
 
 [<Test>]

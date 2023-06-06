@@ -33,6 +33,9 @@ let rec expandLet finalFunctionName letBind =
         mkAST (ELet (name, body, expandLet finalFunctionName t))
     | _ -> failwith "incorrect let structure of the program"
 
+// Make one big LET expression from global LET-
+// definitions. The very last LET experssion is
+// the actorInit let block.
 let prepareAstWithInitFunction letBnds types  =
     // TODO!!: shall we check main presence as well?
     let actorInitLet =
@@ -396,6 +399,9 @@ let patchLetBindingsFuncTypes letBnds types =
             // patch the argument
             let argType2 = ParserModule.restoreType types argType
             mkAST (EFunc ((argName, Some argType2), body))
+        | ETypeCast (node, typ) ->
+            let typ' = ParserModule.restoreType types typ
+            mkAST (ETypeCast (node, typ'))
         | _ ->
             letBody
     letBnds
@@ -445,7 +451,59 @@ let compileModule modName decls withInit debug : string =
     if debug then
         printfn "Compiling actor %A" modName ;
     let typesFull = ParserModule.extractTypes debug decls
-    let letBnds = ParserModule.getLetDeclarationsRaw typesFull decls
+    let finalDecls =
+        if withInit then
+            let actorStateType =
+                (Map.ofList typesFull).["ActorState"]
+            let actorStateReaderCode =
+                LHTypes.deserializeValue typesFull actorStateType
+            let actorStateWriterCode =
+                LHTypes.serializeValue typesFull actorStateType
+            // pack 5 elements from the stack into a tuple, this will be an
+            // ActorInitParams value.
+            let aargsLet =
+                ParserModule.LetBinding (
+                    "actorArgs", [], false,
+                    mkAST (
+                      ETypeCast (
+                         mkAST (EAsm "5 TUPLE"),
+                         UserType ("ActorInitArgs", None)
+                      )
+                    )
+                )
+            let asrLet =
+                ParserModule.LetBinding (
+                    // actorStaterReader : VMCell -> ActorState
+                    "actorStateReader", [], false,
+                    mkAST (
+                      EFunc (("x",Some VMCell),
+                      mkAST (
+                         ETypeCast (
+                           mkAST (EAsm actorStateReaderCode),
+                           UserType ("ActorState", None))
+                         )
+                      )
+                    )
+                )
+            let aswLet =
+                ParserModule.LetBinding (
+                    // actorStaterWriter : ActorState -> VMCell
+                    "actorStateWriter", [], false,
+                    mkAST (
+                      EFunc (
+                         ("x", Some (UserType ("ActorState", None))),
+                         mkAST (
+                           ETypeCast (
+                             mkAST (EAsm actorStateWriterCode), VMCell
+                           )
+                         )
+                      )
+                   )
+                )
+            [aargsLet; asrLet; aswLet] @ decls
+        else
+            decls
+    let letBnds = ParserModule.getLetDeclarationsRaw typesFull finalDecls
     let letBndsUpd = patchLetBindingsFuncTypes letBnds typesFull
     if debug then
         printfn "Let Bindings after types patched:\n%A"
@@ -476,7 +534,7 @@ let compileModule modName decls withInit debug : string =
     insertEval ast1 typeEnv newMap |> ignore // this is done for side-effect only
     if (debug) then
         printfn "Final S-expression:\n%A" (ast1.toSExpr())
-    LHMachine.compileWithInitialTypesDebug ast1 newMap evalNodes debug
+    LHMachine.compileIntoFiftSliceDebug ast1 newMap evalNodes debug
     |> (fun res ->
             // Clean the eval nodes collection for the next time
             evalNodes <- [] ;
@@ -513,39 +571,9 @@ let compileFile (filePath:string) =
     let newPath = replaceFileExtension filePath
     writeStringToFile newPath fiftStr
 
-// Generate FIFT script that produces .TVC file with
-// code and data initialized according to given params.
-let generateStateInit outputPath codeFift dataFift : string =
-    let newline = System.Environment.NewLine
-    "#!/usr/bin/fift -s
-\"Asm.fif\" include
-{ B>file } : file_write_bytes
-{ <b } : builder_begin
-{ b> } : builder_end
-{ u, } : builder_uint_append
-{ ref, } : builder_ref_append
-{ boc>B } : cell_to_bytes
-{ hashu } : cell_hash
-{ x._ } : val_print_hex_ws
-{ B>file } : file_write_bytes" + newline +
-    "{ " + dataFift + " } : stateinit_data" + newline +
-    "{ " + codeFift + " } : stateinit_code" + newline +
-    "builder_begin  // b
-    0 1  builder_uint_append // b 0 1 -> b'   : split_depth = None
-    0 1  builder_uint_append // b 0 1 -> b'   : special = None
-    1 1  builder_uint_append // b 1 1 -> b'   : code = Value<Cell>
-    1 1  builder_uint_append // b 1 1 -> b'   : data = Value<Cell>
-    0 1  builder_uint_append // b 0 1 -> b'   : library = None
-    stateinit_code
-    builder_ref_append
-    stateinit_data
-    builder_ref_append" + newline +
-    "builder_end dup cell_to_bytes" + newline + "\"" + outputPath +
-    "\" file_write_bytes" + newline +
-    ".\"0:\" cell_hash val_print_hex_ws"
+let codeAsCell (c:string) =
+    c + " s>c "
 
-// Generate FIFT script that produces .BOC file containing
-// an external inbound message carrying stateinit with specified
-// code and data, and destination address set to that stateinit
-// hash.
-// let generateMessageWithStateInit outputPath codeFift dataFift : string = ""
+let codeAsRunVM (c:string) =
+    "\"Asm.fif\" include\n" +
+    c + "\n 1000000 gasrunvmcode drop .dump cr .dump cr"

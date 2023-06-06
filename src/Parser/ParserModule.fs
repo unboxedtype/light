@@ -6,7 +6,8 @@ open LHTypes
 open LHExpr
 open FSharp.Text.Lexing
 
-type Type = LHTypes.Type
+type Type =
+    LHTypes.Type
 
 type Expr =
     LHExpr.Expr
@@ -150,7 +151,7 @@ let getHandlerDeclsRaw types decls =
     |> List.map ( fun (name, args, body) ->
                   (name, restoreTypes types args, body) )
 
-let extractTypes debug decls =
+let extractTypes debug decls : list<string*Type> =
     let types = getTypesDeclarationsRaw decls
     let undefTypesNames = getPartiallyDefinedTypesNames types
     let undefTypesNamesList =

@@ -399,24 +399,14 @@ let rec hasInstruction (i:Instruction) (ir:LHCode) : bool =
 
 // Translation of AST into IR language, and then into FIFT commands.
 // IR language is easier to debug in complex cases.
-let compileIntoFiftDebug ast nodeTypeMapping evalNodes debug : string =
+let compileIntoFiftSliceDebug ast nodeTypeMapping evalNodes debug : string =
     let ir = compileWithTypes ast [] nodeTypeMapping evalNodes
     let hasFixpoint = ir |> hasInstruction Fixpoint
     if debug then
         printfn "IR:\n%A" ir
         printfn "hasFixpoint = %A" hasFixpoint
-    List.singleton "\"Asm.fif\" include" @
     List.singleton "<{ " @
     (if hasFixpoint then [fixpointImpl] else []) @
     List.singleton   (compileToTVM ir) @
-    List.singleton " }>s 1000000 gasrunvmcode drop .dump cr .dump cr"
+    List.singleton "}>s"
     |> String.concat "\n"
-
-let compileIntoFift ast =
-    compileIntoFiftDebug ast (Map []) [] false
-
-let compileWithInitialTypesDebug ast nodeTypeMapping evalNodes debug =
-    compileIntoFiftDebug ast nodeTypeMapping evalNodes debug
-
-let compileWithInitialTypes ast =
-    compileWithInitialTypesDebug ast (Map []) [] false

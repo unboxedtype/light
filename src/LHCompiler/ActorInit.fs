@@ -9,7 +9,7 @@ let actorInitCode =
   (* ActorInitParams is exactly what the Virtual Machine
      passes to the smart-contract in the beginning of execution. *)
 
-   type ActorInitParams = {
+   type ActorInitArgs = {
      accBalance : Coins;
      msgBalance : Coins;
      msgCell: VMCell;
@@ -32,15 +32,10 @@ let actorInitCode =
    let msgReadSeqNo (msg : VMSlice) =
      assembly \"32 LDU DROP\" :> int ;;
 
-   let actorStateReader (cell:VMCell) =
-     { seqno = 1;
-       deployed = false;
-       state = stateDefault } ;;
-
-   let actorStateWriter (st:ActorState) =
-     assembly \"NEWC ENDC\" :> VMCell ;;
-
-   let actorInitPost (initArgs:ActorInitParams) =
+   (* actorStateReader and actorStateWriter functions are added
+      by the compiler; to see their code , you have to ask the 
+      compiler to produce the full source code listing. *)
+   let actorInitPost (initArgs:ActorInitArgs) =
      let actState = actorStateReader (getC4 ()) in
      let msgSeqNo = msgReadSeqNo initArgs.msgBody in
      if msgSeqNo  = actState.seqno then
@@ -56,6 +51,6 @@ let actorInitCode =
    ;;
 
    let actorInit =
-       actorInitPost (actorArgs ())
+       actorInitPost (actorArgs)
    ;;
 "

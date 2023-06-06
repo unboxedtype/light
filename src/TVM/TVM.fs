@@ -1686,6 +1686,38 @@ let dumpFiftScript (fname:string) (str:string)  =
     use f = System.IO.File.CreateText(fname)
     f.WriteLine(str)
 
+// Generate FIFT script that produces .TVC file with
+// code and data initialized according to given params.
+let genStateInit outputPath codeFift dataFift : string =
+    let newline = System.Environment.NewLine
+    "#!/usr/bin/fift -s
+\"Asm.fif\" include
+{ B>file } : file_write_bytes
+{ <b } : builder_begin
+{ b> } : builder_end
+{ u, } : builder_uint_append
+{ ref, } : builder_ref_append
+{ boc>B } : cell_to_bytes
+{ hashu } : cell_hash
+{ x._ } : val_print_hex_ws
+{ B>file } : file_write_bytes" + newline +
+    "{ " + dataFift + " } : stateinit_data" + newline +
+    "{ " + codeFift + " } : stateinit_code" + newline +
+    "builder_begin  // b
+    0 1  builder_uint_append // b 0 1 -> b'   : split_depth = None
+    0 1  builder_uint_append // b 0 1 -> b'   : special = None
+    1 1  builder_uint_append // b 1 1 -> b'   : code = Value<Cell>
+    1 1  builder_uint_append // b 1 1 -> b'   : data = Value<Cell>
+    0 1  builder_uint_append // b 0 1 -> b'   : library = None
+    stateinit_code
+    builder_ref_append
+    stateinit_data
+    builder_ref_append" + newline +
+    "builder_end dup cell_to_bytes" + newline + "\"" + outputPath +
+    "\" file_write_bytes" + newline +
+    ".\"0:\" cell_hash val_print_hex_ws"
+
+
 let bucketSize = 255;
 let arrayDefaultVal = Null
 let arrayNew = [PushNull]
