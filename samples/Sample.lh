@@ -1,0 +1,33 @@
+contract Simple
+
+type State = {
+  counter: int;
+  sum: int
+}
+
+let sum a b = a + b
+;;
+
+let accept () =
+  assembly "ACCEPT NULL" :> unit ;;
+;;
+
+let getC4 () =
+  assembly "c4 PUSHCTR" :> VMCell
+;;
+
+let putC4 (x:VMCell) =
+  assembly "c4 POPCTR NULL" :> unit 
+;;
+
+let add_more (x: int) (st:State) =
+   let sum' = sum st.counter x in
+   let counter' = x in
+   { counter = counter'; sum = sum' }
+;;
+
+let main (msgCell:VMCell) (st:State) =
+   accept () ;
+   add_more 10 st
+;;
+
