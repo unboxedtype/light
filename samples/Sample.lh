@@ -9,7 +9,7 @@ let sum a b = a + b
 ;;
 
 let accept () =
-  assembly "ACCEPT NULL" :> unit ;;
+  assembly "ACCEPT NULL" :> unit
 ;;
 
 let getC4 () =

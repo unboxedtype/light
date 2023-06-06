@@ -554,6 +554,8 @@ let compile (source:string) (withInit:bool) (debug:bool) : string =
     if (debug) then
         printfn "Full program text:\n%A" prog
     let res = parse prog
+    if debug then
+        printfn "Parsed result:\n%A" res
     match res with
     | Some (Module (modName, decls)) ->
         compileModule modName decls withInit debug
