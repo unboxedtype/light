@@ -554,26 +554,35 @@ let compile (source:string) (withInit:bool) (debug:bool) : string =
     | _ ->
         failwith "Actor not found"
 
-// compile Lighthouse source at filePath and output the result (FIFT)
-// into the same filePath, but with ".fif" extension
-let compileFile (filePath:string) =
-    let readFileContents (filePath: string) =
-        File.ReadAllText(filePath)
-    let replaceFileExtension (filePath: string) =
-        let directory = Path.GetDirectoryName(filePath)
-        let fileName = Path.GetFileNameWithoutExtension(filePath)
-        let newFilePath = Path.Combine(directory, fileName + ".fif")
-        newFilePath
-    let writeStringToFile (filePath: string) (content: string) =
-        File.WriteAllText(filePath, content)
-    let fileContent = readFileContents filePath
-    let fiftStr = compile fileContent true false
-    let newPath = replaceFileExtension filePath
-    writeStringToFile newPath fiftStr
-
 let codeAsCell (c:string) =
     c + " s>c "
 
 let codeAsRunVM (c:string) =
     "\"Asm.fif\" include\n" +
     c + "\n 1000000 gasrunvmcode drop .dump cr .dump cr"
+
+// compile Lighthouse source at filePath and output the result (FIFT)
+// into the same filePath, but with ".fif" extension
+let compileFile (filePath:string) (data:string) (msgBody:string) =
+    let readFile (filePath: string) =
+        File.ReadAllText(filePath)
+    let replaceExt (filePath: string) (newExt: string) =
+        let directory = Path.GetDirectoryName (filePath)
+        let fileName = Path.GetFileNameWithoutExtension (filePath)
+        let newFilePath = Path.Combine(directory, fileName + newExt)
+        newFilePath
+    let onlyName (filePath: string) =
+        Path.GetFileNameWithoutExtension (filePath)
+    let writeFile (filePath: string) (content: string) =
+        File.WriteAllText(filePath, content)
+    let fileContent = readFile filePath
+    let code = codeAsCell (compile fileContent true false)
+    let nameGenStateInitScript = (onlyName filePath) + ".fif"
+    let nameGenStateInitTVC = (onlyName filePath) + ".tvc"
+    let nameGenMessageWithStateInitScript = (onlyName filePath) + "Deploy" + ".fif"
+    let nameMsgWithStateInitBOC = (onlyName filePath) + ".boc"
+    TVM.dumpFiftScript
+       nameGenStateInitScript
+       (TVM.genStateInit nameGenStateInitTVC code data)
+    TVM.dumpFiftScript nameGenMessageWithStateInitScript
+       (TVM.genMessageWithStateInit filePath nameMsgWithStateInitBOC code data msgBody)
