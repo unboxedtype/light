@@ -66,11 +66,15 @@ let getTypesDeclarationsRaw decls : List<Name * Type> =
                     | _         -> false)
     |> List.map (fun n -> n.typeDef)
 
-let getPartiallyDefinedTypes types : List<(Name * Type) * List<Name>> =
+let getPartiallyDefinedTypesNames types : list<(Name*Type)*list<Name>> =
     types  // [(name, typ)]
     |> List.map (fun (name, typ:Type) ->
                  ((name, typ), hasUndefType typ))
     |> List.filter (fun ((_, _),l) -> l <> [])
+
+let getPartiallyDefinedTypes (types : list<Name*Type>) : list<Name*Type> =
+    getPartiallyDefinedTypesNames types
+    |> List.map fst
 
 type TypeDefs = list<string*Type>
 type ArgList = list<string*option<Type>>
@@ -110,7 +114,7 @@ let restoreTypes (typeDefs:TypeDefs) (args:ArgList) : ArgList =
                  | None -> (name, optT)
                 )
 
-let patchPartTypes partTypesNames defs =
+let patchPartTypes partTypesNames defs : TypeDefs =
     partTypesNames
     |> List.map (fun ((name, typ), undNames) ->
                  // TODO: fixpoint is needed here, because there might

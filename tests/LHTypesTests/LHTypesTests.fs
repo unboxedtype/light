@@ -29,7 +29,7 @@ let Setup () =
    type.
 (* ******************************************************************* *) *)
 
-let parse source =
+let parse source : option<Module>  =
     let lexbuf = LexBuffer<char>.FromString source
     let res = Parser.start Lexer.read lexbuf
     res
@@ -39,15 +39,16 @@ let getTypeDefAst (n:int) (m:Module) : Type  =
     m.Decls.[n].typeDef
     |> (function | (_, t) -> t)
 
-let getTypes (m:Module) : list<string * Type> =
+let getTypes debug (m:Module) : list<string * Type> =
     let types = ParserModule.getTypesDeclarationsRaw m.Decls
-    let undefTypesNames = ParserModule.getPartiallyDefinedTypes types
+    let undefTypesNames =
+         ParserModule.getPartiallyDefinedTypesNames types
     let undefTypesNamesList =
-        undefTypesNames
-        |> List.map (fun ((n, _), _) -> n)
+         undefTypesNames
+         |> List.map (fun ((n, _), _) -> n)
     let defTypes =
-        types
-        |> List.filter (fun (n, t) -> not (List.contains n undefTypesNamesList))
+         types
+         |> List.filter (fun (n, t) -> not (List.contains n undefTypesNamesList))
     let completeTypes = ParserModule.patchPartTypes undefTypesNames defTypes
     defTypes @ completeTypes
 
@@ -56,12 +57,12 @@ let testStateGet0 () =
     let prog = "contract StateGet
                 type State = { x : int }"
     let dataCell = "<b 100 256 u, b>"
-    let debug = true
+    let debug = false
     let expected = "[ 100 ]"
     let ty =
       parse prog
       |> Option.get
-      |> getTypes
+      |> getTypes debug
     parse prog
     |> Option.get
     |> getTypeDefAst 0
@@ -73,12 +74,12 @@ let testStateGet1 () =
     let prog = "contract StateGet
                 type State = { x : int; b : bool }"
     let dataCell = "<b 100 256 u, -1 2 i, b>"
-    let debug = true
+    let debug = false
     let expected = "[ 100 -1 ]"
     let ty =
       parse prog
       |> Option.get
-      |> getTypes
+      |> getTypes debug
     parse prog
     |> Option.get
     |> getTypeDefAst 0
@@ -91,12 +92,12 @@ let testStateGet2 () =
                 type Data = { x : int; b : bool }
                 type State = { d : Data }"
     let dataCell = "<b 100 256 u, -1 2 i, b>"
-    let debug = true
+    let debug = false
     let expected = "[ [ 100 -1 ] ]"
     let ty =
       parse prog
       |> Option.get
-      |> getTypes
+      |> getTypes debug
     (snd ty.[1])        // type without name
     |> LHTypes.deserializeValue ty
     |> execAndCheck debug dataCell expected
@@ -111,12 +112,12 @@ let testStateGet3 () =
                     state: State
                  }"
     let dataCell = "<b 1 256 u, -1 2 i, 10000 256 u, b>"
-    let debug = true
+    let debug = false
     let expected = "[ 1 -1 [ 10000 ] ]"
     let ty =
       parse prog
       |> Option.get
-      |> getTypes
+      |> getTypes debug
     (snd ty.[1])        // ActorState
     |> LHTypes.deserializeValue ty
     |> execAndCheck debug dataCell expected
@@ -131,12 +132,12 @@ let testStateSet1 () =
                     state: State
                  }"
     let data = "100 true 1000 1 tuple 3 tuple "
-    let debug = true
+    let debug = false
     let expected = "C{DC2A33271B62170F68949BB82FF51BAD0F41AC8C852F166354C732E950ABEE76}"
     let ty =
       parse prog
       |> Option.get
-      |> getTypes
+      |> getTypes debug
     (snd ty.[1])        // ActorState
     |> LHTypes.serializeValue ty
     |> execAndCheck debug data expected
@@ -152,12 +153,12 @@ let testStateSet2 () =
                     state: State
                  }"
     let data = "100 true 1 tuple 1000 1 tuple 3 tuple "
-    let debug = true
+    let debug = false
     let expected = "C{DC2A33271B62170F68949BB82FF51BAD0F41AC8C852F166354C732E950ABEE76}"
     let ty =
       parse prog
       |> Option.get
-      |> getTypes
+      |> getTypes debug
     (snd ty.[2])        // ActorState
     |> LHTypes.serializeValue ty
     |> execAndCheck debug data expected
@@ -173,13 +174,37 @@ let testId1 () =
                     state: State
                  }"
     let data = "100 true 1 tuple 1000 1 tuple 3 tuple "
-    let debug = true
+    let debug = false
     let expected = "[ 100 [ -1 ] [ 1000 ] ]"
     let ty =
       parse prog
       |> Option.get
-      |> getTypes
+      |> getTypes debug
     (snd ty.[2])        // ActorState
+    |> (fun v -> LHTypes.serializeValue ty v +
+                 LHTypes.deserializeValue ty v)
+    |> execAndCheck debug data expected
+
+[<Test>]
+[<Ignore("this test will not work, because the type
+          restore isn't working for deeply nested types")>]
+let testId2 () =
+    let prog = "contract StateGet
+                 type State = { bal : int }
+                 type Data = { st : State }
+                 type Data2 = { d : Data }
+                 type Data3 = { d : Data2 }
+                 type ActorState = {
+                    d: Data3
+                 }"
+    let data = "1000 1 tuple 1 tuple 1 tuple 1 tuple 1 tuple "
+    let debug = true
+    let expected = "[ [ [ [ [ 1000 ] ] ] ] ]"
+    let ty =
+      parse prog
+      |> Option.get
+      |> getTypes debug
+    (snd ty.[4])        // ActorState
     |> (fun v -> LHTypes.serializeValue ty v +
                  LHTypes.deserializeValue ty v)
     |> execAndCheck debug data expected

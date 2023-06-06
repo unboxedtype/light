@@ -445,7 +445,7 @@ let compileModule modName decls withInit debug : string =
     if debug then
         printfn "Compiling actor %A" modName ;
     let types = ParserModule.getTypesDeclarationsRaw decls
-    let undefTypesNames = ParserModule.getPartiallyDefinedTypes types
+    let undefTypesNames = ParserModule.getPartiallyDefinedTypesNames types
     let undefTypesNamesList =
         undefTypesNames
         |> List.map (fun ((n, _), _) -> n)

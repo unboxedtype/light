@@ -22,7 +22,7 @@ let actorInitCode =
       1. Read 4-byte integer from the message body (message identifier)
       2. Read 4-byte integer from the state        (last processed msg identifier)
       3. If integer1 does not equal integer2 then proceed,
-      otherwise throw (replay detected). *)
+         otherwise throw (replay detected). *)
    type ActorState = {
      seqno: int;      (* sending actors must consequently increase this counter *)
      deployed: bool;  (* true if put inside the blockchain; false otherwise     *)
