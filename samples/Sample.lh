@@ -9,7 +9,8 @@ let sum a b = a + b
 ;;
 
 let accept () =
-  assembly "ACCEPT NULL" :> unit
+  assembly "ACCEPT" :> unit ;
+  ()
 ;;
 
 let getC4 () =
@@ -17,7 +18,8 @@ let getC4 () =
 ;;
 
 let putC4 (x:VMCell) =
-  assembly "c4 POPCTR NULL" :> unit 
+  assembly "c4 POPCTR" :> unit ;
+  ()
 ;;
 
 let add_more (x: int) (st:State) =
@@ -27,7 +29,9 @@ let add_more (x: int) (st:State) =
 ;;
 
 let main (msgCell:VMCell) (st:State) =
-   accept () ;
-   add_more 10 st
+  let rec fact n =
+    if (n > 1) then n * fact (n - 1) else 1
+  in
+    accept () ;
+    add_more (fact 20) st
 ;;
-

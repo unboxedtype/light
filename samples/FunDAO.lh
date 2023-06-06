@@ -33,12 +33,11 @@ and State {
     members: List<ActorId> ;
     weights: Map<ActorId,uint256> ;
     request_opt: Option<Request> ;
-    votes: Map<ActorId * Vote> ;
+    votes: Map<ActorId,Vote> ;
 }
    
 type VotingFunction =
     State -> bool
-
 
 let isMember (id:ActorId) (st:State) : bool = 
     List.contains id st.members ;;
