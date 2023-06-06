@@ -1717,18 +1717,10 @@ let genStateInit outputPath codeFift dataFift : string =
     "\" file_write_bytes" + newline +
     ".\"0:\" cell_hash val_print_hex_ws"
 
-let genMessageWithStateInit name outputPath codeFift dataFift : string =
+let genMessageWithStateInit name outputPath codeFift dataFift msgBodyFift : string =
     "#!/usr/bin/fift -s
     \"Asm.fif\" include
-    { B>file } : file_write_bytes
-    { <b } : builder_begin
-    { b> } : builder_end
-    { u, } : builder_uint_append
-    { ref, } : builder_ref_append
-    { boc>B } : cell_to_bytes
-    { hashu } : cell_hash
-    { x._ } : val_print_hex_ws
-    { B>file } : file_write_bytes
+    \"Unboxed.fif\" include
     { \"" + name + ".address\" address_parse_text } : contract_addr 
     { contract_addr drop } : contract_wc
     { contract_addr swap drop } : contract_account_id
@@ -1758,7 +1750,7 @@ let genMessageWithStateInit name outputPath codeFift dataFift : string =
        0b1 1 builder_uint_append // Either ^Body
      message_body_build builder_ref_append
      builder_end
-     cell_to_bytes\"" + outputPath + "\" file_write_bytes"
+     cell_to_bytes \"" + outputPath + "\" file_write_bytes"
 
 let bucketSize = 255
 let arrayDefaultVal = Null

@@ -27,7 +27,7 @@ let execAndCheckPrint (prog:string) addInit debug expected =
 let execAndCheck prog expected =
     execAndCheckPrint prog false false expected
 
-let execReal debug prog data expected =
+let execReal debug prog data msgBody expected =
     if debug then
         printfn "%A" prog |> ignore
         printfn "Passing program to the compiler..."
@@ -50,7 +50,7 @@ let execReal debug prog data expected =
     // using tonos-cli
     let nameMsgWithStateInitBOC = tname + ".boc"
     TVM.dumpFiftScript nameGenMessageWithStateInitScript
-       (TVM.genMessageWithStateInit tname nameMsgWithStateInitBOC code data)
+       (TVM.genMessageWithStateInit tname nameMsgWithStateInitBOC code data msgBody)
     //if debug then
     //    printfn "Executing the resulting FIFT-script..."
     //let res = FiftExecutor.runFiftScript filename
@@ -469,8 +469,10 @@ let testInitRecord6 () =
                     accept (); (* accept the message *)
                     { bal = func1 st + 1000 } ;; "
 
-    execReal true prog "<b 100 256 u, -1 2 i, 777 256 u, b>"  "(null)"   // unit ()
-
+    // This is ActorState structure, not State
+    let stateData = "<b 100 256 u, -1 2 i, 777 256 u, b>"
+    let msgBody = "<b 1 32 u, b>"  // 1 = sequence number
+    execReal true prog stateData msgBody "(null)"
 
 [<Test>]
 [<Ignore("bug")>]

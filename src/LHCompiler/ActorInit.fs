@@ -29,8 +29,10 @@ let actorInitCode =
      state: State     (* application state of the actor                         *)
    }
 
+   (* First 32-bits of the message body is dedicated for
+      the message sequence number. *)
    let msgReadSeqNo (msg : VMSlice) =
-     assembly \"256 LDU DROP\" :> int ;;
+     assembly \"32 LDU DROP\" :> int ;;
 
    (* actorStateReader and actorStateWriter functions are added
       by the compiler; to see their code , you have to ask the 
