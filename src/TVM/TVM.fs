@@ -1724,7 +1724,7 @@ let genMessageWithStateInit name outputPath codeFift dataFift msgBodyFift : stri
     { \"" + name + ".address\" address_parse_text } : contract_addr
     { contract_addr drop } : contract_wc
     { contract_addr swap drop } : contract_account_id
-    { x{} s>c } : message_body_build
+    { " + msgBodyFift + " } : message_body_build
     { \"" + name + ".tvc\" file_read_bytes bytes_to_cell } : state_init_build
     builder_begin
        // 0b10 - ext_in_msg_info constructor tag

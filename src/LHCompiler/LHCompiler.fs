@@ -447,14 +447,18 @@ let makeReductions debug (ast:ASTNode) : ASTNode =
 //    |> betaRedexFullDebug debug
     |> arithSimplRedexDebug debug
 
+exception CompilerError of string
+
 let compileModule modName decls withInit debug : string =
     if debug then
         printfn "Compiling actor %A" modName ;
     let typesFull = ParserModule.extractTypes debug decls
     let finalDecls =
         if withInit then
-            let actorStateType =
-                (Map.ofList typesFull).["ActorState"]
+            let typeMap = Map.ofList typesFull
+            if Map.tryFind "ActorState" typeMap = None then
+                raise (CompilerError "ActorState type not found.")
+            let actorStateType = typeMap.["ActorState"]
             let actorStateReaderCode =
                 LHTypes.deserializeValue typesFull actorStateType
             let actorStateWriterCode =
@@ -547,6 +551,8 @@ let compileModule modName decls withInit debug : string =
 let compile (source:string) (withInit:bool) (debug:bool) : string =
     let prog = if withInit then (source + ActorInit.actorInitCode)
                else source
+    if (debug) then
+        printfn "Full program text:\n%A" prog
     let res = parse prog
     match res with
     | Some (Module (modName, decls)) ->
@@ -563,7 +569,7 @@ let codeAsRunVM (c:string) =
 
 // compile Lighthouse source at filePath and output the result (FIFT)
 // into the same filePath, but with ".fif" extension
-let compileFile (filePath:string) (data:string) (msgBody:string) =
+let compileFile (debug:bool) (filePath:string) (data:string) (msgBody:string) =
     let readFile (filePath: string) =
         File.ReadAllText(filePath)
     let replaceExt (filePath: string) (newExt: string) =
@@ -576,7 +582,7 @@ let compileFile (filePath:string) (data:string) (msgBody:string) =
     let writeFile (filePath: string) (content: string) =
         File.WriteAllText(filePath, content)
     let fileContent = readFile filePath
-    let code = codeAsCell (compile fileContent true false)
+    let code = codeAsCell (compile fileContent true debug)
     let nameGenStateInitScript = (onlyName filePath) + ".fif"
     let nameGenStateInitTVC = (onlyName filePath) + ".tvc"
     let nameGenMessageWithStateInitScript = (onlyName filePath) + "Deploy" + ".fif"
@@ -585,4 +591,4 @@ let compileFile (filePath:string) (data:string) (msgBody:string) =
        nameGenStateInitScript
        (TVM.genStateInit nameGenStateInitTVC code data)
     TVM.dumpFiftScript nameGenMessageWithStateInitScript
-       (TVM.genMessageWithStateInit filePath nameMsgWithStateInitBOC code data msgBody)
+       (TVM.genMessageWithStateInit (onlyName filePath) nameMsgWithStateInitBOC code data msgBody)
