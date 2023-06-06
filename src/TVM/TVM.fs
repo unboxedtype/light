@@ -1721,7 +1721,7 @@ let genMessageWithStateInit name outputPath codeFift dataFift msgBodyFift : stri
     "#!/usr/bin/fift -s
     \"Asm.fif\" include
     \"Unboxed.fif\" include
-    { \"" + name + ".address\" address_parse_text } : contract_addr 
+    { \"" + name + ".address\" address_parse_text } : contract_addr
     { contract_addr drop } : contract_wc
     { contract_addr swap drop } : contract_account_id
     { x{} s>c } : message_body_build

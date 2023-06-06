@@ -13,9 +13,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../src/LHExpr/LHExpr.fsproj" />  
-    <ProjectReference Include="../../src/LHTypes/LHTypes.fsproj" />  
-    <ProjectReference Include="../../src/LHTypeInfer/LHTypeInfer.fsproj" />  
+    <ProjectReference Include="../../src/LHExpr/LHExpr.fsproj" />
+    <ProjectReference Include="../../src/LHTypes/LHTypes.fsproj" />
+    <ProjectReference Include="../../src/LHTypeInfer/LHTypeInfer.fsproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,0 +1,15 @@
+{
+  "url":"https://gql-devnet.venom.network/graphql",
+  "wc":0,
+  "addr":"",
+  "wallet":"",
+  "abi_path":null,
+  "keys_path":"/home/unboxedtype/keys.json",
+  "retries":1,
+  "timeout":60000,
+  "is_json":false,
+  "depool_fee":0.5,
+  "lifetime":60,
+  "no_answer":true,
+  "use_delimiters":false
+}
