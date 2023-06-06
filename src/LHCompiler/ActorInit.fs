@@ -30,7 +30,7 @@ let actorInitCode =
    }
 
    let msgReadSeqNo (msg : VMSlice) =
-     assembly \"32 LDU DROP\" :> int ;;
+     assembly \"256 LDU DROP\" :> int ;;
 
    (* actorStateReader and actorStateWriter functions are added
       by the compiler; to see their code , you have to ask the 
@@ -45,8 +45,8 @@ let actorInitCode =
         let st' = main initArgs.msgCell st in
         let actState' =
             { seqno = msgSeqNo;
-              state = st';
-              deployed = true } in
+              deployed = true;
+              state = st' } in
         putC4 (actorStateWriter actState')
    ;;
 

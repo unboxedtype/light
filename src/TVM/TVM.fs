@@ -1691,34 +1691,76 @@ let dumpFiftScript (fname:string) (str:string)  =
 let genStateInit outputPath codeFift dataFift : string =
     let newline = System.Environment.NewLine
     "#!/usr/bin/fift -s
-\"Asm.fif\" include
-{ B>file } : file_write_bytes
-{ <b } : builder_begin
-{ b> } : builder_end
-{ u, } : builder_uint_append
-{ ref, } : builder_ref_append
-{ boc>B } : cell_to_bytes
-{ hashu } : cell_hash
-{ x._ } : val_print_hex_ws
-{ B>file } : file_write_bytes" + newline +
+    \"Asm.fif\" include
+    { B>file } : file_write_bytes
+    { <b } : builder_begin
+    { b> } : builder_end
+    { u, } : builder_uint_append
+    { ref, } : builder_ref_append
+    { boc>B } : cell_to_bytes
+    { hashu } : cell_hash
+    { x._ } : val_print_hex_ws
+    { B>file } : file_write_bytes" + newline +
     "{ " + dataFift + " } : stateinit_data" + newline +
     "{ " + codeFift + " } : stateinit_code" + newline +
     "builder_begin  // b
-    0 1  builder_uint_append // b 0 1 -> b'   : split_depth = None
-    0 1  builder_uint_append // b 0 1 -> b'   : special = None
-    1 1  builder_uint_append // b 1 1 -> b'   : code = Value<Cell>
-    1 1  builder_uint_append // b 1 1 -> b'   : data = Value<Cell>
-    0 1  builder_uint_append // b 0 1 -> b'   : library = None
-    stateinit_code
-    builder_ref_append
-    stateinit_data
-    builder_ref_append" + newline +
+      0 1  builder_uint_append // b 0 1 -> b'   : split_depth = None
+      0 1  builder_uint_append // b 0 1 -> b'   : special = None
+      1 1  builder_uint_append // b 1 1 -> b'   : code = Value<Cell>
+      1 1  builder_uint_append // b 1 1 -> b'   : data = Value<Cell>
+      0 1  builder_uint_append // b 0 1 -> b'   : library = None
+      stateinit_code
+      builder_ref_append
+      stateinit_data
+      builder_ref_append" + newline +
     "builder_end dup cell_to_bytes" + newline + "\"" + outputPath +
     "\" file_write_bytes" + newline +
     ".\"0:\" cell_hash val_print_hex_ws"
 
+let genMessageWithStateInit name outputPath codeFift dataFift : string =
+    "#!/usr/bin/fift -s
+    \"Asm.fif\" include
+    { B>file } : file_write_bytes
+    { <b } : builder_begin
+    { b> } : builder_end
+    { u, } : builder_uint_append
+    { ref, } : builder_ref_append
+    { boc>B } : cell_to_bytes
+    { hashu } : cell_hash
+    { x._ } : val_print_hex_ws
+    { B>file } : file_write_bytes
+    { \"" + name + ".address\" address_parse_text } : contract_addr 
+    { contract_addr drop } : contract_wc
+    { contract_addr swap drop } : contract_account_id
+    { x{} s>c } : message_body_build
+    { \"" + name + ".tvc\" file_read_bytes bytes_to_cell } : state_init_build
+    builder_begin
+       // 0b10 - ext_in_msg_info constructor tag
+       0b10 2 builder_uint_append // b 0b10 2 -> b'
+       // src: MsgAddressExt
+       0b00 2 builder_uint_append // 0b00 - addrNone constructor tag
+       // dest: MsgAddressInt
+       0b10 2 builder_uint_append // 0b10 - addrStd constructor tag
+       // anycast: Maybe Anycast
+       0 1 builder_uint_append // no anycast
+       // workchain_id:int8
+       contract_wc 8 builder_int_append
+       // address: uint256  (it is accound id actually)
+       contract_account_id 256 builder_uint_append
+       // import_fee:Grams
+       0 4 builder_uint_append // import_fee = 0 (four 0 bits)
+       // init:(Maybe (Either StateInit ^StateInit))
+       // Maybe:Value
+       0b1 1 builder_uint_append // state init presents
+       // Either.Right
+       0b1 1 builder_uint_append // we choose the right option, i.e. as reference
+       state_init_build builder_ref_append
+       0b1 1 builder_uint_append // Either ^Body
+     message_body_build builder_ref_append
+     builder_end
+     cell_to_bytes\"" + outputPath + "\" file_write_bytes"
 
-let bucketSize = 255;
+let bucketSize = 255
 let arrayDefaultVal = Null
 let arrayNew = [PushNull]
 
