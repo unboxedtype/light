@@ -29,8 +29,10 @@ let parse source =
 let rec expandLet finalFunctionName letBind =
     match letBind with
     | [(finalFunctionName, _, false, body)] -> body
-    | (name, args, isRec, body) :: t ->
+    | (name, args, false, body) :: t ->
         mkAST (ELet (name, body, expandLet finalFunctionName t))
+    | (name, args, true, body) :: t ->
+        mkAST (ELetRec (name, body, expandLet finalFunctionName t))
     | _ -> failwith "incorrect let structure of the program"
 
 // Make one big LET expression from global LET-

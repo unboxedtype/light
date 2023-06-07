@@ -565,3 +565,35 @@ let testChain3 () =
                 let main = someFunc 100 ;;"
     execAndCheckPrint prog false false "(null)"
 
+[<Test>]
+let testFib1 () =
+    let prog = "contract Fib
+                let rec fib n =
+                    if n = 0 then 0
+                    else if n = 1 then 1
+                    else (fib (n - 1) + fib (n - 2)) ;;
+                let main = fib 10 ;;"
+    execAndCheck prog "55"
+
+[<Test>]
+[<Timeout(1000)>]
+let testFun4 () =
+    let prog = "contract Simple
+                let c = 1000 ;;
+                let func1 = fun y -> y + c ;;
+                let func2 x =
+                    fun y -> x + y + (func1 x) ;;
+                let main = func2 10 20 ;; (* = 10 + 20 + (10 + 1000)  *)
+                "
+    execAndCheckPrint prog false false "1040"
+
+[<Test>]
+[<Timeout(1000)>]
+let testFun5 () =
+    let prog = "contract Simple
+
+                let give x = fun () -> x ;;
+                let give1 () = 1000 ;;
+                let main = (give give1) () () ;;
+                "
+    execAndCheckPrint prog false false "1000"
