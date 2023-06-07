@@ -20,7 +20,9 @@ let execAndCheckPrint (expr:ASTNode) expected ifPrint =
     if ifPrint then
         printfn "%A" (expr.toSExpr ())
     let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".fif"
-    TVM.dumpFiftScript filename (compileToTVM expr (Map []) [] ifPrint)
+    compileIntoAssembly expr (Map []) [] ifPrint
+    |> asmAsRunVM
+    |> TVM.dumpFiftScript filename
     let res = FiftExecutor.runFiftScript filename
     Assert.AreEqual (expected, res)
 
@@ -50,7 +52,7 @@ let testAdd () =
 let testLet1 () =
     // let main = \n -> n + 1000 in
     // main 2000
-    let expr = SLet ("main", SFunc (("n",None), SAdd (SVar "n", SNum 1000)), SEval (SAp (SVar "main", SNum 2000)))
+    let expr = SLet ("main", SFunc (("n",None), SAdd (SVar "n", SNum 1000)), (SAp (SVar "main", SNum 2000)))
     execAndCheck (toAST expr) "3000"
 
 [<Test>]
@@ -63,8 +65,8 @@ let testLet2 () =
                 SFunc (("n", None),
                  SLet ("add",
                   SFunc (("x", None),
-                   SAdd (SVar "x", SNum 1000)), SEval (SAp (SVar "add", SVar "n")))),
-                     SEval (SAp (SVar "main", SNum 1000)))
+                   SAdd (SVar "x", SNum 1000)), (SAp (SVar "add", SVar "n")))),
+                     (SAp (SVar "main", SNum 1000)))
     execAndCheck (toAST expr) "2000"
 
 [<Test>]
@@ -74,12 +76,6 @@ let testFactorial () =
     let expr = SLetRec ("fact",
                   SFunc (("n", None),
                     SIf (SGt (SVar "n", SNum 1),
-                         SMul (SVar "n", SEval (SAp (SVar "fact", SSub (SVar "n", SNum 1)))),
-                         SNum 1)), SEval (SAp (SVar "fact", SNum 5)))
+                         SMul (SVar "n", SAp (SVar "fact", SSub (SVar "n", SNum 1))),
+                         SNum 1)), SAp (SVar "fact", SNum 5))
     execAndCheck (toAST expr) "120"
-
-let execIR (ir:list<Instruction>) expected =
-    let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".fif"
-    TVM.dumpFiftScript filename (compileWithTypes expr (Map []) [] ifPrint)
-    let res = FiftExecutor.runFiftScript filename
-    Assert.AreEqual (expected, res)

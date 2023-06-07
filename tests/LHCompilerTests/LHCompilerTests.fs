@@ -15,7 +15,7 @@ let execAndCheckPrint (prog:string) addInit debug expected =
     if debug then
         printfn "%A" prog |> ignore
         printfn "Passing program to the compiler..."
-    let code = LHCompiler.asmAsRunVM (LHCompiler.compile prog addInit debug)
+    let code = LHMachine.asmAsRunVM (compile prog addInit debug)
     if debug then
         printfn "Dumping compiled program into file..."
     let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".fif"
@@ -29,7 +29,7 @@ let execAndCheck prog expected =
     execAndCheckPrint prog false false expected
 
 let execIR irProg expected =
-    let code = LHCompiler.asmAsRunVM (LHMachine.fixpointImpl + "\n\n" +
+    let code = LHMachine.asmAsRunVM (LHMachine.fixpointImpl + "\n\n" +
                                       LHMachine.compileToTVM irProg)
     let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".fif"
     TVM.dumpFiftScript filename code
@@ -41,7 +41,7 @@ let execReal debug prog data msgBody expected =
     if debug then
         printfn "%A" prog |> ignore
         printfn "Passing program to the compiler..."
-    let code = asmAsCell (LHCompiler.compile prog true debug)
+    let code = LHMachine.asmAsCell (compile prog true debug)
     let tname = NUnit.Framework.TestContext.CurrentContext.Test.Name
     // FIFT script that produces state init into .TVC file
     let nameGenStateInitScript = tname + ".fif"

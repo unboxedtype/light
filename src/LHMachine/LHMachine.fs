@@ -391,3 +391,13 @@ let compileIntoAssembly ast nodeTypeMapping evalNodes debug : string =
     (if hasFixpoint then [fixpointImpl] else []) @
     List.singleton   (compileToTVM ir)
     |> String.concat "\n"
+
+let asmAsSlice (c:string) =
+    "<{ " + c + " }>s "
+
+let asmAsCell (c:string) =
+    (asmAsSlice c) + " s>c "
+
+let asmAsRunVM (asm:string) =
+    "\"Asm.fif\" include\n" +
+    (asmAsSlice asm) + "\n 1000000 gasrunvmcode drop .dump cr .dump cr"

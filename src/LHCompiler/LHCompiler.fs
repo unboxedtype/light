@@ -562,16 +562,6 @@ let compile (source:string) (withInit:bool) (debug:bool) : string =
     | _ ->
         failwith "Actor not found"
 
-let asmAsSlice (c:string) =
-    "<{ " + c + " }>s "
-
-let asmAsCell (c:string) =
-    (asmAsSlice c) + " s>c "
-
-let asmAsRunVM (asm:string) =
-    "\"Asm.fif\" include\n" +
-    (asmAsSlice asm) + "\n 1000000 gasrunvmcode drop .dump cr .dump cr"
-
 // compile Lighthouse source at filePath and output the result (FIFT)
 // into the same filePath, but with ".fif" extension
 let compileFile (debug:bool) (filePath:string) (data:string) (msgBody:string) =
@@ -587,7 +577,7 @@ let compileFile (debug:bool) (filePath:string) (data:string) (msgBody:string) =
     let writeFile (filePath: string) (content: string) =
         File.WriteAllText(filePath, content)
     let fileContent = readFile filePath
-    let code = asmAsCell (compile fileContent true debug)
+    let code = LHMachine.asmAsCell (compile fileContent true debug)
     let nameGenStateInitScript = (onlyName filePath) + ".fif"
     let nameGenStateInitTVC = (onlyName filePath) + ".tvc"
     let nameGenMessageWithStateInitScript = (onlyName filePath) + "Deploy" + ".fif"
