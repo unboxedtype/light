@@ -535,10 +535,10 @@ let compileModule modName decls withInit debug : string =
     // We now need to insert EEval nodes in places where
     // continuations are fully saturated and ready to be
     // evaluated into a value (not a partial function).
-    insertEval ast1 typeEnv newMap |> ignore // this is done for side-effect only
+    // insertEval ast1 typeEnv newMap |> ignore // this is done for side-effect only
     if (debug) then
         printfn "Final S-expression:\n%A" (ast1.toSExpr())
-    LHMachine.compileIntoFiftSliceDebug ast1 newMap evalNodes debug
+    LHMachine.compileIntoAssembly ast1 newMap evalNodes debug
     |> (fun res ->
             // Clean the eval nodes collection for the next time
             evalNodes <- [] ;
@@ -562,12 +562,15 @@ let compile (source:string) (withInit:bool) (debug:bool) : string =
     | _ ->
         failwith "Actor not found"
 
-let codeAsCell (c:string) =
-    c + " s>c "
+let asmAsSlice (c:string) =
+    "<{ " + c + " }>s "
 
-let codeAsRunVM (c:string) =
+let asmAsCell (c:string) =
+    (asmAsSlice c) + " s>c "
+
+let asmAsRunVM (asm:string) =
     "\"Asm.fif\" include\n" +
-    c + "\n 1000000 gasrunvmcode drop .dump cr .dump cr"
+    (asmAsSlice asm) + "\n 1000000 gasrunvmcode drop .dump cr .dump cr"
 
 // compile Lighthouse source at filePath and output the result (FIFT)
 // into the same filePath, but with ".fif" extension
@@ -584,7 +587,7 @@ let compileFile (debug:bool) (filePath:string) (data:string) (msgBody:string) =
     let writeFile (filePath: string) (content: string) =
         File.WriteAllText(filePath, content)
     let fileContent = readFile filePath
-    let code = codeAsCell (compile fileContent true debug)
+    let code = asmAsCell (compile fileContent true debug)
     let nameGenStateInitScript = (onlyName filePath) + ".fif"
     let nameGenStateInitTVC = (onlyName filePath) + ".tvc"
     let nameGenMessageWithStateInitScript = (onlyName filePath) + "Deploy" + ".fif"
@@ -594,3 +597,4 @@ let compileFile (debug:bool) (filePath:string) (data:string) (msgBody:string) =
        (TVM.genStateInit nameGenStateInitTVC code data)
     TVM.dumpFiftScript nameGenMessageWithStateInitScript
        (TVM.genMessageWithStateInit (onlyName filePath) nameMsgWithStateInitBOC code data msgBody)
+

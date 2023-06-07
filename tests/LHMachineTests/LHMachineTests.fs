@@ -20,7 +20,7 @@ let execAndCheckPrint (expr:ASTNode) expected ifPrint =
     if ifPrint then
         printfn "%A" (expr.toSExpr ())
     let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".fif"
-    TVM.dumpFiftScript filename (compileIntoFiftDebug expr (Map []) [] ifPrint)
+    TVM.dumpFiftScript filename (compileToTVM expr (Map []) [] ifPrint)
     let res = FiftExecutor.runFiftScript filename
     Assert.AreEqual (expected, res)
 
@@ -77,3 +77,9 @@ let testFactorial () =
                          SMul (SVar "n", SEval (SAp (SVar "fact", SSub (SVar "n", SNum 1)))),
                          SNum 1)), SEval (SAp (SVar "fact", SNum 5)))
     execAndCheck (toAST expr) "120"
+
+let execIR (ir:list<Instruction>) expected =
+    let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".fif"
+    TVM.dumpFiftScript filename (compileWithTypes expr (Map []) [] ifPrint)
+    let res = FiftExecutor.runFiftScript filename
+    Assert.AreEqual (expected, res)

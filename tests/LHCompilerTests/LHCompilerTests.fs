@@ -5,6 +5,7 @@ open NUnit.Framework
 open LHExpr
 open LHCompiler
 open ParserModule
+open type LHMachine.Instruction
 
 let getLetAst (m:Module) (n:int) =
     m.Decls.[n].letBinding
@@ -14,7 +15,7 @@ let execAndCheckPrint (prog:string) addInit debug expected =
     if debug then
         printfn "%A" prog |> ignore
         printfn "Passing program to the compiler..."
-    let code = LHCompiler.codeAsRunVM (LHCompiler.compile prog addInit debug)
+    let code = LHCompiler.asmAsRunVM (LHCompiler.compile prog addInit debug)
     if debug then
         printfn "Dumping compiled program into file..."
     let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".fif"
@@ -27,11 +28,20 @@ let execAndCheckPrint (prog:string) addInit debug expected =
 let execAndCheck prog expected =
     execAndCheckPrint prog false false expected
 
+let execIR irProg expected =
+    let code = LHCompiler.asmAsRunVM (LHMachine.fixpointImpl + "\n\n" +
+                                      LHMachine.compileToTVM irProg)
+    let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".fif"
+    TVM.dumpFiftScript filename code
+    let res = FiftExecutor.runFiftScript filename
+    Assert.AreEqual (expected, res)
+
+
 let execReal debug prog data msgBody expected =
     if debug then
         printfn "%A" prog |> ignore
         printfn "Passing program to the compiler..."
-    let code = codeAsCell (LHCompiler.compile prog true debug)
+    let code = asmAsCell (LHCompiler.compile prog true debug)
     let tname = NUnit.Framework.TestContext.CurrentContext.Test.Name
     // FIFT script that produces state init into .TVC file
     let nameGenStateInitScript = tname + ".fif"
@@ -142,7 +152,6 @@ let testBetaRedex7 () =
 
 
 [<Test>]
-[<Ignore("Here Beta Expansion is needed")>]
 let testCurry1 () =
     let prog = "contract test
                      let main =
@@ -276,17 +285,9 @@ let testLet0() =
                    let other x = x + 1 ;;
                    let main = other 10 ;;"
     execAndCheck prog "11"
+(**
 
-[<Test>]
-let testRecord1 () =
-    let prog = "contract Simple
-                   type State = { bal:int }
-                   let main =
-                     let sum x y = x + y in
-                     let st = { bal = sum 5 10 } in
-                     st.bal
-                   ;;"
-    execAndCheck prog "15"
+**)
 
 [<Test>]
 [<Timeout(1000)>]
@@ -296,7 +297,7 @@ let testTuple1 () =
                       let func x y () = x + y in
                       func 5 6 ()
                    ;;"
-    execAndCheck prog "11"
+    execAndCheckPrint prog false false "11"
 
 [<Test>]
 [<Timeout(1000)>]
@@ -338,6 +339,17 @@ let testMkAdder () =
                      adder x
                    in make_adder 3 ;;"
     execAndCheckPrint prog false false "6"
+
+[<Test>]
+let testRecord1 () =
+    let prog = "contract Simple
+                   type State = { bal:int }
+                   let main =
+                     let sum x y = x + y in
+                     let st = { bal = sum 5 10 } in
+                     st.bal
+                   ;;"
+    execAndCheck prog "15"
 
 [<Test>]
 let testClosure1 () =
@@ -383,7 +395,67 @@ let testGlobals () =
                        let rec sum n m =
                            if (n > 0) then (n + ((sum (n - 1)) m)) else m
                        in ((sum nArg) mArg) ;;"
-    execAndCheck prog "75"
+    execAndCheckPrint prog false false "75"
+
+[<Test>]
+[<Timeout(1000)>]
+let testFun1 () =
+    let prog = "contract Simple
+                let someFunc = fun x y -> x + y ;;
+                let main = someFunc 100 200 ;;"
+    execAndCheckPrint prog false false "300"
+
+[<Test>]
+[<Timeout(1000)>]
+let testFun2 () =
+    let prog = "contract Simple
+                let someFunc x = fun y -> x + y ;;
+                let main = (someFunc 100) 200 ;;"
+    execAndCheckPrint prog false false "300"
+
+[<Test>]
+[<Timeout(1000)>]
+let testFun3 () =
+    let prog = "contract Simple
+                let main =
+                  let inc (x:int) = x + 1 in
+                  let apply f x = f x in
+                  apply inc 1 ;;"
+    execAndCheckPrint prog false false "2"
+
+[<Test>]
+let testIRtest0 () =
+    let prog = [Integer 100; Integer 200; Add]
+    execIR prog  "300"
+
+[<Test>]
+let testIRtest1 () =
+    let prog = [Integer 100; Function [Push 0; Integer 1; Add; Slide 1]; Apply 1; Execute]
+    execIR prog  "101"
+
+// This test cracks up the mechanism behind the Fixpoint operator.
+[<Test>]
+[<Timeout(1000)>]
+let testIRtest2 () =
+    let prog = [Integer 100;
+                Function [Asm "DUMPSTK";
+                          Integer 1; Sub; Push 0; Integer 0; Equal;
+                          IfElse ([Integer 777], [Push 1; Apply 1; Execute ])];
+                Fixpoint; // 100 (fix f)
+                Apply 1;
+                Execute]  // !((fix f) 100)
+    execIR prog  "777"
+
+
+[<Test>]
+let testFactorial () =
+    let prog ="contract test
+                let main =
+                 let rec factorial n =
+                    if (n > 1) then (n * factorial (n - 1)) else 1 in
+                 factorial 5 ;;
+    "
+    execAndCheckPrint prog false false "120"
 
 [<Test>]
 let testRecord2 () =
@@ -407,7 +479,6 @@ let testGlobals2 () =
                        in ((sum (nArg 0)) (mArg 0)) ;;"
     execAndCheckPrint prog false false "75"
 
-
 [<Test>]
 let testFunc2Args () =
     // let rec sum n m = if (n > 0) then (n + sum (n - 1) m) else m
@@ -420,15 +491,6 @@ let testFunc2Args () =
                   in ((sum 10) 20) ;;"
     execAndCheck prog "75"
 
-[<Test>]
-let testFactorialParse () =
-    let prog ="contract test
-                let main =
-                 let rec factorial n =
-                      if (n > 1) then (n * factorial (n - 1)) else 1 in
-                 factorial 5 ;;
-    "
-    execAndCheck prog "120"
 
 [<Test>]
 [<Timeout(1000)>]
@@ -448,17 +510,12 @@ let testInitRecord6 () =
     let prog = "contract Simple
                 type State = { bal:int }
 
-                (************************************************)
-                (* This will go into Standard Library one day...*)
-                (************************************************)
                 let putC4 (c4 : VMCell) =
                     assembly \"c4 POPCTR NULL\" :> unit ;;
                 let getC4 () =
                     assembly \"c4 PUSHCTR\" :> VMCell ;;
                 let accept () =
                     assembly \"ACCEPT\" :> unit ;;
-                (************************************************)
-
                 let stateDefault =
                     { bal = 0 } ;;
 
@@ -472,16 +529,10 @@ let testInitRecord6 () =
     // This is ActorState structure, not State
     let stateData = "<b 100 256 u, -1 2 i, 777 256 u, b>"
     let msgBody = "<b 1 32 u, b>"  // 1 = sequence number
-    execReal true prog stateData msgBody "(null)"
+    execReal false prog stateData msgBody "(null)"
 
 [<Test>]
-[<Ignore("bug")>]
 let testCurry2 () =
-    // This example is interesting. Without beta-reduction,
-    // it will not work: function f is general, so in its
-    // body there will be Eval node unless we insert its
-    // body in main definition. Seems, for such functions,
-    // we _must_ do beta-reduction.
     let prog = "contract test
                      let main =
                        let f f1 f2 x y = f2 (f1 x) (f1 y) in
@@ -513,3 +564,4 @@ let testChain3 () =
                 let someFunc x = x + 1; () ;;
                 let main = someFunc 100 ;;"
     execAndCheckPrint prog false false "(null)"
+

@@ -87,18 +87,16 @@ let compileArgs (defs:BoundVarDefs) (env:Environment) : Environment =
 let rec compileFunction (ast:ASTNode) env args evalNodes ty =
     match ast.Expr with
     | EFunc (argNameType, body) ->
-        let args' = (fst argNameType) :: args
-        compileFunction body env args' evalNodes ty
-    | _ ->
-        let n = List.length args
-        let envLength = List.length env
-        let argsEnv = List.indexed args
-        let argsLength = List.length argsEnv
-        let env' = argsEnv @ (argOffset argsLength env)
-        (if envLength > 0 then [Asm  (sprintf "%i %i BLKPUSH" envLength (envLength - 1))]
-         else []) @
-        [Function (compileWithTypes ast env' ty evalNodes)] @
-        (if envLength > 0 then [Apply envLength] else [])
+        let stkSize = List.length env //
+        let env' = (0, fst argNameType) :: (argOffset 1 env)
+        (if (stkSize > 0) then
+            [Asm  (sprintf "%i %i BLKPUSH" stkSize (stkSize - 1))]
+        else []) @
+        [Function (compileWithTypes body env' ty evalNodes)] @
+        // copy stack frame inside the function
+        (if stkSize > 0 then [Apply (stkSize)] else [])
+    | _ -> failwith "Function AST node expected"
+
 and compileWithTypes (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) evalNodes : LHCode =
     match ast.Expr with
     | EVar v ->
@@ -137,12 +135,10 @@ and compileWithTypes (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) evalNodes 
     | EAp (e1, e2) ->
         (compileWithTypes e2 env ty evalNodes) @
         (compileWithTypes e1 (argOffset 1 env) ty evalNodes) @
-        [Apply 1] @
-        (if (evalNodes |> List.contains ast.Id) then [Execute]
-         else [])
+        [Apply 1; Execute]
     | EFix f ->
         (compileWithTypes f env ty evalNodes) @
-        [Fixpoint]
+        [Fixpoint]   // apply fixpoint operator
     // We leave EEval node only for test purposes.
     // Real compiler will not insert those into AST anymore.
     // It uses external list of node IDs that has to be "executed".
@@ -183,12 +179,11 @@ and compileWithTypes (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) evalNodes 
     | ELet (name, def, body) ->
         compileLet [(name,def)] body env ty evalNodes
     | ELetRec (name, def, body) ->
-        // compileLetRec [(name,def)] body env ty
-        // let rec fact = \n -> n * fact (n-1)
-        //  ---> let fact = fixpoint (\fact . \n . n * fact (n - 1))
-        // fact 5 --> fixpoint (fact 5)
-        let expr = mkAST (ELet (name, mkAST (EFix (mkAST (EFunc ((name, None), def)))), body))
-        compileWithTypes expr env ty evalNodes
+        // let rec fact = \n -> n * fact (n-1) in body
+        //  ---> let fact = fixpoint (\fact . \n . n * fact (n - 1)) in body
+        let expr = mkAST (ELet (name, mkAST (EFix def), body))
+        let env' = (0, name) :: (argOffset 1 env)
+        [Null] @ (compileWithTypes expr env' ty evalNodes)
     | ESelect (e0, e1) ->
         let isEval = evalNodes |> List.contains ast.Id
         match e1.Expr with
@@ -262,20 +257,6 @@ and compileLetDefs defs env ty evalNodes =
             []
         | (name, expr) :: defs' ->
             (compileWithTypes expr env ty evalNodes) @ compileLetDefs defs' (argOffset 1 env) ty evalNodes
-// originally, this function was written to do several let-rec compilation at once,
-// but later we switched to more managable "let n = expr in" single variable construct,
-// nevertheless we didn't change the code, it still support multiple bindings
-and compileLetRec defs expr env ty evalNodes =
-    let env' = compileArgs defs env
-    let n = List.length defs
-    [Alloc n] @ (compileLetRecDefs defs env' n ty evalNodes) @ (compileWithTypes expr env' ty evalNodes) @ [Slide n]
-and compileLetRecDefs defs env n ty evalNodes =
-    match defs with
-        | [] ->
-            []
-        | (name, node) :: defs' ->
-            (compileWithTypes node env ty evalNodes) @ [Update n] @ compileLetRecDefs defs' env (n - 1) ty evalNodes
-
 let compile (ast:ASTNode) (env: Environment) : LHCode =
     compileWithTypes ast env (Map []) []
 
@@ -295,7 +276,7 @@ let rec instrToTVM (i:Instruction) : string =
     | Pop n -> "s" + (string n) + " POP"
     | Slide n -> String.concat " " [for i in [1..n] -> "NIP"]
     | Function b -> "<{ " + (compileToTVM b) + " }> PUSHCONT"
-    | Fixpoint -> " 2 GETGLOB 1 1 CALLXARGS"
+    | Fixpoint -> " 2 GETGLOB 1 -1 CALLXARGS "
     | Execute -> " 0 1 CALLXARGS" // execute a saturated function
     | Not -> "INC NEGATE"   // 0 --> -1, -1 --> 0
     | Add -> "ADD"
@@ -353,6 +334,9 @@ and compileToTVM (code:LHCode) : string =
 and mkFiftCell (body: string) : string =
     "<{ " + body + "}>c "
 
+// Fixpoint operator.
+// Takes function (T -> T) as input and produces
+// another function (T -> T).
 // Please keep in mind that there is a hard limit of 15 arguments for
 // recursive functions.
 let fixpointImpl = "
@@ -375,8 +359,8 @@ let fixpointImpl = "
      TRUE
      CALLXVARARGS
    }> PUSHCONT
-   DUP
-   2 -1 SETCONTARGS
+   DUP                // arg fix fix
+   2 -1 SETCONTARGS   // fix'[arg fix]
  }> PUSHCONT
  2 SETGLOB"  // fixpoint operator is stored in global 2
 
@@ -397,16 +381,13 @@ let rec hasInstruction (i:Instruction) (ir:LHCode) : bool =
         |> List.contains true) || hasInstruction i t
     | _ :: t -> hasInstruction i t
 
-// Translation of AST into IR language, and then into FIFT commands.
-// IR language is easier to debug in complex cases.
-let compileIntoFiftSliceDebug ast nodeTypeMapping evalNodes debug : string =
+// Translation of AST into TVM assembly language written in FIFT syntax.
+let compileIntoAssembly ast nodeTypeMapping evalNodes debug : string =
     let ir = compileWithTypes ast [] nodeTypeMapping evalNodes
     let hasFixpoint = ir |> hasInstruction Fixpoint
     if debug then
         printfn "IR:\n%A" ir
         printfn "hasFixpoint = %A" hasFixpoint
-    List.singleton "<{ " @
     (if hasFixpoint then [fixpointImpl] else []) @
-    List.singleton   (compileToTVM ir) @
-    List.singleton "}>s"
+    List.singleton   (compileToTVM ir)
     |> String.concat "\n"
