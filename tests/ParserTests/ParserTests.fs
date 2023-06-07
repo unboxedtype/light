@@ -20,6 +20,12 @@ let parse source =
 let Setup () =
     ()
 
+[<OneTimeTearDown>]
+let AfterTest () =
+    // 'Fun' counter reset. We need this to generate fresh fun names
+    // on each test.
+    Parser.resetFunVar ()
+
 [<Test>]
 let testTrivial () =
     let res = parse ""
@@ -295,3 +301,50 @@ let testActorInit () =
                    SAp (SVar "actorStateWrite", SVar "act_st'")))))))))
 
     Assert.AreEqual( expected, getLetAst res.Value 0  );
+
+
+[<Test>]
+let testFun1 () =
+    Parser.resetFunVar ()
+    let res = parse "contract test
+                     let sum = fun (x:int) (y:int) -> x + y ;;
+                    "
+    let expected = SLet ("fun1",
+                    SFunc (("x", Some (Int 256)),
+                     SFunc (("y", Some (Int 256)),
+                      SAdd (SVar "x", SVar "y"))), SVar "fun1")
+    Assert.AreEqual( expected, getLetAst res.Value 0);
+
+[<Test>]
+let testFun2 () =
+    Parser.resetFunVar ()
+    let res = parse "contract test
+                     let sum = fun x y -> x + y ;;
+                    "
+    let expected = SLet ("fun1",
+                    SFunc (("x", None),
+                     SFunc (("y", None),
+                      SAdd (SVar "x", SVar "y"))), SVar "fun1")
+    Assert.AreEqual( expected, getLetAst res.Value 0);
+
+[<Test>]
+let testFun3 () =
+    Parser.resetFunVar ()
+    let res = parse "contract test
+                     let sum =
+                       (fun x y -> x + y) 10 20 ;;
+                    "
+    let expected = SAp (
+                    SAp (
+                     SLet ("fun1",
+                      SFunc (("x", None),
+                       SFunc (("y", None),
+                        SAdd (SVar "x", SVar "y")
+                       )
+                      ), SVar "fun1"
+                     ),
+                     SNum 10
+                    ),
+                    SNum 20
+                   )
+    Assert.AreEqual( expected, getLetAst res.Value 0);

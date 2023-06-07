@@ -15,10 +15,21 @@ let rec unfoldFunction argsTypes body =
     | (name, typ) :: t -> mkAST (EFunc ((name, typ), unfoldFunction t body))
 
 
-let mutable tvar = 0
+let mutable tVar = 0
 let genTVar () : string =
-    tvar <- tvar + 1
-    "x" + (string tvar)
+    tVar <- tVar + 1
+    "x" + (string tVar)
+
+// We have a separate counter for 'fun's
+// for making tests easier to write
+let mutable funVar = 0
+let genFunVar () : string =
+    funVar <- funVar + 1
+    "fun" + (string funVar)
+
+let resetFunVar () =
+    funVar <- 0
+
 %}
 
 %start start
@@ -36,6 +47,7 @@ let genTVar () : string =
 %token LBRACE RBRACE LPAREN RPAREN RARROW LARROW
 %token MATCH WITH UNDERSCORE DOT FAILWITH ASM
 %token TYPECAST
+%token FUNC
 %type <ParserModule.Module option> start
 
 %nonassoc IN
@@ -267,6 +279,16 @@ expr:
 
   | expr SEMICOLON expr
   { mkAST (ELet (genTVar(), $1, $3)) }
+
+  | FUNC funcArgs RARROW expr
+  {
+    // fun x (y:T) -> funBody
+    // --> let <freshVar> x (y:T) = funBody in <freshVar>
+    let funId = genFunVar ()
+    let args =
+       $2 |> List.map (fun (n, s) -> (n, LHTypes.mapType s))
+    mkAST (ELet (funId, unfoldFunction args $4, mkAST (EVar funId)))
+  }
 
   | LET LIDENT EQ expr IN expr
   { mkAST (ELet ($2, $4, $6)) }

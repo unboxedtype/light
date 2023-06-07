@@ -65,6 +65,7 @@ rule read =
   | "then"   { THEN }
   | "else"   { ELSE }
   | "let"    { LET }
+  | "fun"    { FUNC }
   | "rec"    { RECURSIVE }
   | "in"     { IN }
   | "match"  { MATCH }
