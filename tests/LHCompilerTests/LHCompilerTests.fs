@@ -509,19 +509,9 @@ let testRecord3 () =
 let testInitRecord6 () =
     let prog = "contract Simple
                 type State = { bal:int }
-
-                let putC4 (c4 : VMCell) =
-                    assembly \"c4 POPCTR NULL\" :> unit ;;
-                let getC4 () =
-                    assembly \"c4 PUSHCTR\" :> VMCell ;;
-                let accept () =
-                    assembly \"ACCEPT\" :> unit ;;
-                let stateDefault =
-                    { bal = 0 } ;;
-
-                let func1 (x:State) =
-                    x.bal ;;
-
+                let accept () = assembly \"ACCEPT\" :> unit ;;
+                let stateDefault = { bal = 0 } ;;
+                let func1 (x:State) = x.bal ;;
                 let main msgCell (st:State) =
                     accept (); (* accept the message *)
                     { bal = func1 st + 1000 } ;; "
@@ -597,3 +587,81 @@ let testFun5 () =
                 let main = (give give1) () () ;;
                 "
     execAndCheckPrint prog false false "1000"
+
+[<Test>]
+[<Timeout(1000)>]
+let testFunType () =
+    let prog = "contract Simple
+                type State = { cont : int -> int }
+                let dec n = n - 1 ;;
+                let main = { cont = dec }; 0 ;;
+                "
+    execAndCheckPrint prog false false "0"
+
+[<Test>]
+[<Timeout(1000)>]
+let testFunType2 () =
+    let prog = "contract Simple
+                type State = { cont : int -> int }
+                let dec n = n - 1 ;;
+                let rec fact n = if (n > 1) then n * fact (n - 1) else 1 ;;
+                let main =
+                  let st' = { cont = fact } in
+                  st'.cont 5
+                  ;;
+                "
+    execAndCheckPrint prog false false "120"
+
+[<Test>]
+[<Timeout(1000)>]
+let testFunType3 () =
+    let prog = "contract Simple
+                type State = { cont : int -> int -> int }
+                let sum a b = a + b ;;
+                let main =
+                  let st' = { cont = sum } in
+                  st'.cont 5 10
+                  ;;
+                "
+    execAndCheckPrint prog false false "15"
+
+[<Test>]
+[<Timeout(1000)>]
+let testFunType4 () =
+    let prog = "contract FunType4
+                type ActorState = { cont : VMCell -> State -> VMCell }
+                type State = { n : int }
+                let cell = assembly \"NEWC ENDC\" :> VMCell ;;
+                let step (c:VMCell) (st:State) = cell ;;
+                let main =
+                    { cont = step }; 0 ;;
+                "
+    execAndCheckPrint prog false false "0"
+
+[<Test>]
+let testRealCont () =
+    let prog = "contract Simple
+                type State = { flip: bool; cont: int -> int; n: int }
+                let inc x = x + 1 ;;
+                let dec x = x - 1 ;;
+                let accept () =
+                    assembly \"ACCEPT\" :> unit ;;
+                let rec fact n = if (n > 1) then n * fact (n - 1) else 1 ;;
+                let rec sum n = if (n > 1) then n + sum (n - 1) else 1 ;;
+                let main msgCell (st:State) =
+                  accept (); (* accept the message *)
+                  let st' =
+                    if st.n = 0 then
+                       { flip = true; cont = inc; n = 1 }
+                    else st
+                  in
+                    if st'.flip then
+                        { flip = false; cont = dec; n = st'.cont st'.n }
+                    else
+                        { flip = true ; cont = fact; n = st'.cont st'.n }
+                ;; "
+
+    // This is ActorState structure, not State
+    let stateData = "<b 0 256 u, 0 2 i, 0 2 i, B{b5ee9c720101020100160001113fffff0000008040080100109100c8cf43c9ed54} B>boc ref, 0 256 u, b>"
+    let msgBody = "<b 1 32 u, b>"  // 1 = sequence number
+    execReal false prog stateData msgBody "(null)"

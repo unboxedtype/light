@@ -33,6 +33,8 @@ type Instruction =
     | String of s:string
     | Function of c:LHCode
     | Fixpoint
+    // duplicate n stack elements starting from S'from'
+    | BulkDup of from:int * n:int
     | Apply of n:int
     | Push of n: int
     | Pop of n: int
@@ -87,14 +89,26 @@ let compileArgs (defs:BoundVarDefs) (env:Environment) : Environment =
 let rec compileFunction (ast:ASTNode) env args evalNodes ty =
     match ast.Expr with
     | EFunc (argNameType, body) ->
-        let stkSize = List.length env //
+        let envSize = List.length env
         let env' = (0, fst argNameType) :: (argOffset 1 env)
-        (if (stkSize > 0) then
-            [Asm  (sprintf "%i %i BLKPUSH" stkSize (stkSize - 1))]
+        let freeVars =
+            ast
+            |> LHExpr.freeVarsAST
+        let hasFreeVars =
+            freeVars
+            |> List.isEmpty
+            |> not
+        if (hasFreeVars && envSize = 0) then
+            failwithf "Free variables %A without context in node: %A" freeVars (ast.toSExpr())
+
+        (if hasFreeVars then
+            [BulkDup (envSize - 1, envSize)]
         else []) @
         [Function (compileWithTypes body env' ty evalNodes)] @
         // copy stack frame inside the function
-        (if stkSize > 0 then [Apply (stkSize)] else [])
+        (if hasFreeVars then
+            [Apply envSize]
+        else [])
     | _ -> failwith "Function AST node expected"
 
 and compileWithTypes (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) evalNodes : LHCode =
@@ -272,8 +286,10 @@ let rec instrToTVM (i:Instruction) : string =
     | SetGlob n -> n + " SETGLOB"
     | Integer n -> (string n) + " INT"
     | String s -> failwith "Strings are not implemented"
-    | Push n -> "s" + (string n) + " PUSH"
-    | Pop n -> "s" + (string n) + " POP"
+    | Push n -> if (n <= 15) then sprintf "s%i PUSH" n
+                else sprintf "x{56%02x} s," n
+    | Pop n -> if (n <= 15) then sprintf "s%i POP" n
+               else sprintf "x{57%02x} s," n
     | Slide n -> String.concat " " [for i in [1..n] -> "NIP"]
     | Function b -> "<{ " + (compileToTVM b) + " }> PUSHCONT"
     | Fixpoint -> " 2 GETGLOB 1 -1 CALLXARGS "
@@ -321,6 +337,8 @@ let rec instrToTVM (i:Instruction) : string =
                 compileCasejumpSelector t
         let l' = compileCasejumpSelector l
         "DUP 0 INDEX <{ " + l' + " }> " + " PUSHCONT EXECUTE"
+    | BulkDup (from, n) ->
+        sprintf "%i %i BLKPUSH" n from
     | Asm s ->
         s
     | FailWith n ->

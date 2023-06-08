@@ -34,6 +34,12 @@ type ActorState = {
 let msgReadSeqNo (msg : VMSlice) =
     assembly \"32 LDU DROP\" :> int ;;
 
+let putC4 (c4 : VMCell) =
+    assembly \"c4 POPCTR NULL\" :> unit ;;
+
+let getC4 () =
+    assembly \"c4 PUSHCTR\" :> VMCell ;;
+
 (* actorStateReader and actorStateWriter functions are added
    by the compiler; to see their code , you have to ask the
    compiler to produce the full source code listing. *)

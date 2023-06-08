@@ -113,6 +113,12 @@ let mapType (str : string) : option<Type> =
     | "VMSlice" -> Some VMSlice
     | "Coins" -> Some Coins
     | "unit" -> Some Unit
+
+    // TODO!! This is a temporary hack, not to mess with function types right now.
+    | "fun:int->int" -> Some (Function (Int 256, Int 256))
+    | "fun:int->fun:int->int" -> Some (Function (Int 256, Function (Int 256, Int 256)))
+    | "fun:VMCell->fun:State->VMCell" -> Some (Function (VMCell, Function (UserType ("State", None), VMCell)))
+
     | "" -> None
     | S -> Some (UserType (S, None))
     | _ -> failwithf "Undefined type %s" str
@@ -138,6 +144,8 @@ let deserializeValue (ty:TypeList) (t:Type) : string =
             // v1 v2 .. vn s --> s v1 v2 .. vn --> s (v1 .. vn)
             // --> (v1 .. vn) s
             |> (fun s -> s + sprintf " %i ROLLREV %i TUPLE SWAP " n n)
+        | Function (_, _) ->
+            "LDREF SWAP CTOS x{D766} s, ENDS SWAP"   // D766 = LDCONT
         | UserType (n, Some t) ->
             deserializeValueInner ty t
         | _ ->
@@ -163,6 +171,9 @@ let serializeValue (ty:TypeList) (t:Type) : string =
              |> String.concat " ") // ... -> b'
         | UserType (n, Some t) ->
             serializeValueInner ty t
+        | Function _ ->
+            "SWAP NEWC x{CF43} s, ENDC SWAP STREF"   // STCONT mnemonics; otherwise,
+                                           // FIFT will not recognize it.
         | _ ->
             failwith "not implemented"
     "NEWC " + serializeValueInner ty t + " ENDC "

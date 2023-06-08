@@ -67,9 +67,17 @@ start:
 // Single typed variable declaration.
 // "x : int", "ud : UserData"
 // =================================================
+ident:
+  | LIDENT  { $1 }
+  | UIDENT  { $1 }
+
+funType:
+  | ident RARROW ident    { sprintf "fun:%s->%s" $1 $3 }
+  | ident RARROW funType  { sprintf "fun:%s->%s" $1 $3 }
+
 typedVarDecl:
-  | LIDENT COLON LIDENT    { ($1, $3) }
-  | LIDENT COLON UIDENT    { ($1, $3) }
+  | ident COLON funType   { ($1, $3) }
+  | ident COLON ident     { ($1, $3) }
 
 // =================================================
 // Multiple typed variable declarations, separated by a semicolon

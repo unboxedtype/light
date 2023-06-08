@@ -189,3 +189,122 @@ let rec toAST sexp : ASTNode =
     | SAsm s -> mkAST (EAsm s)
     | STypeCast (e0, typ) -> mkAST (ETypeCast (toAST e0, typ))
     | _ -> failwithf "unexpected term: %A" sexp
+
+// Find all free variables (i.e. nodes of type (EVar n)) inside the
+// given AST node. Return found nodes in a list form.
+let rec freeVarsAST (ast:ASTNode) : ASTNode list =
+    match ast.Expr with
+    | ENull
+    | ENum _
+    | EAsm _
+    | EFailWith _
+    | EBool _ -> []
+    | EVar x -> List.singleton ast
+    | ETypeCast (expr, _) ->
+        freeVarsAST expr
+    | ENot expr ->
+        freeVarsAST expr
+    | EFunc ((argName, _), body) ->
+        freeVarsAST body
+        |> List.filter (fun (ASTNode (_, EVar n)) -> n <> argName)   //List.except [y]
+    | EAp (e1, e2)
+    | EGt (e1, e2)
+    | ELt (e1, e2)
+    | EGtEq (e1, e2)
+    | ELtEq (e1, e2)
+    | EEq (e1, e2)
+    | EAdd (e1, e2)
+    | ESub (e1, e2)
+    | EMul (e1, e2) ->
+        (freeVarsAST e1) @ (freeVarsAST e2)
+    | ELet (x, bind, body) ->
+        (freeVarsAST bind) @
+        (freeVarsAST body
+         |> List.filter (fun (ASTNode (_, EVar n)) -> n <> x) )
+    | ELetRec (x, bind, body) ->
+        (freeVarsAST bind) @
+        (freeVarsAST body
+         |> List.filter (fun (ASTNode (_, EVar n)) -> n <> x) )
+    | EIf (e1, e2, e3) ->
+        (freeVarsAST e1) @ (freeVarsAST e2) @ (freeVarsAST e3)
+    | ERecord vs ->
+        vs
+        |> List.map snd
+        |> List.map freeVarsAST
+        |> List.concat
+    | ESelect (e0, e1) ->
+        freeVarsAST e0
+    | _ ->
+        failwithf "freeVars for %20A not implemented" ast.Expr
+
+// global counter for generating unique variable names
+let private nameId = ref 0
+
+// Substitute a free variable 'x' for the term y in the 'node'
+let rec substFreeVar (x:string) (y:Expr) (node:ASTNode) : ASTNode =
+    let newVarName () =
+        let id = !nameId
+        nameId := id + 1 ;
+        "z" + (string id)
+    match node.Expr with
+    | EVar x' ->
+        if x' = x then mkAST y
+        else node
+    | ENum _
+    | EBool _
+    | EAsm _
+    | ENull ->
+        node
+    | EGt (e0, e1)
+    | ELt (e0, e1)
+    | EGtEq (e0, e1)
+    | ELtEq (e0, e1)
+    | ESub (e0, e1)
+    | EMul (e0, e1)
+    | EAdd (e0, e1)
+    | EEq (e0, e1)
+    | EAp (e0, e1) ->
+        let e0' = substFreeVar x y e0
+        let e1' = substFreeVar x y e1
+        mkAST ( match node.Expr with
+                | EGt _ -> EGt (e0', e1')
+                | EEq _ -> EEq (e0', e1')
+                | ELt _ -> ELt (e0', e1')
+                | EGtEq _ -> EGtEq (e0', e1')
+                | ELtEq _ -> ELtEq (e0', e1')
+                | ESub _ -> ESub (e0', e1')
+                | EMul _ -> EMul (e0', e1')
+                | EAdd _ -> EAdd (e0', e1')
+                | EAp _ -> EAp (e0', e1')
+              )
+    | ETypeCast (e0, typ) ->
+        mkAST (ETypeCast (substFreeVar x y e0, typ))
+    | ENot (e0) ->
+        mkAST (ENot (substFreeVar x y e0))
+    | EIf (e0, e1, e2) ->
+        mkAST (EIf (substFreeVar x y e0,
+                    substFreeVar x y e1,
+                    substFreeVar x y e2))
+    | EFunc ((argName,_), body) when argName = x ->
+        node
+    | EFunc ((name,typ), body) ->  // here name <> x
+        let yFreeVars = freeVarsAST (mkAST y)
+        if List.exists (fun (ASTNode (_, EVar n)) -> n = name) yFreeVars then
+            let z = newVarName ()
+            let newBody = substFreeVar name (EVar z) body
+            mkAST (EFunc ((z,typ), substFreeVar x y newBody))
+        else
+            mkAST (EFunc ((name,typ), substFreeVar x y body))
+    | ELet (arg, bind, body) ->
+        mkAST (ELet (arg, substFreeVar x y bind, substFreeVar x y body))
+    | ELetRec (arg, bind, body) ->
+        mkAST (ELetRec (arg, substFreeVar x y bind, substFreeVar x y body))
+    | ERecord es ->
+        let es' = List.map (fun (name, term) -> (name, substFreeVar x y term)) es
+        mkAST (ERecord es')
+    | ESelect (e0, e1) ->
+        mkAST (ESelect ((substFreeVar x y e0), e1))
+    | EFailWith _ ->
+        node
+    | _ ->
+        failwithf "substFreeVar not implemented for %A" node.Expr
