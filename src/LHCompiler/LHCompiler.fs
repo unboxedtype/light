@@ -316,6 +316,10 @@ let compileModule modName decls withInit debug : string =
     if debug then
         printfn "Compiling actor %A" modName ;
     let typesFull = ParserModule.extractTypes debug decls
+    if debug then
+        use fileTy = System.IO.File.CreateText(modName + ".types")
+        fprintfn fileTy "%A" typesFull
+
     let finalDecls =
         if withInit then
             let typeMap = Map.ofList typesFull
@@ -372,10 +376,13 @@ let compileModule modName decls withInit debug : string =
             decls
     let letBnds = ParserModule.getLetDeclarationsRaw typesFull finalDecls
     let letBndsUpd = patchLetBindingsFuncTypes letBnds typesFull
-    //if debug then
-    //    printfn "Let Bindings after types patched:\n%A"
-    //            (letBndsUpd |> List.map (fun (n, args, isrec, body) ->
-    //                             (n, args, isrec, body.toSExpr ())))
+    if debug then
+        use file0 = System.IO.File.CreateText(modName + ".letbnd")
+        fprintfn file0 "%A" (
+            letBndsUpd |> List.map (fun (n, args, isrec, body) ->
+                                    (n, args, isrec, body.toSExpr ()))
+        )
+
 
     // TODO!!:
     // Handlers would need to be converted into 'receive' cases in
@@ -414,13 +421,14 @@ let compileModule modName decls withInit debug : string =
 let compile (source:string) (withInit:bool) (debug:bool) : string =
     let prog = if withInit then (source + ActorInit.actorInitCode)
                else source
-    if (debug) then
-        printfn "Full program text:\n%A" prog
     let res = parse prog
-    if debug then
-        printfn "Parsed result:\n%A" res
     match res with
     | Some (Module (modName, decls)) ->
+        if debug then
+            use file1 = System.IO.File.CreateText(modName + ".full")
+            fprintfn file1 "%A" prog
+            use file2 = System.IO.File.CreateText(modName + ".parse")
+            fprintfn file2 "%A" res
         compileModule modName decls withInit debug
     | _ ->
         failwith "Actor not found"

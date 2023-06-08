@@ -177,7 +177,7 @@ let serializeValue (ty:TypeList) (t:Type) : string =
             // -> b c
             // -> c b
             // -> b''
-            "SWAP NEWC x{CF43} s, ENDC SWAP STREF"   // STCONT mnemonics; otherwise,
+            "SWAP NEWC x{CF43} s, ENDC SWAP STREF"   // CF43 = STCONT
         | _ ->
             failwith "not implemented"
     "NEWC " + serializeValueInner ty t + " ENDC "

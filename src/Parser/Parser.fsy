@@ -71,9 +71,24 @@ ident:
   | LIDENT  { $1 }
   | UIDENT  { $1 }
 
+baseType:
+  | "int"     { $1 }
+  | "bool"    { $1 }
+  | "VMCell"  { $1 }
+  | "VMSlice" { $1 }
+
+typ:
+  | baseType  { $1 }
+  | ident     { $1 }  // user-defined type
+  | typ RARROW typ { }
+
+prodType:
+  | typ STAR typ { [$1; $2] }
+  | typ STAR prodType { $1 :: $2 }
+
 funType:
-  | ident RARROW ident    { sprintf "fun:%s->%s" $1 $3 }
-  | ident RARROW funType  { sprintf "fun:%s->%s" $1 $3 }
+  | LPAREN ident RARROW ident RPAREN    { sprintf "fun:%s->%s" $2 $4 }
+  | LPAREN ident RARROW funType RPAREN  { sprintf "fun:%s->%s" $2 $4 }
 
 typedVarDecl:
   | ident COLON funType   { ($1, $3) }
@@ -92,9 +107,8 @@ typedVarDecls:
 // "y", "x : int", "ud : UserData"
 // =================================================
 varDecl:
-  | LIDENT                 { ($1, "") }
-  | LIDENT COLON UIDENT    { ($1, $3) }
-  | LIDENT COLON LIDENT    { ($1, $3) }
+  | ident                 { ($1, "") }
+  | ident COLON ident    { ($1, $3) }
 
 // ====================================================
 // Multiple variable declarations, separated by a comma
@@ -120,15 +134,23 @@ patternVarDecls :
   | patternVarDecl { [$1] }
   | patternVarDecl COMMA patternVarDecls  { $1 :: $3 }
 
+tupleType:
+  | typeIdent STAR typeIdent { $1 + "*" + $3 }
+  | typeIdent STAR tupleType { $1 + "*" + $3 }
+
+typeIdent:
+  | ident         { $1 }  // user defined type
+  | funType       { $1 }        // arrow type (function)
+  | tupleType     { $1 }        // product type
+  | LBRACE typeIdent RBRACE { $2 }
+
 // =================================================
 // A single constructor argument.
 // "x : int", "string"
 // =================================================
 ctorArg:
-  | LIDENT COLON UIDENT   { ($1, $3) } // variable : typename
-  | LIDENT COLON LIDENT   { ($1, $3) } // variable : typename
-  | LIDENT                { ("", $1) } // lowercase typename
-  | UIDENT                { ("", $1) } // uppercase typename
+  | ident COLON typeIdent   { ($1, $3) } // variable : typename
+  | ident                   { (genTVar (), $1) } // lowercase typename
 
 // =================================================
 // A series of constructor arguments.
@@ -140,7 +162,7 @@ ctorArgs:
 
 // =================================================
 // A single SumType constructor. Constructor names
-// must be in uppercase.
+// _must_ be in uppercase.
 // "| Circle of int"
 // "| Point of x:int * y:int * z:int"
 // =================================================
@@ -176,7 +198,6 @@ sumType:
 // A product type is defined as a possibly empty list
 //  of variable declarations enclosed in braces.
 // "{ a:int, b:string }"
-// "{ }"    (empty record)
 // =================================================
 prodType:
   | LBRACE typedVarDecls RBRACE
@@ -416,5 +437,4 @@ decls:
 
 // Module is a named list of declarations.
 modle:
-  | MODULE LIDENT decls { Module ($2, $3) }
-  | MODULE UIDENT decls { Module ($2, $3) }
+  | MODULE ident decls { Module ($2, $3) }

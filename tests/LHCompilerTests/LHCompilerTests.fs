@@ -653,6 +653,22 @@ let testDivergent () =
     execReal false false prog "<b -1 2 i, b>" "<b b>" "(null)"
 
 [<Test>]
+[<Timeout(1000)>]
+let testADT1 () =
+    let prog = "contract testADT1
+                type Vote =
+                   | YesVote of int * string
+                   | NoVote of int * string
+                   | Decision of (int -> int)
+
+                let main =
+                    0 ;;
+                "
+    execAndCheckPrint prog false true "0"
+
+
+
+[<Test>]
 let testRealCont () =
     let prog = "contract testRealCont
                 type State = { flip: bool; cont: int -> int; n: int }

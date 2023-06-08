@@ -80,20 +80,20 @@ handler vote (v:Vote) (st:State) =
 // execute the decision function (possibly transferring funds
 // to the contractor).
 handler execute (st:State) =
-   let sender = ctx.msg.src ;
+   let sender = ctx.msg.src in
    // Only existing members are allowed to execute DAO decision
    assert ( isMember sender st ) ;
    // There is some request pending.
    assert ( st.request_opt <> None );
    accept() ;   
-   let deadline = st.request_opt.Value.deadline ;
+   let deadline = st.request_opt.Value.deadline in
    if now () >= deadline then
-      let votingFun = st.request_opt.vot ;
-      let decisionFun = st.request_opt.dec ;
+      let votingFun = st.request_opt.vot in
+      let decisionFun = st.request_opt.dec in
       if votingFun st = true then         
          decisionFun st
       else
          State { st with { request_opt = None ;
                            votes = Map.empty } }
    else
-      failwith "The deadline is not yet reached."
+      failwith #"deadline not reached"
