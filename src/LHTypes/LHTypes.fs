@@ -145,7 +145,7 @@ let deserializeValue (ty:TypeList) (t:Type) : string =
             // --> (v1 .. vn) s
             |> (fun s -> s + sprintf " %i ROLLREV %i TUPLE SWAP " n n)
         | Function (_, _) ->
-            "LDREF SWAP CTOS x{D766} s, ENDS SWAP"   // D766 = LDCONT
+            "LDREFRTOS x{D766} s, ENDS SWAP"   // D766 = LDCONT
         | UserType (n, Some t) ->
             deserializeValueInner ty t
         | _ ->
@@ -172,8 +172,12 @@ let serializeValue (ty:TypeList) (t:Type) : string =
         | UserType (n, Some t) ->
             serializeValueInner ty t
         | Function _ ->
+            // cont b -> b cont
+            // -> b cont b
+            // -> b c
+            // -> c b
+            // -> b''
             "SWAP NEWC x{CF43} s, ENDC SWAP STREF"   // STCONT mnemonics; otherwise,
-                                           // FIFT will not recognize it.
         | _ ->
             failwith "not implemented"
     "NEWC " + serializeValueInner ty t + " ENDC "

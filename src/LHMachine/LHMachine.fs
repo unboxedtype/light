@@ -86,7 +86,7 @@ let compileArgs (defs:BoundVarDefs) (env:Environment) : Environment =
 // Here we have environment that has to be copied into function stack,
 // and arguments, that have to be added into the function environment
 // when we start to compile the function body.
-let rec compileFunction (ast:ASTNode) env args evalNodes ty =
+let rec compileFunction (ast:ASTNode) env args  ty =
     match ast.Expr with
     | EFunc (argNameType, body) ->
         let envSize = List.length env
@@ -100,18 +100,18 @@ let rec compileFunction (ast:ASTNode) env args evalNodes ty =
             |> not
         if (hasFreeVars && envSize = 0) then
             failwithf "Free variables %A without context in node: %A" freeVars (ast.toSExpr())
-
-        (if hasFreeVars then
+        //if (hasFreeVars) then
+        //    printfn "Expression %A has free variables %A" (ast.toSExpr()) freeVars
+        (if envSize > 0 then
             [BulkDup (envSize - 1, envSize)]
-        else []) @
-        [Function (compileWithTypes body env' ty evalNodes)] @
-        // copy stack frame inside the function
-        (if hasFreeVars then
-            [Apply envSize]
-        else [])
-    | _ -> failwith "Function AST node expected"
+         else []) @
+        [Function (compileAST body env' ty )] @
+        // inject stack frame copy inside the function
+        (if envSize > 0 then [Apply envSize] else [])
+    | _ ->
+        failwith "Function AST node expected"
 
-and compileWithTypes (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) evalNodes : LHCode =
+and compileAST (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) : LHCode =
     match ast.Expr with
     | EVar v ->
         let r =
@@ -137,32 +137,32 @@ and compileWithTypes (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) evalNodes 
             match l with
             | [] -> []
             | h :: t ->
-                (compileWithTypes h env' ty evalNodes) @
+                (compileAST h env' ty ) @
                 compileExprs t (argOffset 1 env')
         let es' = List.map snd es
         let n = List.length es' // now we need only values; field names are omitted.
         (compileExprs es' env) @ [Record n]
     | EFunc (argNameType, body) ->
-        compileFunction ast env [] evalNodes ty
+        compileFunction ast env []  ty
     | ENull ->
         [Null]
     | EAp (e1, e2) ->
-        (compileWithTypes e2 env ty evalNodes) @
-        (compileWithTypes e1 (argOffset 1 env) ty evalNodes) @
+        (compileAST e2 env ty ) @
+        (compileAST e1 (argOffset 1 env) ty ) @
         [Apply 1; Execute]
     | EFix f ->
-        (compileWithTypes f env ty evalNodes) @
+        (compileAST f env ty ) @
         [Fixpoint]   // apply fixpoint operator
     // We leave EEval node only for test purposes.
     // Real compiler will not insert those into AST anymore.
     // It uses external list of node IDs that has to be "executed".
     | EEval f ->
-        (compileWithTypes f env ty evalNodes) @
+        (compileAST f env ty ) @
         [Execute]
     | EIf (e0, t, f) ->
-        (compileWithTypes e0 env ty evalNodes) @
-        [IfElse (compileWithTypes t env ty evalNodes,
-                 compileWithTypes f env ty evalNodes)]
+        (compileAST e0 env ty ) @
+        [IfElse (compileAST t env ty ,
+                 compileAST f env ty )]
     | EAdd (e0, e1)
     | ESub (e0, e1)
     | EMul (e0, e1)
@@ -171,8 +171,8 @@ and compileWithTypes (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) evalNodes 
     | ELt (e0, e1)
     | EGtEq (e0, e1)
     | ELtEq (e0, e1) ->
-        (compileWithTypes e0 env ty evalNodes) @
-        (compileWithTypes e1 (argOffset 1 env) ty evalNodes) @
+        (compileAST e0 env ty ) @
+        (compileAST e1 (argOffset 1 env) ty ) @
         match ast.Expr with
         | EAdd _ -> [Add]
         | ESub _ -> [Sub]
@@ -185,21 +185,20 @@ and compileWithTypes (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) evalNodes 
     | EPack (tag, arity, args) ->
         List.concat
           (List.map (fun (i, e) ->
-                     compileWithTypes e (argOffset i env) ty evalNodes)
+                     compileAST e (argOffset i env) ty )
           (List.indexed args)) @
         [Pack (tag, arity)]
     | ECase (e, alts) ->
-        (compileWithTypes e env ty evalNodes) @ [ Casejump (compileAlts alts env ty evalNodes) ]
+        (compileAST e env ty ) @ [ Casejump (compileAlts alts env ty ) ]
     | ELet (name, def, body) ->
-        compileLet [(name,def)] body env ty evalNodes
+        compileLet [(name,def)] body env ty
     | ELetRec (name, def, body) ->
         // let rec fact = \n -> n * fact (n-1) in body
         //  ---> let fact = fixpoint (\fact . \n . n * fact (n - 1)) in body
         let expr = mkAST (ELet (name, mkAST (EFix def), body))
         let env' = (0, name) :: (argOffset 1 env)
-        [Null] @ (compileWithTypes expr env' ty evalNodes)
+        [Null] @ (compileAST expr env' ty )
     | ESelect (e0, e1) ->
-        let isEval = evalNodes |> List.contains ast.Id
         match e1.Expr with
         | EVar x ->
             // n = lookup x position in the record definition of e0
@@ -223,8 +222,7 @@ and compileWithTypes (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) evalNodes 
                     |> List.indexed
                     |> List.find (fun (i,e) -> fst e = x)
                     |> fst
-                (compileWithTypes e0 env ty evalNodes) @
-                (if isEval then [Execute] else []) @
+                (compileAST e0 env ty ) @
                 [Select n]
             | _ ->
                 failwith "the .dot operator is allowed to be used only on record types"
@@ -232,47 +230,45 @@ and compileWithTypes (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) evalNodes 
             failwith "For the expression 'var.id', the 'id' is an explicit
                       record field name you want to access"
     | EUpdateRec (e, n, e1) ->
-        (compileWithTypes e env ty evalNodes) @
-        (compileWithTypes e1 (argOffset 1 env) ty evalNodes) @
+        (compileAST e env ty ) @
+        (compileAST e1 (argOffset 1 env) ty ) @
         [UpdateRec n]
     | EAsm s ->
         [Asm s]
     | ETypeCast (e, _) ->
-        compileWithTypes e env ty evalNodes
+        compileAST e env ty
     | ENot e ->
-        (compileWithTypes e env ty evalNodes) @ [Not]
+        (compileAST e env ty ) @ [Not]
     | EFailWith n ->
         [FailWith n]
     | _ ->
         failwithf "not implemented : %A" (ast.toSExpr())
-and compileAlts alts env ty evalNodes =
+and compileAlts alts env ty  =
     List.map (fun a ->
                  let (tag, names, body) = a
                  let indexed = List.indexed (List.rev names)
                  let env_len = List.length names
                  let env' = indexed @ (argOffset env_len env)
-                 (tag, compileAlt env_len body env' ty evalNodes)
+                 (tag, compileAlt env_len body env' ty )
               ) alts
-and compileAlt offset expr env ty evalNodes =
-    [Split offset] @ (compileWithTypes expr env ty evalNodes) @ [Slide offset]
-and compileLet (defs: BoundVarDefs) expr env ty evalNodes =
+and compileAlt offset expr env ty  =
+    [Split offset] @ (compileAST expr env ty ) @ [Slide offset]
+and compileLet (defs: BoundVarDefs) expr env ty  =
     // inject new definitions into the environment
     let env' = compileArgs defs env
     let n = List.length defs
     // compile the definitions using the old environment
-    (compileLetDefs defs env ty evalNodes) @
+    (compileLetDefs defs env ty ) @
       // compile the expression using the new environment
-      (compileWithTypes expr env' ty evalNodes) @
+      (compileAST expr env' ty ) @
       // remove local variables after the evaluation
       [Slide n]
-and compileLetDefs defs env ty evalNodes =
+and compileLetDefs defs env ty  =
     match defs with
         | [] ->
             []
         | (name, expr) :: defs' ->
-            (compileWithTypes expr env ty evalNodes) @ compileLetDefs defs' (argOffset 1 env) ty evalNodes
-let compile (ast:ASTNode) (env: Environment) : LHCode =
-    compileWithTypes ast env (Map []) []
+            (compileAST expr env ty ) @ compileLetDefs defs' (argOffset 1 env) ty
 
 let rec instrToTVM (i:Instruction) : string =
     match i with
@@ -400,12 +396,8 @@ let rec hasInstruction (i:Instruction) (ir:LHCode) : bool =
     | _ :: t -> hasInstruction i t
 
 // Translation of AST into TVM assembly language written in FIFT syntax.
-let compileIntoAssembly ast nodeTypeMapping evalNodes debug : string =
-    let ir = compileWithTypes ast [] nodeTypeMapping evalNodes
+let compileIRIntoAssembly ir debug : string =
     let hasFixpoint = ir |> hasInstruction Fixpoint
-    if debug then
-        printfn "IR:\n%A" ir
-        printfn "hasFixpoint = %A" hasFixpoint
     (if hasFixpoint then [fixpointImpl] else []) @
     List.singleton   (compileToTVM ir)
     |> String.concat "\n"

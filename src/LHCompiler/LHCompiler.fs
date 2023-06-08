@@ -161,6 +161,8 @@ let rec betaRedexStep (node:ASTNode) : ASTNode =
         substFreeVar x bind.Expr body
     | EAp (e0, arg) ->
         match e0.Expr with
+        | EFunc ((x,_), ASTNode (_, EAsm _)) ->
+            node  // do not touch functions containing assembly
         | EFunc ((x,_), body) ->
             substFreeVar x arg.Expr body
         | term -> // EAp (EAp (...), arg)
@@ -233,6 +235,16 @@ let rec betaRedexFullDebug debug node =
         betaRedexFullDebug debug node'
     else node
 
+let rec betaRedexN debug n node =
+    if n > 0 then
+        let node' = betaRedexStep node
+        if node'.toSExpr () <> node.toSExpr () then
+            if debug then
+                printfn "*BR* %s" ((node'.toSExpr ()).ToString 1000)
+            betaRedexN debug (n - 1) node'
+        else node
+    else node
+
 // Do redexes until progress stops. We assume that fixpoints
 // do not get expanded.
 let rec betaRedexFull node =
@@ -291,43 +303,11 @@ let patchLetBindingsFuncTypes letBnds types =
     |> List.map ( fun (name, vars, isRec, body) ->
                   (name, vars, isRec, astReducer body patchLetBodyFuncType) )
 
-//====================================================
-// This mutable collection is used not to alter original
-// AST with extra nodes. This collection is altered in
-// insertEval function, and cleaned after compilation
-// completes in compileModule function.
-let mutable evalNodes : list<int> = []
-//====================================================
-
-let rec insertEval (ast:ASTNode) (env:TypeEnv) (ty:NodeTypeMap) : ASTNode =
-    let rec insertEvalInner (node:ASTNode) : ASTNode =
-        match node.Expr with
-        | EAp (e1, e2) ->
-            let t =
-                match (Map.tryFind node.Id ty) with
-                | Some v -> v
-                | None ->
-                    failwithf "failed to find type for node %A, expression: %s"
-                               node.Id
-                               ((ast.toSExpr ()).ToString())
-            match t.baseType with
-            | Function _
-            | TVar _ ->
-                node
-            | _ ->
-                // mkAST (EEval node)
-                // yes, right. Side-effect, global variable.. gee
-                evalNodes <- node.Id :: evalNodes
-                node
-        | _ ->
-            node
-    in astReducer ast insertEvalInner
-
 let makeReductions debug (ast:ASTNode) : ASTNode =
     ast
     |> letrecRedex
     |> etaRedex
-//    |> betaRedexFullDebug debug
+//  |> betaRedexFull debug
     |> arithSimplRedexDebug debug
 
 exception CompilerError of string
@@ -392,10 +372,11 @@ let compileModule modName decls withInit debug : string =
             decls
     let letBnds = ParserModule.getLetDeclarationsRaw typesFull finalDecls
     let letBndsUpd = patchLetBindingsFuncTypes letBnds typesFull
-    if debug then
-        printfn "Let Bindings after types patched:\n%A"
-                 (letBndsUpd |> List.map (fun (n, args, isrec, body) ->
-                                 (n, args, isrec, body.toSExpr ())))
+    //if debug then
+    //    printfn "Let Bindings after types patched:\n%A"
+    //            (letBndsUpd |> List.map (fun (n, args, isrec, body) ->
+    //                             (n, args, isrec, body.toSExpr ())))
+
     // TODO!!:
     // Handlers would need to be converted into 'receive' cases in
     // the main function. As for now, they are completely ignored.
@@ -411,21 +392,20 @@ let compileModule modName decls withInit debug : string =
           ast1
           (Map [])
           debug
-    if debug then
-        printfn "Nodes type map:\n%A" (Map.toList newMap)
-    if debug then
-        printfn "Inserting Eval nodes..."
-    // We now need to insert EEval nodes in places where
-    // continuations are fully saturated and ready to be
-    // evaluated into a value (not a partial function).
-    // insertEval ast1 typeEnv newMap |> ignore // this is done for side-effect only
+
+    let ir = LHMachine.compileAST ast1 [] newMap
+    let assembly = LHMachine.compileIRIntoAssembly ir debug
+
     if (debug) then
-        printfn "Final S-expression:\n%A" (ast1.toSExpr())
-    LHMachine.compileIntoAssembly ast1 newMap evalNodes debug
-    |> (fun res ->
-            // Clean the eval nodes collection for the next time
-            evalNodes <- [] ;
-            res)
+        use file1 = System.IO.File.CreateText(modName + ".sexpr")
+        fprintfn file1 "%A" (ast1.toSExpr())
+        use file2 = System.IO.File.CreateText(modName + ".ir")
+        fprintfn file2 "%A" ir
+        use file3 = System.IO.File.CreateText(modName + ".asm")
+        fprintfn file3 "%A" assembly
+
+    assembly
+
 // The function compiles Lighthouse source code
 // into the FIFT source code.
 // Arguments:

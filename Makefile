@@ -26,3 +26,5 @@ test_ti:
 test_comp:
 	@dotnet test ./tests/LHCompilerTests
 
+comp:
+	@dotnet build ./src/LHCompiler/

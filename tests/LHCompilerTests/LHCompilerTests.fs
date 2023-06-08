@@ -37,11 +37,11 @@ let execIR irProg expected =
     Assert.AreEqual (expected, res)
 
 
-let execReal debug prog data msgBody expected =
+let execReal debug withInit prog data msgBody expected =
     if debug then
         printfn "%A" prog |> ignore
         printfn "Passing program to the compiler..."
-    let code = LHMachine.asmAsCell (compile prog true debug)
+    let code = LHMachine.asmAsCell (compile prog withInit debug)
     let tname = NUnit.Framework.TestContext.CurrentContext.Test.Name
     // FIFT script that produces state init into .TVC file
     let nameGenStateInitScript = tname + ".fif"
@@ -150,16 +150,6 @@ let testBetaRedex7 () =
     let expected = SAp (SFunc (("x", None), SAdd (SVar "x", SNum 1)), SAdd (SNum 1, SNum 1))
     Assert.AreEqual (expected, res)
 
-
-[<Test>]
-let testCurry1 () =
-    let prog = "contract test
-                     let main =
-                       let apply func x = (func (x + 1)) in
-                       let inc x = x + 1 in
-                       let apply_inc = apply inc in
-                       (apply_inc 1) ;;"
-    execAndCheckPrint prog false false "3"
 
 [<Test>]
 let testContractSimple () =
@@ -519,15 +509,25 @@ let testInitRecord6 () =
     // This is ActorState structure, not State
     let stateData = "<b 100 256 u, -1 2 i, 777 256 u, b>"
     let msgBody = "<b 1 32 u, b>"  // 1 = sequence number
-    execReal false prog stateData msgBody "(null)"
+    execReal false true prog stateData msgBody "(null)"
+
+[<Test>]
+let testCurry1 () =
+    let prog = "contract test
+                     let main =
+                       let apply func x = (func (x + 1)) in
+                       let inc x = x + 1 in
+                       let apply_inc = apply inc in
+                       (apply_inc 1) ;;"
+    execAndCheckPrint prog false false "3"
 
 [<Test>]
 let testCurry2 () =
     let prog = "contract test
-                     let main =
-                       let f f1 f2 x y = f2 (f1 x) (f1 y) in
-                       let sum x y = x + y in
-                       let inc x = x + 1 in
+                  let main =
+                    let f f1 f2 x y = f2 (f1 x) (f1 y) in
+                    let sum x y = x + y in
+                    let inc x = x + 1 in
                        f inc sum 10 20 ;;"
     execAndCheckPrint prog false false "32"
 
@@ -639,11 +639,24 @@ let testFunType4 () =
     execAndCheckPrint prog false false "0"
 
 [<Test>]
+[<Timeout(1000)>]
+let testDivergent () =
+    let prog = "contract testDivergent
+                type State = { b:bool }
+                let rec inc_infinite x = 1 + inc_infinite x ;;
+                let accept () =
+                    assembly \"ACCEPT\" :> unit ;;
+                let main =
+                    accept () ;
+                    inc_infinite 1 ;;
+                "
+    execReal false false prog "<b -1 2 i, b>" "<b b>" "(null)"
+
+[<Test>]
 let testRealCont () =
-    let prog = "contract Simple
+    let prog = "contract testRealCont
                 type State = { flip: bool; cont: int -> int; n: int }
-                let inc x = x + 1 ;;
-                let dec x = x - 1 ;;
+                let rec infi_inc x = 1 + infi_inc x ;;
                 let accept () =
                     assembly \"ACCEPT\" :> unit ;;
                 let rec fact n = if (n > 1) then n * fact (n - 1) else 1 ;;
@@ -651,17 +664,22 @@ let testRealCont () =
                 let main msgCell (st:State) =
                   accept (); (* accept the message *)
                   let st' =
-                    if st.n = 0 then
-                       { flip = true; cont = inc; n = 1 }
+                    if st.n = 0 then (* workaround for not being able to set conts in stateinit *)
+                       { flip = true; cont = infi_inc; n = 2 }
                     else st
                   in
                     if st'.flip then
-                        { flip = false; cont = dec; n = st'.cont st'.n }
+                        { flip = false; cont = sum; n = st'.cont st'.n }
                     else
                         { flip = true ; cont = fact; n = st'.cont st'.n }
                 ;; "
 
     // This is ActorState structure, not State
-    let stateData = "<b 0 256 u, 0 2 i, 0 2 i, B{b5ee9c720101020100160001113fffff0000008040080100109100c8cf43c9ed54} B>boc ref, 0 256 u, b>"
+    let stateData = "<b 0 256 u, // last seq number
+                        0 2 i,   // deployed?
+                        0 2 i,   // flip
+                        B{b5ee9c720101020100160001113fffff0000008040080100109100c8cf43c9ed54} B>boc ref,
+                        0 256 u, // n
+                      b>"
     let msgBody = "<b 1 32 u, b>"  // 1 = sequence number
-    execReal false prog stateData msgBody "(null)"
+    execReal false true prog stateData msgBody "(null)"
