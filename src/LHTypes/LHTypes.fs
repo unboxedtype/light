@@ -106,7 +106,7 @@ let deserializeValueSimpl (ty:TypeList) (t:Type) : string =
             // --> (v1 .. vn) s
             |> (fun s -> s + sprintf " %i ROLLREV %i TUPLE SWAP " n n)
         | Function (_, _) ->
-            "<{ }> PUSHCONT"   // D766 = LDCONT
+            "LDREF NIP <{ }> PUSHCONT SWAP"   // D766 = LDCONT
         | UserType (n, Some t) ->
             deserializeValueInner ty t
         | _ ->
