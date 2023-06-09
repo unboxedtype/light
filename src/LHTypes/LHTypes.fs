@@ -1,47 +1,5 @@
 // For emacs: -*- fsharp -*-
 
-// The contract  state is  defined by  corresponding State  record.  The
-// State record is a set of typed variable names.
-
-// When the  contract begins execution,  it takes  the Cell from  C4 and
-// parses it according  to State record description.  For each variable,
-// there  is  a  corresponding Global  variable  slot  (SETGLOB/GETGLOB)
-// defined in VM. During the execution, the contract access variables by
-// reading them from Globals.
-
-// When  the  contract  execution  is  done,  the  contract  state  gets
-// updated.  This is  done by  serializing globals  back into  the Cell.
-// This Cell is put back in the C4.
-
-// Hence, we need the following algorithms and structures:
-
-// * [StateRecord] A structure for  describing State variables and their
-//   types. We consider full blown ADTs here.
-
-// * [ReadStateRecord] An algorithm that extracts State type from the
-//   program AST.
-//   ReadStateRecord : AST -> StateRecord
-
-// * [deserializeValue] An algorithm for deserialization of a value of type
-//   T from the slice.
-
-// * [StateGlobalsMapping]  An   algorithm  for  assinging   each  state
-//   variable its  own unique  global identifier (variable  mapping).
-//   StateGlobalsMapping : StateRecord -> Map [(string, int)]
-
-// * [serializeValue] An algorithm for serialization of a value of type T
-//   into a slice.
-
-// * [State Reader] An algorithm for deconstructing the C4 cell according
-//   to a given State description into a set of (name, VM-native value)
-//   pairs. This list may be further fed into ValuesIntoGlobals algorithm.
-//   StateWrite : StateRecord -> Cell -> [(name, TVM.value)]
-
-// * [State Writer] An algorithm for constructing the C4 cell according
-//   to a given State description. New variable values are taken from
-//   the 'state' variable. They get serialized and placed into a cell according to
-//   the chosen data placement structure.
-
 module LHTypes
 
 open type TVM.Instruction
@@ -62,11 +20,15 @@ type Type =
     | Int of n:int    // n = bit length; 1 <= n <= 256
     | UInt of n:int   // n = bit length  1 <= n <= 256
     | String
-    | PT of e:ProductType               // product type
-    | ST of e:SumType                   // sum type
-    | UserType of name:Name * typ:option<Type>  // user-defined type with name s
-    | Function of inp:Type * out:Type   // function type
-    | TVar of s:Name // type variable
+    | Tuple of list<Type>
+    | Record of list<Name*Type>
+     // ADT = Algebraic Data Type
+     // Each constructor has a name.
+     // Contructors may have zero or more arguments.
+    | ADT of list<Name*option<Type>>  // ADT
+    | UserType of Name*option<Type>   // alias for some other type
+    | Function of Type*Type   // function type
+    | TVar of s:Name // type variable; needed for type inference
     member this.usertypeName =
         match this with
         | UserType (s, _) -> s
@@ -86,22 +48,15 @@ and VariableList =
     List<Variable>
 // TypeList is a list of name*type pairs, where name
 // denotes either a type variable name, or a global type name.
-// record State --> ("State", PT ([("x",List Int);("y",bool)]))
+// type State --> ("State", Record [("x",List Int);("y",bool)])
 and TypeList =
     List<Name * Type>
-and ProductType =  // to construct it, you shall provide all the fields
-    TypeList
-and SumType =      // to construct it, you shall provide all args to a single constructor
-    List<Name * List<Type>>
 
 // Type scheme is a description of all record types in the program.
 // It is represented as a list of mutually recursive record definitions.
 // The correct scheme must contain a record with tag 0 - the State record
-type ProgramTypes =
-    TypeList
-
-type VariablesMapping =
-    Map<Name,int>
+type ProgramTypes = TypeList
+type VariablesMapping = Map<Name,int>
 
 // map an LH elementary type into Type
 let mapType (str : string) : option<Type> =
@@ -136,7 +91,7 @@ let deserializeValue (ty:TypeList) (t:Type) : string =
             sprintf "%i LDU" n
         | Bool ->
             sprintf "2 LDI"
-        | PT fields ->
+        | Record fields ->
             let n = List.length fields
             List.map snd fields // [t1; t2; ...]
             |> List.map (deserializeValueInner ty)  // [str; str; str]
@@ -161,7 +116,7 @@ let serializeValue (ty:TypeList) (t:Type) : string =
             sprintf "%i STU" n
         | Bool ->
             sprintf "2 STI"
-        | PT fields ->
+        | Record fields ->
             let n = List.length fields
             " SWAP " +
             (sprintf " %i UNTUPLE " n) +    // b [v1; v2; ... vn] --> b v1 v2 .. vn
@@ -185,6 +140,10 @@ let serializeValue (ty:TypeList) (t:Type) : string =
 // in the type t
 let rec insertType (name:Name) (typDefs:ProgramTypes) (expr:Type) : Type =
     match expr with
+    | Tuple ts ->
+        ts
+        |> List.map (insertType name typDefs)
+        |> Tuple
     | UserType (name1, None) when name1 = name ->
         let def = Map.tryFind name1 (Map.ofList typDefs) in
         match def with
@@ -194,14 +153,19 @@ let rec insertType (name:Name) (typDefs:ProgramTypes) (expr:Type) : Type =
             failwithf "Definition for the type %A not found" name1
     | UserType (name1, Some t) ->
         UserType (name1, Some (insertType name typDefs t))
-    | PT pts ->
-        PT (pts
-            |> List.map (fun (name1, t) ->
-                         (name1, insertType name typDefs t) ))
-    | ST sts ->
-        ST (sts
-            |> List.map (fun (name1, ts) ->
-                         (name1, List.map (insertType name typDefs) ts)))
+    | Record pts ->
+        pts
+        |> List.map (fun (name1, t) ->
+                    (name1, insertType name typDefs t))
+        |> Record
+    | ADT sts ->
+        sts
+        |> List.map ( fun (ctorName, ctorArgOpt) ->
+                      match ctorArgOpt with
+                      | None -> (ctorName, None)
+                      | Some t -> (ctorName, Some (insertType name typDefs t))
+                    )
+        |> ADT
     | _ ->
         // TODO: what about Function?
         expr

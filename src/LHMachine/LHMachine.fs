@@ -133,6 +133,9 @@ and compileAST (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) : LHCode =
     | EBool false ->
         [False]
     | ERecord es ->
+        // TODO!
+        // order of fields in es must be rearranged according
+        // to how they are defined in the record type!
         let rec compileExprs l env' =
             match l with
             | [] -> []
@@ -216,7 +219,7 @@ and compileAST (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) : LHCode =
                 | UserType (n, Some ty') -> ty'
                 | _ -> stype
             match ptype with
-            | PT pts ->
+            | LHType.Record pts ->
                 let n =
                     pts
                     |> List.indexed

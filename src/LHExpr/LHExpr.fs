@@ -63,6 +63,7 @@ type Expr =
     | EStr of s:string                  // value of type String
     | EBool of b:bool
     | ENull                             // value Null (Unit)
+    | ETuple of list<ASTNode>
     | EFunc of arg:(Name*option<Type>) * body:ASTNode  // value of type Function<T1,T2>
     | EVar of name:Name                 // value of the variable
     | EEval of e:ASTNode                   // evaluate saturated function

@@ -34,7 +34,7 @@ rule read =
   | "true"   { TRUE }
   | "false"  { FALSE }
   | "not"    { NOT }
-  | int      { INT (int (lexeme lexbuf)) }
+  | int      { NUM (int (lexeme lexbuf)) }
   | ":>"     { TYPECAST }
   | ";;"     { DSCOLON }
   | "->"     { RARROW  }  // function type
@@ -71,6 +71,12 @@ rule read =
   | "match"  { MATCH }
   | "with"   { WITH }
   | "failwith" { FAILWITH }
+  | "int" { INT }
+  | "string" { STRINGT }
+  | "bool" { BOOL }
+  | "unit" { UNIT }
+  | "VMCell" { VMCELL }
+  | "VMSlice" { VMSLICE }
   | ucaseIdentifier  { UIDENT (string (lexeme lexbuf)) }
   | lcaseIdentifier  { LIDENT (string (lexeme lexbuf)) }
 //  | identifier { IDENT (string (lexeme lexbuf)) }

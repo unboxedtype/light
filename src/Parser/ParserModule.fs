@@ -45,15 +45,16 @@ let rec hasUndefType (t:Type) : List<Name> =
         List.singleton name
     | UserType (name, Some t) ->
         hasUndefType t
-    | PT pts ->
+    | Record pts ->
         pts
         |> List.map snd
         |> List.map hasUndefType
         |> List.concat
-    | ST sts ->
+    | ADT sts ->
         sts
         |> List.map snd
-        |> List.concat
+        |> List.filter Option.isSome
+        |> List.map Option.get
         |> List.map hasUndefType
         |> List.concat
     | _ ->
@@ -91,10 +92,10 @@ let rec restoreType (typeDefs:TypeDefs) (arg:Type) : Type =
     // TODO: ST type also shall be implemented here.
     | UserType (n, Some t) ->   // restore types in the nested definition
        UserType (n, Some (restoreType typeDefs t))
-    | PT pts ->
+    | Record pts ->
         pts
         |> List.map ( fun (fn,ft) -> (fn, restoreType typeDefs ft) )
-        |> PT
+        |> Record
     | Function (t1, t2) ->
         (restoreType typeDefs t1,
          restoreType typeDefs t2)
@@ -105,7 +106,7 @@ let rec restoreType (typeDefs:TypeDefs) (arg:Type) : Type =
 // Returns a list of (name, type) pairs, where partially
 // defined types like UserType ("ActorState", None) were
 // reconstructed into full types like
-// ("ActorState, PT [("balance",Int 256);...])
+// ("ActorState, Record [("balance",Int 256);...])
 // based on info from 'types'.
 let restoreTypes (typeDefs:TypeDefs) (args:ArgList) : ArgList =
     args

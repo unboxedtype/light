@@ -79,3 +79,47 @@ d53be3b08e2541bde1b453be9d338709 | grep data_boc
 open LHTypes ;;
 serializeValue [] (PT [("f",Bool); ("fun", Function (Int 256, Int 256))]) ;;
 deserializeValue [] (PT [("f",Bool); ("fun", Function (Int 256, Int 256))]) ;;
+
+
+// The contract  state is  defined by  corresponding State  record.  The
+// State record is a set of typed variable names.
+
+// When the  contract begins execution,  it takes  the Cell from  C4 and
+// parses it according  to State record description.  For each variable,
+// there  is  a  corresponding Global  variable  slot  (SETGLOB/GETGLOB)
+// defined in VM. During the execution, the contract access variables by
+// reading them from Globals.
+
+// When  the  contract  execution  is  done,  the  contract  state  gets
+// updated.  This is  done by  serializing globals  back into  the Cell.
+// This Cell is put back in the C4.
+
+// Hence, we need the following algorithms and structures:
+
+// * [StateRecord] A structure for  describing State variables and their
+//   types. We consider full blown ADTs here.
+
+// * [ReadStateRecord] An algorithm that extracts State type from the
+//   program AST.
+//   ReadStateRecord : AST -> StateRecord
+
+// * [deserializeValue] An algorithm for deserialization of a value of type
+//   T from the slice.
+
+// * [StateGlobalsMapping]  An   algorithm  for  assinging   each  state
+//   variable its  own unique  global identifier (variable  mapping).
+//   StateGlobalsMapping : StateRecord -> Map [(string, int)]
+
+// * [serializeValue] An algorithm for serialization of a value of type T
+//   into a slice.
+
+// * [State Reader] An algorithm for deconstructing the C4 cell according
+//   to a given State description into a set of (name, VM-native value)
+//   pairs. This list may be further fed into ValuesIntoGlobals algorithm.
+//   StateWrite : StateRecord -> Cell -> [(name, TVM.value)]
+
+// * [State Writer] An algorithm for constructing the C4 cell according
+//   to a given State description. New variable values are taken from
+//   the 'state' variable. They get serialized and placed into a cell according to
+//   the chosen data placement structure.
+

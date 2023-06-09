@@ -32,7 +32,7 @@ module Typ =
         | Int _
         | String
         | Unit
-        | PT _
+        | Record _
         | VMCell
         | VMSlice
         | Coins
@@ -58,7 +58,7 @@ module Typ =
         | Int _
         | String
         | Bool
-        | PT _
+        | Record _
         | VMSlice
         | VMCell
         | Coins
@@ -179,7 +179,7 @@ let recoverRecordType env (node:ASTNode) : Type =
         |> List.filter (fun (name, scheme) ->
                           let (Scheme (names, typ)) = scheme in
                           match typ with
-                          | PT flds ->  // product type = record
+                          | Record flds ->  // product type = record
                             let fldNames = Set.ofList (List.map fst flds) in
                             fldNames = varNames
                           | _ ->
@@ -373,7 +373,7 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
     | ESelect (expr, ASTNode (_, EVar field)) ->
         let s', t1, tm1 = ti env expr tm debug
         match t1.baseType with
-        | PT fields ->
+        | Record fields ->
             let t2 =
                 match Map.tryFind field (Map.ofList fields) with
                 | Some r -> r
@@ -395,7 +395,7 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
             | [] -> (substs, tm)
             | (name, expr) :: es ->
                 let varType = (
-                    let (PT l) = recType in (Map.ofList l).[name]
+                    let (Record l) = recType in (Map.ofList l).[name]
                 )
                 let s', exprType, tm1 = ti env expr tm debug
                 // unify record field type with assignment expression type

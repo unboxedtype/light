@@ -1,9 +1,8 @@
 %{
 open ParserModule
-open type LHExpr.Expr
 open LHExpr
 open FSharp.Text.Parsing
-
+open LHTypes
 // EFunc of arg:(Name*option<Type>) * body:Expr
 // [("x",None),("y",Some Int 256)], body ->
 //   --> EFunc (("x",None), EFunc (("y", Some Int 256), ...))
@@ -34,12 +33,13 @@ let resetFunVar () =
 
 %start start
 
-%token <int> INT
 %token NOT
+%token <int> NUM
 %token <string> UIDENT
 %token <string> LIDENT
 %token <string> IDENT
 %token <string> STRING
+%token BOOL INT UNIT VMCELL VMSLICE STRINGT
 %token TRUE FALSE
 %token DSCOLON
 %token MODULE TYPEDEF OF IF THEN ELSE HANDLER LET RECURSIVE IN
@@ -48,14 +48,19 @@ let resetFunVar () =
 %token MATCH WITH UNDERSCORE DOT FAILWITH ASM
 %token TYPECAST
 %token FUNC
-%type <ParserModule.Module option> start
 
 %nonassoc IN
+%right prec_let
 %right SEMICOLON
-%left PLUS MINUS
 %left STAR
+%nonassoc prec_tuple
+%left COMMA
 %left EQ GT LESS GTEQ LTEQ
+%left PLUS MINUS
 %left prec_app
+%left DOT
+
+%type <option<Module>> start
 
 %%
 
@@ -67,178 +72,77 @@ start:
 // Single typed variable declaration.
 // "x : int", "ud : UserData"
 // =================================================
+baseType:
+  | INT       { (Int 256) }
+  | BOOL      { Bool }
+  | VMCELL    { VMCell  }
+  | VMSLICE   { VMSlice }
+  | UNIT      { Unit   }
+  | STRINGT   { String }
+
 ident:
   | LIDENT  { $1 }
   | UIDENT  { $1 }
 
-baseType:
-  | "int"     { $1 }
-  | "bool"    { $1 }
-  | "VMCell"  { $1 }
-  | "VMSlice" { $1 }
-
 typ:
   | baseType  { $1 }
-  | ident     { $1 }  // user-defined type
-  | typ RARROW typ { }
+  | ident     { UserType ($1, None) }  // user-defined type
+  | typ RARROW typ { Function ($1, $3) }
+  | LPAREN typ RPAREN { $2 }
+  | LPAREN star_typs RPAREN { Tuple $2 }
+  | star_typs { Tuple $1 }
 
-prodType:
-  | typ STAR typ { [$1; $2] }
-  | typ STAR prodType { $1 :: $2 }
+star_typs:
+  | typ STAR typ        { [$1; $3] }
+  | star_typs STAR typ  { $1 @ [$3] }
 
-funType:
-  | LPAREN ident RARROW ident RPAREN    { sprintf "fun:%s->%s" $2 $4 }
-  | LPAREN ident RARROW funType RPAREN  { sprintf "fun:%s->%s" $2 $4 }
-
-typedVarDecl:
-  | ident COLON funType   { ($1, $3) }
-  | ident COLON ident     { ($1, $3) }
+typs:
+  | typ       { [$1] }
+  | typ typs  { $1 :: $2 }
 
 // =================================================
-// Multiple typed variable declarations, separated by a semicolon
+// Multiple typed variable declarations, separated by a semicolon.
+// Used in Record definitions.
 // "x : int; ud: UserData"
 // =================================================
-typedVarDecls:
+typedVarDecl:
+  | ident COLON typ   { ($1, $3) }
+typedVarDeclsSemicolon:
   | typedVarDecl { [$1] }
-  | typedVarDecl SEMICOLON typedVarDecls  { $1 :: $3 }
+  | typedVarDecl SEMICOLON typedVarDeclsSemicolon  { $1 :: $3 }
 
-// =================================================
-// Single variable declaration, may not contain type.
-// "y", "x : int", "ud : UserData"
-// =================================================
-varDecl:
-  | ident                 { ($1, "") }
-  | ident COLON ident    { ($1, $3) }
+recordDecl:
+  | LBRACE typedVarDeclsSemicolon RBRACE  { Record $2 }
 
-// ====================================================
-// Multiple variable declarations, separated by a comma
-// "x : int, y, z"
-// ====================================================
-varDecls:
-  | { [] }
-  | varDecl { [$1] }
-  | varDecl COMMA varDecls  { $1 :: $3 }
-
-// =================================================
-// Single variable declaration, may not contain type.
-// "y", "x : int", "ud : UserData"
-// =================================================
-patternVarDecl:
-  | LIDENT                 { ($1, "") }
-  | LIDENT COLON UIDENT    { ($1, $3) }
-  | LIDENT COLON LIDENT    { ($1, $3) }
-  | UNDERSCORE             { ("_", "") }
-
-patternVarDecls :
-  | { [] }
-  | patternVarDecl { [$1] }
-  | patternVarDecl COMMA patternVarDecls  { $1 :: $3 }
-
-tupleType:
-  | typeIdent STAR typeIdent { $1 + "*" + $3 }
-  | typeIdent STAR tupleType { $1 + "*" + $3 }
-
-typeIdent:
-  | ident         { $1 }  // user defined type
-  | funType       { $1 }        // arrow type (function)
-  | tupleType     { $1 }        // product type
-  | LBRACE typeIdent RBRACE { $2 }
-
-// =================================================
-// A single constructor argument.
-// "x : int", "string"
-// =================================================
-ctorArg:
-  | ident COLON typeIdent   { ($1, $3) } // variable : typename
-  | ident                   { (genTVar (), $1) } // lowercase typename
-
-// =================================================
-// A series of constructor arguments.
-// "x : int * y: string * UserData"
-// =================================================
-ctorArgs:
-  | ctorArg { List.singleton $1 }
-  | ctorArg STAR ctorArgs  { $1 :: $3 }
-
-// =================================================
-// A single SumType constructor. Constructor names
-// _must_ be in uppercase.
-// "| Circle of int"
-// "| Point of x:int * y:int * z:int"
-// =================================================
-sumtypeCtor:
-  | VBAR UIDENT { ($2, []) }
-  | VBAR UIDENT OF ctorArgs { ($2, $4) }
-
-// =================================================
-// A series of constructors.
-// "| Circle | Point of int * int * int"
-// =================================================
-sumtypeCtors:
-  | sumtypeCtor  { List.singleton $1 }
-  | sumtypeCtor sumtypeCtors { $1 :: $2 }
-
-// =================================================
-// A sumtype is a series of constructors.
-// =================================================
-sumType:
-  | sumtypeCtors
-  {
-      let sumC =
-         $1 |> List.map (fun (c,args) ->
-                         (c,
-                          args
-                          |> List.map snd
-                          |> List.map (fun i -> (LHTypes.mapType i).Value)))
-
-      LHTypes.ST sumC
-  }
-
-// =================================================
-// A product type is defined as a possibly empty list
-//  of variable declarations enclosed in braces.
-// "{ a:int, b:string }"
-// =================================================
-prodType:
-  | LBRACE typedVarDecls RBRACE
-  {
-      LHTypes.PT ($2 |> List.map (fun (n,t) -> (n, (LHTypes.mapType t).Value)))
-  }
+ADTCtor:
+  | VBAR ident { ($2, None) } // constructor may have no arguments
+  | VBAR ident OF typ { ($2, Some $4) }
+ADTCtors:
+  | ADTCtor  { [$1] }
+  | ADTCtor ADTCtors { $1 :: $2 }
+ADTDecl:
+  | ADTCtors { ADT $1 }
 
 // =================================================
 // Function and Handler declaration argument
 // "(x:int)" "y" "()"
 // =================================================
 funcArg:
-  | LPAREN typedVarDecl RPAREN { $2 }
-  | LPAREN RPAREN { ("", "unit") }
-  | LIDENT  { ($1, "") }
-
+   | ident                         { ($1, None) }
+   | LPAREN RPAREN                 { ("", Some Unit) }
+   | ident COLON typ               { ($1, Some $3) }
+   | LPAREN ident COLON typ RPAREN { ($2, Some $4) }
 funcArgs:
-  | { [] }
-  | funcArg funcArgs { $1 :: $2 }
+   | { [] }
+   | funcArg funcArgs { $1 :: $2 }
 
-matchPattern:
-  | VBAR UIDENT RARROW expr { ($2, [], $4) }
-  | VBAR UIDENT LPAREN patternVarDecls RPAREN RARROW expr { ($2, $4, $7) }
 
-matchPatterns:
-  | matchPattern { [$1] }
-  | matchPattern matchPatterns { $1 :: $2 }
-
-varEquation:
-  | LIDENT EQ expr  { ($1, $3) }
-
-// { x = 100; y = Cons 1 Nil } ==>
-//     [ ("x", ENum 100); ("y", NConstr (Cons, [1; Nil])) ]
-varEquations:
-  | varEquation { [$1] }
-  | varEquation SEMICOLON varEquations { $1 :: $3 }
-
-// =================================================
-// Language expression is a recursive structure that
-// may be one of the following:
-// =================================================
+// ex.varEquation
+recordConstrVar:
+   | ident EQ expr  { ($1, $3) }
+recordConstrVars:
+   | recordConstrVar { [$1] }
+   | recordConstrVar SEMICOLON recordConstrVars { $1 :: $3 }
 
 basicExpr:
   | LPAREN expr RPAREN
@@ -249,13 +153,11 @@ basicExpr:
     { mkAST (EBool true) }
   | FALSE
     { mkAST (EBool false) }
-  | INT
+  | NUM
     { mkAST (ENum ( $1 |> int )) }
   | STRING
     { mkAST (EStr $1) }
   | LIDENT
-    { mkAST (EVar $1) }
-  | UIDENT
     { mkAST (EVar $1) }
   | basicExpr DOT LIDENT
   {
@@ -268,106 +170,81 @@ basicExpr:
 
 expr:
   | basicExpr
-  { $1 }
-
-  | expr TYPECAST basicExpr
-  {
-      let (ASTNode (_, EVar typeName)) = $3
-      mkAST (ETypeCast ($1, (LHTypes.mapType typeName).Value)) }  // it must have a type
+     { $1 }
 
   | NOT expr
     %prec prec_app
-  { mkAST (ENot $2) }
+     { mkAST (ENot $2) }
 
-  | expr LT expr
-  { mkAST (ELt ($1, $3)) }
-
-  | expr GT expr
-  { mkAST (EGt ($1, $3))  }
-
-  | expr GTEQ expr
-  { mkAST (EGtEq ($1, $3))  }
-
-  | expr LTEQ expr
-  { mkAST (ELtEq ($1, $3))  }
-
-  | expr EQ expr
-  { mkAST (EEq ($1, $3))  }
+  | expr TYPECAST typ
+     { mkAST (ETypeCast ($1, $3)) }
 
   | expr PLUS expr
-  { mkAST (EAdd ($1, $3)) }
+     { mkAST (EAdd ($1, $3)) }
 
   | expr MINUS expr
-  { mkAST (ESub ($1, $3)) }
+     { mkAST (ESub ($1, $3)) }
 
   | expr STAR expr
-  { mkAST (EMul ($1, $3)) }
+     { mkAST (EMul ($1, $3)) }
+
+  | expr EQ expr
+     { mkAST (EEq ($1, $3))  }
+
+  | expr LT expr
+     { mkAST (ELt ($1, $3)) }
+
+  | expr GT expr
+     { mkAST (EGt ($1, $3))  }
+
+  | expr GTEQ expr
+     { mkAST (EGtEq ($1, $3))  }
+
+  | expr LTEQ expr
+     { mkAST (ELtEq ($1, $3))  }
 
   | IF expr THEN expr ELSE expr
-  { mkAST (EIf ($2, $4, $6)) }
-
-  | expr SEMICOLON expr
-  { mkAST (ELet (genTVar(), $1, $3)) }
+     { mkAST (EIf ($2, $4, $6)) }
 
   | FUNC funcArgs RARROW expr
   {
     // fun x (y:T) -> funBody
     // --> let <freshVar> x (y:T) = funBody in <freshVar>
     let funId = genFunVar ()
-    let args =
-       $2 |> List.map (fun (n, s) -> (n, LHTypes.mapType s))
+    let args = $2
     mkAST (ELet (funId, unfoldFunction args $4, mkAST (EVar funId)))
   }
 
-  | LET LIDENT EQ expr IN expr
-  { mkAST (ELet ($2, $4, $6)) }
+  | LET ident EQ expr IN expr
+    %prec prec_let
+     { mkAST (ELet ($2, $4, $6)) }
 
-  | LET LIDENT funcArgs EQ expr IN expr
+  | LET ident funcArgs EQ expr IN expr
+    %prec prec_let
+     { mkAST (ELet ($2, unfoldFunction $3 $5, $7)) }
+
+  | LET RECURSIVE ident funcArgs EQ expr IN expr
+    %prec prec_let
+     {  mkAST (ELetRec ($3, unfoldFunction $4 $6, $8))  }
+
+  | basicExpr actualArguments
+    %prec prec_app
   {
-    let args =
-       $3 |> List.map (fun (n, s) -> (n, LHTypes.mapType s))
-    mkAST (ELet ($2, unfoldFunction args $5, $7))
+    // func a1 a2 a3 --> EAp (EAp (a1, a2), a3)
+    List.fold ( fun acc expr -> mkAST (EAp (acc, expr)) ) $1 $2
   }
 
-  | LET RECURSIVE LIDENT funcArgs EQ expr IN expr
-  {
-    let args =
-       $4 |> List.map (fun (n, s) -> (n, LHTypes.mapType s))
-    mkAST (ELetRec ($3, unfoldFunction args $6, $8))
-  }
+  | elems
+    %prec prec_tuple
+  { mkAST (ETuple $1) }
 
-  | MATCH expr WITH matchPatterns
-  {
-      let patterns = $4
-      if (List.isEmpty patterns)
-      then failwith "match pattern has to have at least 1 pattern"
-      else
-        let cases =
-            List.map (fun (ctor,args,expr) ->
-                      (hash ctor, // ctor tag is a hash of its name
-                       List.map fst args, // leave only variable names
-                       expr) // case body
-                      ) patterns
-        mkAST (ECase ($2, cases))
-  }
+  // LET TUPLE has to be here
 
-  | LBRACE varEquations RBRACE
-  {
-    // TODO!
-    // Here, we shall to place the record values according
-    // to their appearence in their type. However, for now,
-    // we skip it and pretend the values are placed in the
-    // correct order.
-    // let recNameValPairs = $2
-    // let recValues = recNameValPairs |> List.map snd
-    mkAST (ERecord $2)
-  }
+  | expr SEMICOLON expr
+      { mkAST (ELet (genTVar(), $1, $3)) }
 
-  | expr LARROW expr
-  {
-    if ($1).Expr = (EVar "state") then mkAST (EAssign ($3))
-    else failwith "assignment operator is permited only for 'state' variable currently"
-  }
+  | LBRACE recordConstrVars RBRACE
+      { mkAST (ERecord $2) }
 
   | FAILWITH expr
   {
@@ -383,12 +260,13 @@ expr:
      mkAST (EAsm $2)
   }
 
-  | basicExpr actualArguments
-    %prec prec_app
-  {
-    // func a1 a2 a3 --> EAp (EAp (a1, a2), a3)
-    List.fold ( fun acc expr -> mkAST (EAp (acc, expr)) ) $1 $2
-  }
+  // | expr LARROW expr
+  //{
+  //  if ($1).Expr = (EVar "state") then mkAST (EAssign ($3))
+  //  else failwith "assignment operator is permited only for 'state' variable currently"
+  //}
+
+
 
 actualArguments:
   | actualArguments basicExpr
@@ -398,6 +276,10 @@ actualArguments:
     %prec prec_app
     { [$1] }
 
+elems:
+| elems COMMA expr    { $1 @ [$3] }
+| expr COMMA expr     { [$1; $3]  }
+
 // =================================================
 // Declaration is one of the following:
 //  * datatype definition
@@ -405,28 +287,25 @@ actualArguments:
 //  * let binding
 // =================================================
 decl:
-  | TYPEDEF UIDENT EQ prodType
+  | TYPEDEF UIDENT EQ recordDecl
   { TypeDef ($2, $4) }
 
-  | TYPEDEF UIDENT EQ sumType
+  | TYPEDEF UIDENT EQ ADTDecl
   { TypeDef ($2, $4) }
 
   | HANDLER LIDENT funcArgs EQ expr
   {
-      let vars = $3 |> List.map (fun (n,t) -> (n, LHTypes.mapType t))
-      HandlerDef ($2, vars, $5)
+      HandlerDef ($2, $3, $5)
   }
 
   | LET LIDENT funcArgs EQ expr DSCOLON
   {
-    let args = $3 |> List.map (fun (n,t) -> (n, LHTypes.mapType t))
-    LetBinding ($2, args, false, unfoldFunction args $5)
+    LetBinding ($2, $3, false, unfoldFunction $3 $5)
   }
 
   | LET RECURSIVE LIDENT funcArgs EQ expr DSCOLON
   {
-    let args = $4 |> List.map (fun (n,t) -> (n, LHTypes.mapType t))
-    LetBinding ($3, args, true, unfoldFunction args $6)
+    LetBinding ($3, $4, true, unfoldFunction $4 $6)
   }
 
 
@@ -438,3 +317,4 @@ decls:
 // Module is a named list of declarations.
 modle:
   | MODULE ident decls { Module ($2, $3) }
+

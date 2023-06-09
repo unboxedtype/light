@@ -47,7 +47,7 @@ let testDecl2 () =
     let res = parse "contract test
                      type State = { x : int }
     "
-    Assert.AreEqual( Some (Module ("test", [TypeDef ("State", PT [("x", Int 256)])])), res );
+    Assert.AreEqual( Some (Module ("test", [TypeDef ("State", Record [("x", Int 256)])])), res );
 
 [<Test>]
 [<Ignore("type List is not implemented")>]
@@ -55,7 +55,7 @@ let testDecl3 () =
     let res = parse "contract test
                      type State = { x : List }
     "
-    Assert.AreEqual( Some (Module ("test", [TypeDef ("State", PT [("x", UserType ("List", Some Unit))])])), res );
+    Assert.AreEqual( Some (Module ("test", [TypeDef ("State", Record [("x", UserType ("List", Some Unit))])])), res );
 
 [<Test>]
 [<Ignore("type List is not implemented")>]
@@ -63,7 +63,7 @@ let testDecl4 () =
     let res = parse "contract test
                      type State = { x : List; y : Bool }
     "
-    Assert.AreEqual( Some (Module ("test", [TypeDef ("State", PT [("x", UserType ("List", Some Unit));
+    Assert.AreEqual( Some (Module ("test", [TypeDef ("State", Record [("x", UserType ("List", Some Unit));
                                                                   ("y", Bool)])])), res );
 
 [<Test>]
@@ -71,16 +71,16 @@ let testDecl6 () =
     let res = parse "contract test
 
                      type UserData =
-                         | Borrower of name:string * amount:int
-                         | Depositor of name:string * amount:int
+                         | Borrower of string * int
+                         | Depositor of string * int
     "
     let decls = [TypeDef ("UserData",
-                          ST [("Borrower", [String; Int 256]);
-                              ("Depositor", [String; Int 256])])]
+                          ADT [("Borrower", Some (Tuple [String; Int 256]));
+                              ("Depositor", Some (Tuple [String; Int 256]))])]
     Assert.AreEqual( Some (Module ("test", decls)), res  );
 
 
-// extract n-th handler definition AST in a form of SExpr
+// extract n-th handler definition AADT in a form of SExpr
 let getHandlerAst (m:Module) (n:int) =
     m.Decls.[n].handlerDef
     |> (function | (_,_,c) -> c)
