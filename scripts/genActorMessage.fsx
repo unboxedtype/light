@@ -14,6 +14,7 @@ open System ;;
 open System.IO ;;
 #r "/home/unboxedtype/src/lighthouse/src/LHCompiler/bin/Debug/net6.0/Parser.dll" ;;
 open ParserModule ;;
+#r "/home/unboxedtype/src/lighthouse/src/LHCompiler/bin/Debug/net6.0/TVM.dll" ;;
 
 let parse source =
   let lexbuf = LexBuffer<char>.FromString source
@@ -41,9 +42,8 @@ let genSerializer sourcePath exprStr =
       let letBndMain = getLetAst res1.Value 0
       let exprObjectCode =
           LHCompiler.compileModule "test" (fullTypeDecls @ [letBndMain]) false false
-      (exprObjectCode + "\n" +
-       messageWriterCode + "\nboc>B \"msg.boc\" B>file")
-      |> LHMachine.asmAsRunVM
+      LHMachine.asmAsCell (exprObjectCode + "\n" + messageWriterCode + "\n" + "c4 POP")
+      |> (fun c -> TVM.genStateInit "writer.tvc" c "<b b>")
       |> printfn "%s"
   | _ ->
       failwith "No actor definition found in the file"
