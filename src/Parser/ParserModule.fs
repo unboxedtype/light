@@ -61,23 +61,6 @@ let rec hasUndefType (t:Type) : List<Name> =
         // TODO: what about Function?
         []
 
-let getTypesDeclarationsRaw decls : List<Name * Type> =
-    decls
-    |> List.filter (function
-                    | TypeDef _ -> true
-                    | _         -> false)
-    |> List.map (fun n -> n.typeDef)
-
-let getPartiallyDefinedTypesNames types : list<(Name*Type)*list<Name>> =
-    types  // [(name, typ)]
-    |> List.map (fun (name, typ:Type) ->
-                 ((name, typ), hasUndefType typ))
-    |> List.filter (fun ((_, _),l) -> l <> [])
-
-let getPartiallyDefinedTypes (types : list<Name*Type>) : list<Name*Type> =
-    getPartiallyDefinedTypesNames types
-    |> List.map fst
-
 type TypeDefs = list<string*Type>
 type ArgList = list<string*option<Type>>
 
@@ -116,20 +99,12 @@ let restoreTypes (typeDefs:TypeDefs) (args:ArgList) : ArgList =
                  | None -> (name, optT)
                 )
 
-let patchPartTypes partTypesNames defs : TypeDefs =
-    partTypesNames
-    |> List.map (fun ((name, typ), undNames) ->
-                 // TODO: fixpoint is needed here, because there might
-                 // be cyclic references.
-                  let rec updateUndName undNames typ =
-                     match undNames with
-                     | n :: t ->
-                        let typ' = insertType n defs typ
-                        updateUndName t typ'
-                      | [] ->
-                         typ
-                  (name, updateUndName undNames typ)
-                )
+let getTypesDeclarationsRaw decls : List<Name * Type> =
+    decls
+    |> List.filter (function
+                    | TypeDef _ -> true
+                    | _         -> false)
+    |> List.map (fun n -> n.typeDef)
 
 // Parser produces collection of declarations. This
 // function extracts Let-declarations from this collection
@@ -140,8 +115,6 @@ let getLetDeclarationsRaw types decls =
     |> List.collect (function
                      | LetBinding (_, _, _, _) as p -> [p.letBinding]
                      | _ -> [])
-    |> List.map ( fun (name, args, isrec, body) ->
-                  (name, restoreTypes types args, isrec, body) )
 
 // Same for Handlers. See getLetDeclarationsRaw
 let getHandlerDeclsRaw types decls =
@@ -152,18 +125,18 @@ let getHandlerDeclsRaw types decls =
     |> List.map ( fun (name, args, body) ->
                   (name, restoreTypes types args, body) )
 
+let rec clarifyTypes known unproc : list<string*Type> =
+    match unproc with
+    | [] ->
+        known
+    | (name,typ) :: t ->
+        let unk = hasUndefType typ // are there any undefined types?
+        if unk = [] then // the type is fully defined
+            clarifyTypes ((name, typ) :: known) t
+        else
+            let known' = (name, (restoreType known typ)) :: known
+            clarifyTypes known' t
+
 let extractTypes debug decls : list<string*Type> =
     let types = getTypesDeclarationsRaw decls
-    let undefTypesNames = getPartiallyDefinedTypesNames types
-    let undefTypesNamesList =
-        undefTypesNames
-        |> List.map (fun ((n, _), _) -> n)
-    let defTypes =
-        types
-        |> List.filter (fun (n, t) -> not (List.contains n undefTypesNamesList))
-    let completeTypes = patchPartTypes undefTypesNames defTypes
-    if debug then
-        printfn "Partially defined types:\n%A" undefTypesNames
-        printfn "Fully defined types:\n%A" defTypes
-        printfn "Completed types:\n%A\n\n" completeTypes
-    defTypes @ completeTypes
+    clarifyTypes [] types
