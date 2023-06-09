@@ -24,37 +24,42 @@ type ActorInitArgs = {
       3. If integer1 does not equal integer2 then proceed,
          otherwise throw (replay detected). *)
 type ActorState = {
-  seqno: int;      (* sending actors must consequently increase this counter *)
-  deployed: bool;  (* true if put inside the blockchain; false otherwise     *)
-  state: State     (* application state of the actor                         *)
+  seqNo: int;      (* Sending actors must consequently increase this counter *)
+  state: State     (* Application state of the actor                         *)
 }
 
-(* First 32-bits of the message body is dedicated for
-   the message sequence number. *)
-let msgReadSeqNo (msg : VMSlice) =
-    assembly \"32 LDU DROP\" :> int ;;
+type MessageBody = {
+  seqNo: uint32;          (* Basic replay protection   *)
+  actorMsg: ActorMessage  (* User-level message data   *)
+}
+
+type Message = {
+  src: ActorId;
+  dst: ActorId;
+  body: MessageBody
+}
 
 let putC4 (c4 : VMCell) =
-    assembly \"c4 POPCTR NULL\" :> unit ;;
+  assembly \"c4 POPCTR NULL\" :> unit ;;
 
 let getC4 () =
-    assembly \"c4 PUSHCTR\" :> VMCell ;;
+  assembly \"c4 PUSHCTR\" :> VMCell ;;
 
 (* actorStateReader and actorStateWriter functions are added
    by the compiler; to see their code , you have to ask the
    compiler to produce the full source code listing. *)
 let actorInitPost (initArgs:ActorInitArgs) =
   let actState = actorStateReader (getC4 ()) in
-  let msgSeqNo = msgReadSeqNo initArgs.msgBody in
+  let msg = messageReader (initArgs.msgCell) in
+  let msgSeqNo = msg.body.seqNo in
   if msgSeqNo  = actState.seqno then
     failwith 100
   else
     let st = actState.state in
-    let st' = main initArgs.msgCell st in
+    (* execute the main actor code *)
+    let st' = main msg.body.actorMsg st in
     let actState' =
-        { seqno = msgSeqNo;
-          deployed = true;
-          state = st' } in
+        { seqNo = msgSeqNo; state = st' } in
     putC4 (actorStateWriter actState')
 ;;
 
