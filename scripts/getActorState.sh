@@ -16,9 +16,10 @@ if [ $# -ne 2 ]; then
     echo
     echo "Prints Lighthouse actor state according to its definition"
     echo "in programSrc, from the blockchain account with address = actorId"
-    echo
+    echo "================================================================="
     echo "Warning: tonos-cli configuration is put inside the script"
     echo "Warning: Tools 'LHGenDes' and 'fift' has to be in the PATH"
+    echo "================================================================="
 fi
 
 tonos-cli -c $CONFIG_PATH account $ACTORID | \
@@ -26,5 +27,5 @@ tonos-cli -c $CONFIG_PATH account $ACTORID | \
     cut -d":" -f 2 | \
     sed 's/^[[:space:]]*//' > data.c4
 
-LHGenDes $SOURCE $ACTORID > deserialize.fif
-fift ./deserialize.fif
+LHGenDes $SOURCE $ACTORID > reader.fif
+fift ./reader.fif

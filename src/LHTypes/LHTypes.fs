@@ -58,27 +58,6 @@ and TypeList =
 type ProgramTypes = TypeList
 type VariablesMapping = Map<Name,int>
 
-// map an LH elementary type into Type
-let mapType (str : string) : option<Type> =
-    match str with
-    | "int" -> Some (Int 256)
-    | "string" -> Some String
-    | "bool" -> Some Bool
-    | "VMCell" -> Some VMCell
-    | "VMSlice" -> Some VMSlice
-    | "Coins" -> Some Coins
-    | "unit" -> Some Unit
-
-    // TODO!! This is a temporary hack, not to mess with function types right now.
-    | "fun:int->int" -> Some (Function (Int 256, Int 256))
-    | "fun:int->fun:int->int" -> Some (Function (Int 256, Function (Int 256, Int 256)))
-    | "fun:VMCell->fun:State->VMCell" -> Some (Function (VMCell, Function (UserType ("State", None), VMCell)))
-
-    | "" -> None
-    | S -> Some (UserType (S, None))
-    | _ -> failwithf "Undefined type %s" str
-
-
 // constructs the stack object from the cell
 // corresponding to type t
 // s -> v
@@ -106,6 +85,34 @@ let deserializeValue (ty:TypeList) (t:Type) : string =
         | _ ->
             failwithf "Parsing for type %A not implemented" t
     "CTOS " + (deserializeValueInner ty t) + " ENDS  "
+
+// Same as deserializeValue, but do not try to deserialize continuations,
+// just put an empty cont on the stack in this case.
+let deserializeValueSimpl (ty:TypeList) (t:Type) : string =
+    let rec deserializeValueInner ty t : string =
+        match t with
+        | Int n ->
+            sprintf "%i LDI" n
+        | UInt n ->
+            sprintf "%i LDU" n
+        | Bool ->
+            sprintf "2 LDI"
+        | Record fields ->
+            let n = List.length fields
+            List.map snd fields // [t1; t2; ...]
+            |> List.map (deserializeValueInner ty)  // [str; str; str]
+            |> String.concat " "
+            // v1 v2 .. vn s --> s v1 v2 .. vn --> s (v1 .. vn)
+            // --> (v1 .. vn) s
+            |> (fun s -> s + sprintf " %i ROLLREV %i TUPLE SWAP " n n)
+        | Function (_, _) ->
+            "<{ }> PUSHCONT"   // D766 = LDCONT
+        | UserType (n, Some t) ->
+            deserializeValueInner ty t
+        | _ ->
+            failwithf "Parsing for type %A not implemented" t
+    "CTOS " + (deserializeValueInner ty t) + " ENDS  "
+
 // v b -> b'
 let serializeValue (ty:TypeList) (t:Type) : string =
     let rec serializeValueInner ty t : string =

@@ -5,22 +5,11 @@ type State = {
   sum: int
 }
 
-let sum a b = a + b
-;;
+type ActorMessage = {
+    n: int
+}
 
-let accept () =
-  assembly "ACCEPT" :> unit ;
-  ()
-;;
-
-let getC4 () =
-  assembly "c4 PUSHCTR" :> VMCell
-;;
-
-let putC4 (x:VMCell) =
-  assembly "c4 POPCTR" :> unit ;
-  ()
-;;
+let sum a b = a + b ;;
 
 let add_more (x: int) (st:State) =
    let sum' = sum st.counter x in
@@ -28,10 +17,15 @@ let add_more (x: int) (st:State) =
    { counter = counter'; sum = sum' }
 ;;
 
-let main (msgCell:VMCell) (st:State) =
+let accept () =
+  assembly "ACCEPT" :> unit ;
+  ()
+;;
+
+let main (msg:ActorMessage) (st:State) =
   let rec fact n =
     if (n > 1) then n * fact (n - 1) else 1
   in
     accept () ;
-    add_more (fact 20) st
+    add_more (fact msg.n) st
 ;;
