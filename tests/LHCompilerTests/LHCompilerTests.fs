@@ -749,3 +749,13 @@ let testLetTuple1 () =
                     | PutNumber n -> { n = n }
                 "
     execAndCheckPrint prog false false "[ 0 1 2 6 ]"
+
+[<Test>]
+[<Timeout(1000)>]
+let testCastInsideRecord () =
+    let prog = "contract testDoubleRec
+                type State = { data: uint32 }
+                let main =
+                    { data = 10 :> uint32 } ;;
+                "
+    execAndCheckPrint prog false false "[ 10 ]"

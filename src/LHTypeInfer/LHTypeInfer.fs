@@ -154,6 +154,14 @@ let rec unify (t1 : Typ) (t2 : Typ) : Subst =
         unify t1 t2
     | t1, UserType (name, Some t2) ->
         unify t1 t2
+    // TODO!! This is a temporary hack. Actually, types must not unify!
+    | Int 256, UInt 256
+    | Int 256, UInt 32
+    | Int 32, UInt 256
+    | UInt 32, Int 256
+    | UInt 256, Int 256 ->
+        // printfn "Warning: Force unify of %A with %A which is forbidden!" t1 t2 ;
+        Map.empty
     // TODO: This may be not correct. Consider breaking into sep cases.
     | x, y when x.baseType = y.baseType -> Map.empty
     | _ -> failwithf "Types do not unify: %A vs %A" t1 t2
