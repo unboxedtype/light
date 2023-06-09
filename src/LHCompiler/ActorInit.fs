@@ -24,7 +24,7 @@ type ActorInitArgs = {
       3. If integer1 does not equal integer2 then proceed,
          otherwise throw (replay detected). *)
 type ActorState = {
-  seqNo: int;      (* Sending actors must consequently increase this counter *)
+  seqNo: uint32;   (* Sending actors must consequently increase this counter *)
   state: State     (* Application state of the actor                         *)
 }
 

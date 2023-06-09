@@ -352,7 +352,7 @@ let rec instrToTVM (i:Instruction) : string =
 and compileToTVM (code:LHCode) : string =
     code
     |> List.map instrToTVM
-    |> String.concat " "
+    |> String.concat "\n"
 and mkFiftCell (body: string) : string =
     "<{ " + body + "}>c "
 

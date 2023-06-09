@@ -72,7 +72,10 @@ rule read =
   | "with"   { WITH }
   | "failwith" { FAILWITH }
   | "int" { INT }
+  | "uint"   { UINT }
+  | "uint32" { UINT32 }  // yes, I know. Just a quick dirty hack.
   | "string" { STRINGT }
+  | "ActorId" { UINT }
   | "bool" { BOOL }
   | "unit" { UNIT }
   | "VMCell" { VMCELL }

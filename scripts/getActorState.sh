@@ -25,7 +25,8 @@ fi
 tonos-cli -c $CONFIG_PATH account $ACTORID | \
     grep data_boc | \
     cut -d":" -f 2 | \
-    sed 's/^[[:space:]]*//' > data.c4
+    sed 's/^[[:space:]]*//' | \
+    xxd -r -p > data.c4
 
-LHGenDes $SOURCE $ACTORID > reader.fif
+~/src/lighthouse/src/LHGenDes/bin/Debug/net6.0/LHGenDes $SOURCE ActorState
 fift ./reader.fif

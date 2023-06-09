@@ -39,7 +39,7 @@ let resetFunVar () =
 %token <string> LIDENT
 %token <string> IDENT
 %token <string> STRING
-%token BOOL INT UNIT VMCELL VMSLICE STRINGT
+%token BOOL INT UINT UINT32 UNIT VMCELL VMSLICE STRINGT
 %token TRUE FALSE
 %token DSCOLON
 %token MODULE TYPEDEF OF IF THEN ELSE HANDLER LET RECURSIVE IN
@@ -74,6 +74,8 @@ start:
 // =================================================
 baseType:
   | INT       { (Int 256) }
+  | UINT      { (UInt 256) }
+  | UINT32    { (UInt 32)  }
   | BOOL      { Bool }
   | VMCELL    { VMCell  }
   | VMSLICE   { VMSlice }

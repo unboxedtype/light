@@ -31,6 +31,11 @@ let main args =
         printfn "USAGE: LHGenDes <pathToSource> <address>"
         1
     else
-        let str = generateReader true argsL.[1] argsL.[0]
-        TVM.dumpFiftScript "reader.fif" str
+        let asm = generateReader true argsL.[1] argsL.[0]
+        let binaryDataReaderCode =
+            "\"data.c4\" file>B B>boc\n"
+        let finalCode =
+            binaryDataReaderCode +
+            LHMachine.asmAsRunVM asm
+        TVM.dumpFiftScript "reader.fif" finalCode
         0
