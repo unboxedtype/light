@@ -111,6 +111,11 @@ let rec astReducerDebug debug (ast:ASTNode) red =
         | EGtEq _ -> mkAST (EGtEq (e0', e1'))
         | ELtEq _ -> mkAST (ELtEq (e0', e1'))
         | ESelect _ -> mkAST (ESelect (e0', e1'))
+    | ETuple es ->
+        es
+        |> List.map (fun e -> astReducerDebug debug e red)
+        |> ETuple
+        |> mkAST
     | ERecord es ->
         es
         |> List.map (fun (name, e) -> (name, astReducerDebug debug e red))
@@ -401,7 +406,7 @@ let compileModule modName decls withInit debug : string =
           debug
 
     let ir = LHMachine.compileAST ast1 [] newMap
-    let assembly = LHMachine.compileIRIntoAssembly ir debug
+    let assembly = LHMachine.compileIRIntoAssembly debug ir
 
     if (debug) then
         use file1 = System.IO.File.CreateText(modName + ".sexpr")

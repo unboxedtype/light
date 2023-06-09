@@ -664,7 +664,7 @@ let testADT1 () =
                 let main =
                     0 ;;
                 "
-    execAndCheckPrint prog false true "0"
+    execAndCheckPrint prog false false "0"
 
 
 
@@ -698,4 +698,23 @@ let testRealCont () =
                         0 256 u, // n
                       b>"
     let msgBody = "<b 1 32 u, b>"  // 1 = sequence number
-    execReal false true prog stateData msgBody "(null)"
+    execReal false false prog stateData msgBody "(null)"
+
+[<Test>]
+[<Timeout(1000)>]
+let testTuple4 () =
+    let prog = "contract testADT1
+                let main =
+                    (0,1,(2,true)) ;;
+                "
+    execAndCheckPrint prog false false "[ 0 1 [ 2 -1 ] ]"
+
+[<Test>]
+[<Timeout(1000)>]
+let testTuple5 () =
+    let prog = "contract testTuple5
+                let rec fact n = if (n > 1) then n * fact(n - 1) else 1 ;;
+                let main =
+                    (0,1,2,fact 3) ;;
+                "
+    execAndCheckPrint prog false false "[ 0 1 2 6 ]"

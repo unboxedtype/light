@@ -14,6 +14,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/LHMachine/LHMachine.fsproj" />
+    <ProjectReference Include="../../src/LHCompiler/LHCompiler.fsproj" />
     <ProjectReference Include="../../src/Parser/Parser.fsproj" />
     <ProjectReference Include="../../src/FiftExecutor/FiftExecutor.fsproj" />
   </ItemGroup>

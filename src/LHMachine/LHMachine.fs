@@ -31,6 +31,7 @@ type Instruction =
     | SetGlob of name: Name
     | Integer of v: int
     | String of s:string
+    | Tuple of n:int
     | Function of c:LHCode
     | Fixpoint
     // duplicate n stack elements starting from S'from'
@@ -110,7 +111,12 @@ let rec compileFunction (ast:ASTNode) env args  ty =
         (if envSize > 0 then [Apply envSize] else [])
     | _ ->
         failwith "Function AST node expected"
-
+and compileExprs l env ty =
+    match l with
+    | [] -> []
+    | h :: t ->
+        (compileAST h env ty ) @
+        compileExprs t (argOffset 1 env) ty
 and compileAST (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) : LHCode =
     match ast.Expr with
     | EVar v ->
@@ -128,6 +134,9 @@ and compileAST (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) : LHCode =
         [Integer n]
     | EStr s ->
         [String s]
+    | ETuple vs ->
+        let n = List.length vs
+        (compileExprs vs env ty) @ [Tuple n]
     | EBool true ->
         [True]
     | EBool false ->
@@ -136,15 +145,9 @@ and compileAST (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) : LHCode =
         // TODO!
         // order of fields in es must be rearranged according
         // to how they are defined in the record type!
-        let rec compileExprs l env' =
-            match l with
-            | [] -> []
-            | h :: t ->
-                (compileAST h env' ty ) @
-                compileExprs t (argOffset 1 env')
         let es' = List.map snd es
         let n = List.length es' // now we need only values; field names are omitted.
-        (compileExprs es' env) @ [Record n]
+        (compileExprs es' env ty) @ [Record n]
     | EFunc (argNameType, body) ->
         compileFunction ast env []  ty
     | ENull ->
@@ -285,6 +288,8 @@ let rec instrToTVM (i:Instruction) : string =
     | SetGlob n -> n + " SETGLOB"
     | Integer n -> (string n) + " INT"
     | String s -> failwith "Strings are not implemented"
+    | Tuple n -> if n <= 15 then sprintf "%i TUPLE" n
+                 else failwithf "Tuples has to be more than 1 and less than 16 elements"
     | Push n -> if (n <= 15) then sprintf "s%i PUSH" n
                 else sprintf "x{56%02x} s," n
     | Pop n -> if (n <= 15) then sprintf "s%i POP" n
@@ -399,7 +404,7 @@ let rec hasInstruction (i:Instruction) (ir:LHCode) : bool =
     | _ :: t -> hasInstruction i t
 
 // Translation of AST into TVM assembly language written in FIFT syntax.
-let compileIRIntoAssembly ir debug : string =
+let compileIRIntoAssembly debug ir : string =
     let hasFixpoint = ir |> hasInstruction Fixpoint
     (if hasFixpoint then [fixpointImpl] else []) @
     List.singleton   (compileToTVM ir)

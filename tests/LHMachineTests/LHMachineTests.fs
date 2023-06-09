@@ -4,6 +4,7 @@ module LHMachineTests
 
 open FSharp.Text.Lexing
 open LHMachine
+open LHCompiler
 open ParserModule
 open Parser
 open NUnit.Framework
@@ -20,7 +21,8 @@ let execAndCheckPrint (expr:ASTNode) expected ifPrint =
     if ifPrint then
         printfn "%A" (expr.toSExpr ())
     let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".fif"
-    compileIntoAssembly expr (Map []) [] ifPrint
+    LHMachine.compileAST expr [] (Map [])
+    |> LHMachine.compileIRIntoAssembly ifPrint
     |> asmAsRunVM
     |> TVM.dumpFiftScript filename
     let res = FiftExecutor.runFiftScript filename
@@ -31,7 +33,7 @@ let execAndCheck g expected =
 
 [<Test>]
 let testTrivial () =
-    let code = compile (ASTNode (ASTNode.newId (), ENum 0)) []
+    let code = compileAST (ASTNode (ASTNode.newId (), ENum 0)) [] (Map [])
     Assert.AreEqual( [Integer 0], code );
 
 [<Test>]

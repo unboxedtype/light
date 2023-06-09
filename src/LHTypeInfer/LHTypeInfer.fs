@@ -58,6 +58,8 @@ module Typ =
         | Int _
         | String
         | Bool
+        // TODO! Propery apply substs for Tuple and Record!
+        | Tuple _
         | Record _
         | VMSlice
         | VMCell
@@ -408,6 +410,17 @@ let rec ti (env : TypeEnv) (node : ASTNode) (tm : NodeTypeMap) (debug:bool) : Su
         if debug then
             printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id recType
         (s', recType, tm2)
+    | ETuple es ->
+        let typs =
+            es |>
+            List.map (fun (n:ASTNode) ->
+                      let _, t, _  = ti env n tm debug in t)
+        let ttyp = LHTypes.Tuple typs
+        let tm2 = Map.add node.Id ttyp tm
+        if debug then
+            printfn "Node SExpr: %A, Id: %A, Type: %A" ((node.toSExpr()).ToString(300)) node.Id ttyp
+        // TODO! Properly derive substitutions from the Tuple type
+        (Map [], ttyp, tm2)
     | _ ->
         failwithf "Unsupported expression %A" (node.toSExpr ())
 

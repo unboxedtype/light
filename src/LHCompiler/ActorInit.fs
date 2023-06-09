@@ -10,8 +10,8 @@ let actorInitCode =
    passes to the smart-contract in the beginning of execution. *)
 
 type ActorInitArgs = {
-  accBalance : Coins;
-  msgBalance : Coins;
+  accBalance : int;
+  msgBalance : int;
   msgCell: VMCell;
   msgBody: VMSlice;
   isExternal: bool

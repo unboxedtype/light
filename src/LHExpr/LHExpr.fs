@@ -41,9 +41,10 @@ type SExpr =
     | SLtEq of e0:SExpr * e1:SExpr
     | SNot of e0:SExpr
     | SCase of c:SExpr * cs:(int * (Name list) * SExpr) list
-    | SPack of tag:int * arity:int * args:SExpr list
+    | SPack of tag:int * arity:int * args:list<SExpr>
     | SSelect of e0:SExpr * e1:SExpr
-    | SRecord of es:(Name * SExpr) list
+    | SRecord of es:list<Name*SExpr>
+    | STuple of es:list<SExpr>
     | SUpdateRec of e0:SExpr * n:int * e1:SExpr
     | SAssign of e0:SExpr
     | SAsm of s:string
@@ -152,6 +153,7 @@ and ASTNode =
         | ENot (e0) -> SNot (e0.toSExpr())
         | ESelect (e0, e1) -> SSelect (e0.toSExpr(), e1.toSExpr())
         | ERecord es -> SRecord (List.map (fun (name, (e:ASTNode)) -> (name, e.toSExpr())) es)
+        | ETuple es -> STuple ( es |> List.map (fun e -> e.toSExpr()) )
         | EAsm s -> SAsm s
         | ETypeCast (e0, typ) -> STypeCast (e0.toSExpr(), typ)
         | EFix e0 -> SFix (e0.toSExpr())
