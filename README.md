@@ -3,16 +3,25 @@ early days, not a released product.  It is provided only to be
 evaluated together with  Venom Hackathon submission.   Lots of  details
 described in this README are planned features, not yet implemented**
 
-
+    __    _       __    __
 # Light
 
+    __    _       __    __
+   / /   (_)___ _/ /_  / /_
+  / /   / / __ `/ __ \/ __/
+ / /___/ / /_/ / / / / /_
+/_____/_/\__, /_/ /_/\__/
+        /____/
+
+
 **Light**   is  a   next-generation  programming   language  targeting
-TON-inspired blockchains, especially [EverX]() and [Venom](). Light is
+TON-inspired blockchains, and specifically [EverX](https://everscale.network/)
+and [Venom](https://venom.network/). Light is
 a   statically-typed  functional   reactive  actor-based   programming
 language with  lots of features  coming for the  first time ever  in a
 modern blockchain programming landscape.
 
-Light  is a  part of  bigger _Lighthouse_  programming system  aiming to
+Light  is a  part of the bigger _Lighthouse_  programming system  aiming to
 significantly boost developers productivity and program safety,
 _reducing time-to-market_ and _lowering project delivery risks_.
 For details, have a look at our [LightHouse Whitepaper](https://docs.google.com/document/d/1v5oPb1T8g-Vd-OBStiSlsjDg3VuqJCJdq3loqoc8KoY/edit#).
@@ -54,13 +63,19 @@ We highlight the following features of the Light language:
 
 * *Functions as First-Class Objects*
 
-  Function is not a dead weight, but a convenient unit of business logic
-  that you  can execute,  send between actors, store,  extend or  shrink. You  can also
-  store data  in the form of  a function. Functions are  recursive, with
-  tail-recursion available.
+  The  really distinguishing  feature  of the  Light  language is  its
+  ability  to  send,  receive,  store,  extend  and  shrink  arbitrary
+  *functions*.   It is  for  the  first time  ever  you  can not  only
+  transmit  data,  but also  attach  custom  *business logic*  to  it.
+  Computation  can  now travel  between  systems  of actors  gradually
+  converging into a result.
 
   ```OCaml
-  (* factorial function *)
+  (* Attach functions to messages as if it is an ordinary data. *)
+  (* Later, the receiver will be able to execute the function   *)
+  type Message of (n:uint) * (func: uint -> uint)
+
+  (* Recursive factorial function *)
    let rec fac n =
       if (n > 1) then n * fac (n - 1)
       else 1
@@ -81,10 +96,10 @@ We highlight the following features of the Light language:
 
   The language  provides several operators that  allow structuring the
   control flow around the message processing.
-  - operator *receive*
-  - operator *send (!)*
+  - operator **receive**
+  - operator **send (!)**
 
-  Operator *receive* gives opportunity to express logic in a form of dialogs
+  Operator **receive** gives opportunity to express logic in a form of dialogs
   between smart-contracts.
 
   ```OCaml
@@ -104,7 +119,7 @@ We highlight the following features of the Light language:
   end
   ```
 
-  The "receive" operator "suspends" actor  execution until a new message
+  The **receive** operator "suspends" actor  execution until a new message
   arrives;  after  that, the  actor  does  the pattern-matching  on  the
   message content.  If the corresponding  pattern is found, the  body of
   the corresponding pattern handler  is executed. Unmatched messages may
@@ -208,8 +223,8 @@ We highlight the following features of the Light language:
       yield n
     done
   in
-    let x = eval (nextNumber ()) in   (* x = 1 *)
-    let y = eval (nextNumber ()) in   (* y = 2 *)
+    let x = force (nextNumber ()) in   (* x = 1 *)
+    let y = force (nextNumber ()) in   (* y = 2 *)
     x + y   (* =3 *)
   ```
 
