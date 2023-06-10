@@ -9,7 +9,9 @@ type ActorMessage = {
     n: int
 }
 
-let sum a b = a + b ;;
+let sum a b =
+    a + b
+;;
 
 let add_more (x: int) (st:State) =
    let sum' = sum st.counter x in
@@ -23,9 +25,8 @@ let accept () =
 ;;
 
 let main (msg:ActorMessage) (st:State) =
-  let rec fact n =
-    if (n > 1) then n * fact (n - 1) else 1
+  let inc n = n + 1
   in
     accept () ;
-    add_more (fact msg.n) st
+    add_more (inc msg.n) st
 ;;

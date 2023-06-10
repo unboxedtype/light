@@ -1717,14 +1717,13 @@ let genStateInit outputPath codeFift dataFift : string =
     "\" file_write_bytes" + newline +
     ".\"0:\" cell_hash val_print_hex_ws"
 
-let genMessageWithStateInit name outputPath codeFift dataFift msgBodyFift : string =
+let genMessageWithStateInit name outputPath codeFift dataFift : string =
     "#!/usr/bin/fift -s
     \"Asm.fif\" include
     \"Unboxed.fif\" include
     { \"" + name + ".address\" address_parse_text } : contract_addr
     { contract_addr drop } : contract_wc
     { contract_addr swap drop } : contract_account_id
-    { " + msgBodyFift + " } : message_body_build
     { \"" + name + ".tvc\" file_read_bytes bytes_to_cell } : state_init_build
     builder_begin
        // 0b10 - ext_in_msg_info constructor tag
@@ -1747,8 +1746,7 @@ let genMessageWithStateInit name outputPath codeFift dataFift msgBodyFift : stri
        // Either.Right
        0b1 1 builder_uint_append // we choose the right option, i.e. as reference
        state_init_build builder_ref_append
-       0b1 1 builder_uint_append // Either ^Body
-     message_body_build builder_ref_append
+       0b0 1 builder_uint_append // No body attached
      builder_end
      cell_to_bytes \"" + outputPath + "\" file_write_bytes"
 

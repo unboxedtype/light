@@ -39,19 +39,28 @@ type Message = {
   body: MessageBody
 }
 
+let messageReader (body:VMSlice) =
+  (* temporary hack not to mess with ActorId's (addresses)
+     at this point *)
+  let parsedBody = messageBodyReaderSlice body in
+  { src = 0; dst = 0; body =  parsedBody }
+;;
+
 let putC4 (c4 : VMCell) =
-  assembly \"c4 POPCTR NULL\" :> unit ;;
+  assembly \"c4 POPCTR NULL\" :> unit
+;;
 
 let getC4 () =
-  assembly \"c4 PUSHCTR\" :> VMCell ;;
+  assembly \"c4 PUSHCTR\" :> VMCell
+;;
 
 (* actorStateReader and actorStateWriter functions are added
    by the compiler *)
 let actorInitPost (initArgs:ActorInitArgs) =
   let actState = actorStateReader (getC4 ()) in
-  let msg = messageReader (initArgs.msgCell) in
+  let msg = messageReader (initArgs.msgBody) in
   let msgSeqNo = msg.body.seqNo in
-  if msgSeqNo  = actState.seqno then
+  if msgSeqNo  = actState.seqNo then
     failwith 100
   else
     let st = actState.state in

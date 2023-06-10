@@ -37,7 +37,7 @@ let execIR irProg expected =
     Assert.AreEqual (expected, res)
 
 
-let execReal debug withInit prog data msgBody expected =
+let execReal debug withInit prog data expected =
     if debug then
         printfn "%A" prog |> ignore
         printfn "Passing program to the compiler..."
@@ -60,7 +60,7 @@ let execReal debug withInit prog data msgBody expected =
     // using tonos-cli
     let nameMsgWithStateInitBOC = tname + ".boc"
     TVM.dumpFiftScript nameGenMessageWithStateInitScript
-       (TVM.genMessageWithStateInit tname nameMsgWithStateInitBOC code data msgBody)
+       (TVM.genMessageWithStateInit tname nameMsgWithStateInitBOC code data)
     //if debug then
     //    printfn "Executing the resulting FIFT-script..."
     //let res = FiftExecutor.runFiftScript filename
@@ -510,8 +510,8 @@ let testInitRecord6 () =
 
     // This is ActorState structure, not State
     let stateData = "<b 100 256 u, -1 2 i, 777 256 u, b>"
-    let msgBody = "<b 1 32 u, b>"  // 1 = sequence number
-    execReal false true prog stateData msgBody "(null)"
+    let debug = false
+    execReal debug true prog stateData "(null)"
 
 [<Test>]
 let testCurry1 () =
@@ -652,7 +652,8 @@ let testDivergent () =
                     accept () ;
                     inc_infinite 1 ;;
                 "
-    execReal false false prog "<b -1 2 i, b>" "<b b>" "(null)"
+    let debug = false
+    execReal debug false prog "<b -1 2 i, b>" "(null)"
 
 [<Test>]
 [<Timeout(1000)>]
@@ -696,8 +697,8 @@ let testRealCont () =
                         B{b5ee9c720101020100160001113fffff0000008040080100109100c8cf43c9ed54} B>boc ref,
                         0 256 u, // n
                       b>"
-    let msgBody = "<b 1 32 u, b>"  // 1 = sequence number
-    execReal true false prog stateData msgBody "(null)"
+    let debug = false
+    execReal debug false prog stateData "(null)"
 
 [<Test>]
 [<Timeout(1000)>]

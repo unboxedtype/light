@@ -21,6 +21,7 @@ if [ $# -ne 3 ]; then
     echo "Warning: tonos-cli configuration is put inside the script"
     echo "Warning: Tools 'LHGenDes' and 'fift' has to be in the PATH"
     echo "================================================================="
+    exit 0
 fi
 
 tonos-cli -c $CONFIG_PATH decode stateinit --tvc $TVC | \

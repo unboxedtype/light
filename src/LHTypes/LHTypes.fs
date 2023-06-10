@@ -58,33 +58,36 @@ and TypeList =
 type ProgramTypes = TypeList
 type VariablesMapping = Map<Name,int>
 
+// constructs the stack object from the slice
+// corresponding to type t
+let rec deserializeValueSlice ty t : string =
+    match t with
+    | Int n ->
+        sprintf "%i LDI" n
+    | UInt n ->
+        sprintf "%i LDU" n
+    | Bool ->
+        sprintf "2 LDI"
+    | Record fields ->
+        let n = List.length fields
+        List.map snd fields // [t1; t2; ...]
+        |> List.map (deserializeValueSlice ty)  // [str; str; str]
+        |> String.concat " "
+        // v1 v2 .. vn s --> s v1 v2 .. vn --> s (v1 .. vn)
+        // --> (v1 .. vn) s
+        |> (fun s -> s + sprintf " %i ROLLREV %i TUPLE SWAP " n n)
+    | Function (_, _) ->
+        "LDREFRTOS x{D766} s, ENDS SWAP"   // D766 = LDCONT
+    | UserType (n, Some t) ->
+        deserializeValueSlice ty t
+    | _ ->
+        failwithf "Parsing for type %A not implemented" t
+
 // constructs the stack object from the cell
 // corresponding to type t
 // s -> v
 let deserializeValue (ty:TypeList) (t:Type) : string =
-    let rec deserializeValueInner ty t : string =
-        match t with
-        | Int n ->
-            sprintf "%i LDI" n
-        | UInt n ->
-            sprintf "%i LDU" n
-        | Bool ->
-            sprintf "2 LDI"
-        | Record fields ->
-            let n = List.length fields
-            List.map snd fields // [t1; t2; ...]
-            |> List.map (deserializeValueInner ty)  // [str; str; str]
-            |> String.concat " "
-            // v1 v2 .. vn s --> s v1 v2 .. vn --> s (v1 .. vn)
-            // --> (v1 .. vn) s
-            |> (fun s -> s + sprintf " %i ROLLREV %i TUPLE SWAP " n n)
-        | Function (_, _) ->
-            "LDREFRTOS x{D766} s, ENDS SWAP"   // D766 = LDCONT
-        | UserType (n, Some t) ->
-            deserializeValueInner ty t
-        | _ ->
-            failwithf "Parsing for type %A not implemented" t
-    "CTOS " + (deserializeValueInner ty t) + " ENDS  "
+    "CTOS " + (deserializeValueSlice ty t) + " ENDS  "
 
 // Same as deserializeValue, but do not try to deserialize continuations,
 // just put an empty cont on the stack in this case.
@@ -108,10 +111,10 @@ let deserializeValueSimpl (ty:TypeList) (t:Type) : string =
         | Function (_, _) ->
             "LDREF NIP <{ }> PUSHCONT SWAP"   // D766 = LDCONT
         | UserType (n, Some t) ->
-            deserializeValueInner ty t
+            deserializeValueSlice ty t
         | _ ->
             failwithf "Parsing for type %A not implemented" t
-    "CTOS " + (deserializeValueInner ty t) + " ENDS  "
+    "CTOS " + (deserializeValueSlice ty t) + " ENDS  "
 
 // v b -> b'
 let serializeValue (ty:TypeList) (t:Type) : string =

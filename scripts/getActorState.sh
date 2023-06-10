@@ -20,6 +20,7 @@ if [ $# -ne 2 ]; then
     echo "Warning: tonos-cli configuration is put inside the script"
     echo "Warning: Tools 'LHGenDes' and 'fift' has to be in the PATH"
     echo "================================================================="
+    exit 1
 fi
 
 tonos-cli -c $CONFIG_PATH account $ACTORID | \

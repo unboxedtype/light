@@ -331,10 +331,13 @@ let compileModule modName decls withInit debug : string =
             if Map.tryFind "ActorState" typeMap = None then
                 raise (CompilerError "ActorState type not found.")
             let actorStateType = typeMap.["ActorState"]
+            let messageBodyType = typeMap.["MessageBody"]
             let actorStateReaderCode =
                 LHTypes.deserializeValue typesFull actorStateType
             let actorStateWriterCode =
                 LHTypes.serializeValue typesFull actorStateType
+            let messageBodyReaderCode =
+                (LHTypes.deserializeValueSlice typesFull messageBodyType) + " ENDS "
             // pack 5 elements from the stack into a tuple, this will be an
             // ActorInitParams value.
             let aargsLet =
@@ -376,7 +379,21 @@ let compileModule modName decls withInit debug : string =
                       )
                    )
                 )
-            [aargsLet; asrLet; aswLet] @ decls
+            let mbrLet =
+                ParserModule.LetBinding (
+                // messageBodyReaderSlice : VMSlice -> MessageBody
+                    "messageBodyReaderSlice", [], false,
+                    mkAST (
+                      EFunc (("x",Some VMSlice),
+                      mkAST (
+                         ETypeCast (
+                           mkAST (EAsm messageBodyReaderCode),
+                           UserType ("MessageBody", None))
+                       )
+                      )
+                    )
+                )
+            [aargsLet; asrLet; aswLet; mbrLet] @ decls
         else
             decls
     let letBnds = ParserModule.getLetDeclarationsRaw typesFull finalDecls
@@ -440,7 +457,7 @@ let compile (source:string) (withInit:bool) (debug:bool) : string =
 
 // compile Lighthouse source at filePath and output the result (FIFT)
 // into the same filePath, but with ".fif" extension
-let compileFile (debug:bool) (filePath:string) (data:string) (msgBody:string) =
+let compileFile (debug:bool) (filePath:string) (data:string) =
     let readFile (filePath: string) =
         File.ReadAllText(filePath)
     let replaceExt (filePath: string) (newExt: string) =
@@ -462,5 +479,4 @@ let compileFile (debug:bool) (filePath:string) (data:string) (msgBody:string) =
        nameGenStateInitScript
        (TVM.genStateInit nameGenStateInitTVC code data)
     TVM.dumpFiftScript nameGenMessageWithStateInitScript
-       (TVM.genMessageWithStateInit (onlyName filePath) nameMsgWithStateInitBOC code data msgBody)
-
+       (TVM.genMessageWithStateInit (onlyName filePath) nameMsgWithStateInitBOC code data)

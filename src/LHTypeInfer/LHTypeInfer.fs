@@ -30,6 +30,7 @@ module Typ =
         | TVar name ->
             Set.singleton name
         | Int _
+        | UInt _
         | String
         | Unit
         | Record _
@@ -56,6 +57,7 @@ module Typ =
         | Function (t1, t2) ->
             Function (apply s t1, apply s t2)
         | Int _
+        | UInt _
         | String
         | Bool
         // TODO! Propery apply substs for Tuple and Record!
