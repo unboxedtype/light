@@ -21,7 +21,7 @@ For details, have a look at our [LightHouse Whitepaper](https://docs.google.com/
 
 We highlight the following features of the Light language:
 
-* *Algebraic Data Types with Type Parameters*
+* **Algebraic Data Types with Type Parameters**
 
   "Product" types for records,  and "sum"-types for variants, recursive
   type  definitions,   etc.  This  type  system   provides  means  for
@@ -77,7 +77,7 @@ We highlight the following features of the Light language:
      | h :: t -> sum_list t (h + acc)
   ```
 
-* *Message-oriented control flow*
+* **Message-oriented control flow**
 
   The language  provides several operators that  allow structuring the
   control flow around the message processing.
@@ -91,6 +91,7 @@ We highlight the following features of the Light language:
   receive
   | Deposit (NonFungibleTokens n) ->
     if n < 100 then
+      let sender = ctx.msg.src in
       sender ! DepositFeedback (SendExtraTokens (100 - n))
       receive
       | Deposit (NonFungibleTokens p) when ctx.msg.src = sender  ->
@@ -109,7 +110,7 @@ We highlight the following features of the Light language:
   the corresponding pattern handler  is executed. Unmatched messages may
   be skipped or bounced back. The operator "receive" can be nested.
 
-* *Optional Mutability*
+* **Optional Mutability**
 
   Functional   programming  encourages   programming  with   immutable
   variables, but  when you  need mutability, you  still have  it, with
@@ -133,7 +134,7 @@ We highlight the following features of the Light language:
       // general exception handler goes here
   ```
 
-* *Actors as First-class Objects*
+* **Actors as First-class Objects**
 
    The language provides means to spawn ('create') other actors on the
    fly,  with convenient  programming constructs.  The actor  logic is
@@ -167,7 +168,7 @@ We highlight the following features of the Light language:
    ```
 
 
-* Static Typing with Automatic Inference
+* **Static Typing with Automatic Inference**
 
   If the program compiles, it is considered safe (runtime exception safety)
   most of the time. Strong static type system safe programmers from subtle bugs.
@@ -186,7 +187,7 @@ We highlight the following features of the Light language:
      print s
 ```
 
-* *Delayed (Lazy) Execution*
+* **Delayed (Lazy) Execution**
 
   Some pieces  of logic should be  executed only when and  if they are
   needed,  not when  they are  defined.  This  lets you  define things
