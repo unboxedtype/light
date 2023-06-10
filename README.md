@@ -20,7 +20,7 @@ TON-inspired blockchains, and specifically [EverX](https://everscale.network/)
 and [Venom](https://venom.network/). Light is
 a   statically-typed  functional   reactive  actor-based   programming
 language with  lots of features  coming for the  first time ever  in a
-modern blockchain programming landscape. 
+modern blockchain programming landscape.
 
 Light  is a  part of the bigger _Lighthouse_  programming system  aiming to
 significantly boost developers productivity and program safety,
@@ -232,11 +232,19 @@ We highlight the following features of the Light language:
 # Prototype restrictions
 
 The vision stated  in the Overview section  implemented only partially
-at  the moment.   Currently,  we  implemented Light  Core  - the  core
-language that lets you build all described constructs atop of it.
+at  the moment.   Currently,  we  implemented:
 
-We prepared several samples in the 
-[samples](https://github.com/unboxedtype/lighthouse/tree/messageProc/samples) folder.
+ * Compiler for Light  Core  - the  core language that lets us build all
+   the described constructs atop of it.
+ * Deploy scripts that let you prepare .BOC files to deploy actors
+   in the blockchain
+ * Message scripts that let you prepare .BOC with messages
+ * Prepared samples in [samples](https://github.com/unboxedtype/lighthouse/tree/messageProc/samples) folder.
+
+# Manual
+
+We will provide the manual for using all this shortly.
+
 
 # Community
 
