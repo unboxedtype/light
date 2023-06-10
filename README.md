@@ -27,7 +27,7 @@ significantly boost developers productivity and program safety,
 _reducing time-to-market_ and _lowering project delivery risks_.
 For details, have a look at our [Lighthouse Whitepaper](https://docs.google.com/document/d/1v5oPb1T8g-Vd-OBStiSlsjDg3VuqJCJdq3loqoc8KoY/edit#).
 
-## Language Features
+# Language Features
 
 We highlight the following features of the Light language:
 
@@ -229,9 +229,15 @@ We highlight the following features of the Light language:
     x + y   (* =3 *)
   ```
 
-## Prototype restrictions
+# Prototype restrictions
 
 The vision stated  in the Overview section  implemented only partially
 at  the moment.   Currently,  we  implemented Light  Core  - the  core
 language that lets you build all described constructs atop of it.
 
+We prepared several samples in the 
+[samples](https://github.com/unboxedtype/lighthouse/tree/messageProc/samples) folder.
+
+# Community
+
+Contact @unboxedType on Telegram for questions and suggestions.
