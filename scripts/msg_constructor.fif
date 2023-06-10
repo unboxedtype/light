@@ -6,17 +6,18 @@
 "Asm.fif" include
 "Unboxed.fif" include
 
-{ "testGenStateInit0.address" address_parse_text } : contract_addr
+{ "msg.address" address_parse_text } : contract_addr
 { contract_addr drop } : contract_wc
 { contract_addr swap drop } : contract_account_id
 
 {
-    x{} s>c
+    "msgbody.boc" file>B B>boc
 } : message_body_build
 
 {
-  "testGenStateInit0.tvc" file_read_bytes
-  bytes_to_cell
+//  "testGenStateInit0.tvc" file_read_bytes
+//  bytes_to_cell
+  <b b>  // no state init
 } : state_init_build
 
 // construct an External Inbound message

@@ -32,8 +32,8 @@ let genSerializer sourcePath exprStr =
   | Some (Module (modName, decls)) ->
       let typesFull = ParserModule.extractTypes false decls
       let typeMap = Map.ofList typesFull
-      if Map.tryFind "Message" typeMap = None then
-          failwithf "type %A not found" "Message"
+      if Map.tryFind "MessageBody" typeMap = None then
+          failwithf "type %A not found" "MessageBody"
       let messageType = typeMap.["Message"]
       let messageWriterCode =
           LHTypes.serializeValue typesFull messageType
@@ -44,10 +44,14 @@ let genSerializer sourcePath exprStr =
           LHCompiler.compileModule "test" (fullTypeDecls @ [letBndMain]) false false
       LHMachine.asmAsCell (exprObjectCode + "\n" + messageWriterCode + "\n" + "c4 POP")
       |> (fun c -> TVM.genStateInit "writer.tvc" c "<b b>")
-      |> printfn "%s"
+      |>  TVM.dumpFiftScript "writer.fif"
   | _ ->
       failwith "No actor definition found in the file"
 
-let args = System.Environment.GetCommandLineArgs()
+let args = List.ofSeq (System.Environment.GetCommandLineArgs())
+if List.length args <> 3 then
+    printfn "This script generates a message body part of the message boc"
+    printfn "USAGE: getActorMessage.fsx <pathToSource>"
+let sourcePath = args.[2]
 let input = Console.ReadLine()
-genSerializer args.[2] input
+genSerializer sourcePath input

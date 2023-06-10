@@ -46,8 +46,7 @@ let getC4 () =
   assembly \"c4 PUSHCTR\" :> VMCell ;;
 
 (* actorStateReader and actorStateWriter functions are added
-   by the compiler; to see their code , you have to ask the
-   compiler to produce the full source code listing. *)
+   by the compiler *)
 let actorInitPost (initArgs:ActorInitArgs) =
   let actState = actorStateReader (getC4 ()) in
   let msg = messageReader (initArgs.msgCell) in
