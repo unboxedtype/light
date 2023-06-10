@@ -123,6 +123,6 @@ deserializeValue [] (PT [("f",Bool); ("fun", Function (Int 256, Int 256))]) ;;
 //   the 'state' variable. They get serialized and placed into a cell according to
 //   the chosen data placement structure.
 
- echo '{ src = 10000; dst = 20000; body = { seqNo = 1; actorMsg = { n = 10000 } } } ' | dotnet fsi ./scripts/genActorMessage.fsx ./samples/Sample.lh > writer.fif
+ echo '{ src = 10000; dst = 20000; body = { seqNo = 1; actorMsg = { n = 10000 } } } ' | dotnet fsi ./scripts/genActorMessage.fsx ./samples/Sample.lh
 
 tonos-cli decode stateinit --tvc ./writer.tvc

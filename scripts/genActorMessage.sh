@@ -43,8 +43,11 @@ tonos-cli decode stateinit --tvc writer.tvc | \
     tr -d ' ",' | \
     base64 -d > msgbody.boc
 
-echo "$ACTORID" > msg.address
+echo -n "$ACTORID" > msg.address
 
 ## Generate correct message with message payload taken from
 ## 'msgbody.boc' and stateinit set to empty (we do not deploy anything).
-fift ./msg_constructor_payload.fif 
+fift ./msg_constructor_payload.fif
+
+## Cleanup.
+## rm ./msg.address msgbody.boc writer.fif writer.tvc
