@@ -3,7 +3,7 @@ early days, not a released product.  It is provided only to be
 evaluated together with  Venom Hackathon submission.   Lots of  details
 described in this README are planned features, not yet implemented**
 
-# Light
+# Light Programming Language
 
 ```
    __    _       __    __
@@ -20,12 +20,12 @@ TON-inspired blockchains, and specifically [EverX](https://everscale.network/)
 and [Venom](https://venom.network/). Light is
 a   statically-typed  functional   reactive  actor-based   programming
 language with  lots of features  coming for the  first time ever  in a
-modern blockchain programming landscape.
+modern blockchain programming landscape. 
 
 Light  is a  part of the bigger _Lighthouse_  programming system  aiming to
 significantly boost developers productivity and program safety,
 _reducing time-to-market_ and _lowering project delivery risks_.
-For details, have a look at our [LightHouse Whitepaper](https://docs.google.com/document/d/1v5oPb1T8g-Vd-OBStiSlsjDg3VuqJCJdq3loqoc8KoY/edit#).
+For details, have a look at our [Lighthouse Whitepaper](https://docs.google.com/document/d/1v5oPb1T8g-Vd-OBStiSlsjDg3VuqJCJdq3loqoc8KoY/edit#).
 
 ## Language Features
 
@@ -77,17 +77,17 @@ We highlight the following features of the Light language:
   type Message of (n:uint) * (func: uint -> uint)
 
   (* Recursive factorial function *)
-   let rec fac n =
+  let rec fac n =
       if (n > 1) then n * fac (n - 1)
       else 1
 
-   let sum a b = a + b        (* sum of two numbers, just for example *)
-   let sum5 = sum 5           (* partial function application *)
-   let sum105 = sum5 100      (* this equals 5 + 100 *)
+  let sum a b = a + b ;;        (* sum of two numbers, just for example *)
+  let sum5 = sum 5 ;;           (* partial function application *)
+  let sum105 = sum5 100 ;;      (* this equals 5 + 100 *)
 
-   (* Tail-recursive sum of numbers list *)
-   (* example: sum_list2 [1;2;3] 0  =  6   *)
-   let rec sum_list2 lst acc =
+  (* Tail-recursive sum of numbers list *)
+  (* example: sum_list2 [1;2;3] 0  =  6   *)
+  let rec sum_list2 lst acc =
      match lst with
      | [] -> acc
      | h :: t -> sum_list t (h + acc)
