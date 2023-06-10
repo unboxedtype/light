@@ -100,7 +100,7 @@ We highlight the following features of the Light language:
   - operator **receive**
   - operator **send (!)**
 
-  Operator **receive** gives opportunity to express logic in a form of dialogs
+  Operator **receive** gives opportunity to express logic in a form of dialogues
   between smart-contracts.
 
   ```OCaml
@@ -124,7 +124,9 @@ We highlight the following features of the Light language:
   arrives;  after  that, the  actor  does  the pattern-matching  on  the
   message content.  If the corresponding  pattern is found, the  body of
   the corresponding pattern handler  is executed. Unmatched messages may
-  be skipped or bounced back. The operator "receive" can be nested.
+  be skipped or bounced back. The "after" value specifies the message 
+  receiving deadline, i.e. for how long we wait for the message before giving up
+  and continuing the execution. The operator "receive" can be nested.
 
 * **Optional Mutability**
 
@@ -188,7 +190,7 @@ We highlight the following features of the Light language:
 
   If the program compiles, it is considered safe (runtime exception safety)
   most of the time. Strong static type system safe programmers from subtle bugs.
-  However, specifying types may be dauting task. This is why Light provide
+  However, specifying types may be daunting task. This is why Light provide
   automatic type inference.
 
   Types are automatically  inferred from the context.  The type safety
@@ -207,7 +209,7 @@ We highlight the following features of the Light language:
 
   Some pieces  of logic should be  executed only when and  if they are
   needed,  not when  they are  defined.  This  lets you  define things
-  without worrying too much about suboptimal gas usage. This, in turn,
+  without worrying too much about sub-optimal gas usage. This, in turn,
   removes the temptation  of doing premature optimization  that is, as
   we all know, the root of all evil.
 
