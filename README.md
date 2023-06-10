@@ -3,16 +3,17 @@ early days, not a released product.  It is provided only to be
 evaluated together with  Venom Hackathon submission.   Lots of  details
 described in this README are planned features, not yet implemented**
 
-    __    _       __    __
 # Light
 
-    __    _       __    __
+```
+   __    _       __    __
    / /   (_)___ _/ /_  / /_
   / /   / / __ `/ __ \/ __/
  / /___/ / /_/ / / / / /_
 /_____/_/\__, /_/ /_/\__/
         /____/
 
+```
 
 **Light**   is  a   next-generation  programming   language  targeting
 TON-inspired blockchains, and specifically [EverX](https://everscale.network/)
