@@ -245,8 +245,32 @@ at  the moment.   Currently,  we  implemented:
 
 # Manual
 
-We will provide the manual for using all this shortly.
+Here we provide step-by-step guide how to make the compiler prototype work for you.
 
+Light compiler rely on STCONT/LDCONT instructions. Both instructions present in Venom/EverScale VM,
+however, its availability for smart-contracts is regulated by the network capability CapStContNewFormat.
+
+Currently, Venom Dev-net has this cap turned off, so there are two options left:
+1. Run actors locally (not that fun)
+2. Run actors in FLD network: the FLD administrator kindly enabled this capability specifically
+   for Light programmers.
+
+
+## Installation
+
+1. Build and install tvm_linker from [here](https://github.com/unboxedtype/TVM-linker)
+
+   Please make the ```tvm_linker``` executable visible in your ```PATH```.
+
+2. Build and install FIFT from [here](https://github.com/ton-blockchain/ton)
+
+   Please make the ```fift``` executable visible in your ```PATH```.
+
+3. Install Microsoft Dot Net framework.
+
+   Don't worry, it is not that hard nowadays. See [here](https://learn.microsoft.com/en-us/dotnet/core/install/linux) for instruction on how to do that for your Linux distro.
+
+   Ensure that ```dotnet fsi``` command is working.
 
 # Community
 

@@ -1,5 +1,9 @@
 all: run test
 
+build:
+	dotnet build src/LHCompiler/
+	dotnet build src/LHGenDes/
+
 clean:
 	@find . -type d -name 'bin' | xargs rm -rf
 	@find . -type d -name 'obj' | xargs rm -rf
