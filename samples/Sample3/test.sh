@@ -59,7 +59,7 @@ if [[ $? -ne 0 ]]; then
 fi
 
 echo "Generating message 1"
-genActorMessage.fsx ./Sample3.lh "$(cat Sample3.address)" '{ seqNo = 1; actorMsg = { func = fun (x:int) -> x * x } }'
+genActorMessage.fsx ./"$TESTNAME".lh "$(cat $TESTNAME.address)" '{ seqNo = 1; actorMsg = { func = fun (x:int) -> x * x } }'
 if [[ $? -ne 0 ]]; then
     echo "Generating message 1 failed"
     exit 1
@@ -73,7 +73,7 @@ if [[ $? -ne 0 ]]; then
 fi
 
 echo "Retriving actor state..."
-getActorState.sh ./Sample3.lh "$(cat Sample3.address)"
+getActorState.sh ./"$TESTNAME".lh "$(cat $TESTNAME.address)"
 if [[ $? -ne 0 ]]; then
     echo "Retriving actor state failed"
     exit 1
