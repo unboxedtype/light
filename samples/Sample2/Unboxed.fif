@@ -1,0 +1,104 @@
+// ===================================================================
+// This is a series of handful macros with meaningful names.
+// Original mnenimonics looks strange to me.
+// ===================================================================
+
+
+{ file>B } : file_read_bytes // str -> B
+{ B>file } : file_write_bytes // B str ->
+{ B>boc } : bytes_to_cell   // B -> c
+{ s>c } : slice_to_cell      // s -> c
+{ <s } : cell_to_slice       // c -> s
+{ $>s } : str_to_slice       // str -> s
+{ boc>B } : cell_to_bytes    // c -> B
+{ boc+>B } : cell_to_bytes_ex // c x -> B , x:uint - possible option bits: 0, 1, 2, 4, 8, 16
+{ B>base64 } : bytes_to_base64 // B -> str
+{ base64>B } : base64_to_bytes // str -> B
+{ u>B } : uint_to_bytes  // x y -> B  , x - value, y - bit length
+{ csr. } : slice_print       // s ->
+{ Bx.  } : bytes_print       // B ->
+{ cr } : str_print           // str ->
+{ hashu } : cell_hash        // c -> x:uint256 (big endian)
+{ Bhashu } : bytes_hash      // B -> x:uint256
+
+{ ed25519_sign } : bytes_sign  // data:B sk:B -> sig:B
+{ ed25519_sign_uint } : uint_sign // v:uint256 sk:B -> sig:B
+
+{ B>u@ } : bytes_to_uint  // B x -> y  , x - bit-length of the value, y - Integer
+
+// ============================================
+// Cursor (slice) operations
+// ============================================
+
+{ ref@  } : cursor_fetch_ref     // s -> c
+{ ref@+ } : cursor_fetch_ref_rem // s -> s' c
+{ cursor_fetch_ref_rem drop }  : cursor_skip_ref // s -> s'
+{ 1 u@ } : cursor_fetch_bit       // s -> v
+{ 1 u@+ swap } : cursor_fetch_bit_rem  // s -> s' v
+{ u@ } : cursor_fetch_unsigned    // s n -> v
+{ u@+ swap } : cursor_fetch_unsigned_rem  // s n -> s' v
+{ i@+ swap } : cursor_fetch_int_rem // s n -> s' v
+{ cursor_fetch_unsigned_rem drop } : cursor_skip_bits // s n -> s'
+{ $@ } : cursor_fetch_str // s n -> str
+{ $@+ swap } : cursor_fetch_str_rem // s n -> s' str
+{ (number) 1 = { ."integer_from_str failed: invalid integer" cr 1 halt } ifnot } : integer_from_str     // s -> n
+{ B@+ swap } : cursor_fetch_bytes_rem // s n -> s' B   : fetches the first n bytes from s
+
+{ sbits } : slice_data_remaining // s -> n  (data remaining in bits)
+{ srefs } : slice_refs_remaining // s -> n (references remaining )
+{ (.) } : val_to_str   // v -> s
+{ x.  } : val_print_hex // v -> print with space
+{ x._ } : val_print_hex_ws // v -> print without space
+{ type } : str_print   // s ->
+{ cr } : newline_print
+{ $# } : cmd_args_num   // -> n  (number of cmd line arguments, $0 = script name)
+
+{ <b } : builder_begin  // -> b
+{ b> } : builder_end    // b -> c
+{ builder_end } : builder_to_cell // b -> c
+{ u, } : builder_uint_append    // b x y -> b'   x - value, y - bit length
+{ i, } : builder_int_append    // b x y -> b'   x - value, y - bit length
+{ B, } : builder_bytes_append   // b B -> b'
+{ ref, } : builder_ref_append   // b c -> b'
+{ builder_ref_append } : builder_cell_append // b c -> b'
+{ b+ } : builder_concat // b1 b2 -> b1+b2
+{ s, } : builder_slice_append // b s -> b'
+
+{ i>B } : bytes_int_store // x y -> B  , store integer x of length y (in bits)
+{ u>B } : bytes_uint_store // x y -> B
+{ B+ } : bytes_concat
+
+// Little-endian versions of the functions
+{ Li>B } : bytes_int_store_le // x y -> B  , store integer x of length y (in bits)
+{ Lu>B } : bytes_uint_store_le // x y -> B
+
+
+{ $+ } : str_concat  // s1 s2 -> s1s2
+{ $, } : str_append // b S -> b
+
+// Extract standard SmC address from the text file.
+// input:
+//   s0 = file path with the address in a text form, eg "-1:23424ab..."
+// output:
+//   s0 = account id
+//   s1 = workchain id
+{
+  file_read_bytes
+  builder_begin
+  swap
+  builder_bytes_append
+  builder_end
+  cell_to_slice
+  1 cursor_fetch_str_rem // s 8 -> s' wc_num
+  integer_from_str // s wc_str -> s wc
+  swap // s wc -> wc s
+  // skip separator ':' character
+  8 cursor_skip_bits  // wc s 8 -> wc s'  ,
+  dup
+  remaining     // ... slice bits cells
+  drop          // ... slice bits
+  8 /           // ... slice bytes
+  cursor_fetch_str // wc s 256 -> wc acc_id_num
+  "0x" swap str_concat // append 0x to tell the parser it is hex
+  integer_from_str // wc acc_id_num -> wc add_id
+} : address_parse_text

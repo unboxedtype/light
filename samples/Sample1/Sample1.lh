@@ -1,0 +1,32 @@
+contract Simple
+
+type State = {
+  counter: int;
+  sum: int
+}
+
+type ActorMessage = {
+    n: int
+}
+
+let sum a b =
+    a + b
+;;
+
+let add_more (x: int) (st:State) =
+   let sum' = sum st.counter x in
+   let counter' = x in
+   { counter = counter'; sum = sum' }
+;;
+
+let accept () =
+  assembly "ACCEPT" :> unit ;
+  ()
+;;
+
+let main (msg:ActorMessage) (st:State) =
+  let inc n = n + 1
+  in
+    accept () ;
+    add_more (inc msg.n) st
+;;

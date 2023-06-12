@@ -1,0 +1,26 @@
+contract Sample2
+
+type State = {
+  res: int ;
+  func : int -> int
+}
+
+type ActorMessage = {
+  func: int -> int
+}
+
+let accept () =
+  assembly "ACCEPT" :> unit ;
+  ()
+;;
+
+let main (msg:ActorMessage) (st:State) =
+  accept () ;
+  (* Here we first apply function received in the message to the 'res' value
+     and then pass the result to the 'func' function stored inside the state;
+     We also substitute old 'func' with the new one, received in a message. *)
+  if st.res = 0 then
+     { res = msg.func st.res ; func = msg.func }
+  else
+     { res = st.func st.res ; func = msg.func }
+;;
