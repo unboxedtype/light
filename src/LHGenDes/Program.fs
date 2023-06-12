@@ -24,8 +24,7 @@ let generateReader withInit typeName sourcePath =
 
 [<EntryPoint>]
 let main args =
-    printfn "Output FIFT script that deserializes Lighthouse Actor state"
-    printfn "taken from its blockchain account."
+    printfn "Output FIFT script that deserializes Lighthouse Actor state taken from its blockchain account."
     let argsL = List.ofSeq args
     if List.length argsL <> 2 then
         printfn "USAGE: LHGenDes <pathToSource> <StateType>"

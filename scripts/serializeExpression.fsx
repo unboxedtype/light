@@ -1,23 +1,21 @@
 #!/usr/bin/env -S dotnet fsi
 
-#r "/home/unboxedtype/src/lighthouse/src/LHCompiler/bin/Debug/net6.0/FsLexYacc.Runtime.dll"
+#r "../src/LHCompiler/bin/Debug/net6.0/FsLexYacc.Runtime.dll"
+#r "../src/FiftExecutor/bin/Debug/net6.0/FiftExecutor.dll" ;;
+#r "../src/LHCompiler/bin/Debug/net6.0/LHTypes.dll" ;;
+#r "../src/LHCompiler/bin/Debug/net6.0/Parser.dll" ;;
+#r "../src/LHCompiler/bin/Debug/net6.0/LHExpr.dll" ;;
+#r "../src/LHCompiler/bin/Debug/net6.0/TVM.dll" ;;
+#r "../src/LHCompiler/bin/Debug/net6.0/LHMachine.dll" ;;
+#r "../src/LHCompiler/bin/Debug/net6.0/LHCompiler.dll" ;;
 open FSharp.Text.Lexing ;;
-#r "/home/unboxedtype/src/lighthouse/src/LHCompiler/bin/Debug/net6.0/LHTypes.dll" ;;
 open LHTypes ;;
-#r "/home/unboxedtype/src/lighthouse/src/LHCompiler/bin/Debug/net6.0/Parser.dll" ;;
 open Parser ;;
-#r "/home/unboxedtype/src/lighthouse/src/LHCompiler/bin/Debug/net6.0/LHExpr.dll" ;;
-open LHExpr ;;
-#r "/home/unboxedtype/src/lighthouse/src/LHCompiler/bin/Debug/net6.0/LHCompiler.dll" ;;
-open LHCompiler ;;
-#r "/home/unboxedtype/src/lighthouse/src/LHCompiler/bin/Debug/net6.0/LHMachine.dll" ;;
-open System ;;
-
-open System.IO ;;
-#r "/home/unboxedtype/src/lighthouse/src/LHCompiler/bin/Debug/net6.0/Parser.dll" ;;
 open ParserModule ;;
-#r "/home/unboxedtype/src/lighthouse/src/LHCompiler/bin/Debug/net6.0/TVM.dll" ;;
-#r "/home/unboxedtype/src/lighthouse/src/FiftExecutor/bin/Debug/net6.0/FiftExecutor.dll" ;;
+open LHExpr ;;
+open LHCompiler ;;
+open System ;;
+open System.IO ;;
 
 let parse source =
   let lexbuf = LexBuffer<char>.FromString source
@@ -65,7 +63,7 @@ let executeConstrBoc tvcPath =
 // with each new message. The actual seqNo can be inspected by
 // getActorState.sh
 let generateExprBoc sourcePath exprType exprStr =
-    "<{ " + (compileExpr sourcePath exprType exprStr) + "}>s s>c " 
+    "<{ " + (compileExpr sourcePath exprType exprStr) + "}>s s>c "
     |> (fun code -> TVM.genStateInit constrTvcPath code "<b b>")
     |> TVM.dumpFiftScript constrFiftPath
     assembleConstrBoc () |> ignore ;

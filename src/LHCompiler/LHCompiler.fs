@@ -458,6 +458,8 @@ let compile (source:string) (withInit:bool) (debug:bool) : string =
 // compile Lighthouse source at filePath and output the result (FIFT)
 // into the same filePath, but with ".fif" extension
 let compileFile (debug:bool) (filePath:string) (dataExpr:string) =
+    let generateDataBocFromExpr dataExpr =
+        FiftExecutor.executeShellCommand "serializeExpression.fsx" (filePath + " ActorState " + dataExpr)
     let readFile (filePath: string) =
         File.ReadAllText(filePath)
     let replaceExt (filePath: string) (newExt: string) =
@@ -471,7 +473,8 @@ let compileFile (debug:bool) (filePath:string) (dataExpr:string) =
         File.WriteAllText(filePath, content)
     let fileContent = readFile filePath
     let code = LHMachine.asmAsCell (compile fileContent true debug)
-    let dataBoc = dataExpr //evalExprIntoBoc dataExpr
+    generateDataBocFromExpr dataExpr |> ignore   (* side effect: data.boc is created *)
+    let dataBoc = " \"data.boc\" file>B B>boc "
     let nameGenStateInitScript = (onlyName filePath) + ".fif"
     let nameGenStateInitTVC = (onlyName filePath) + ".tvc"
     let nameGenMessageWithStateInitScript = (onlyName filePath) + "_deploy.fif"

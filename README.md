@@ -260,17 +260,44 @@ Currently, Venom Dev-net has this cap turned off, so there are two options left:
 
 1. Build and install tvm_linker from [here](https://github.com/unboxedtype/TVM-linker)
 
-   Please make the ```tvm_linker``` executable visible in your ```PATH```.
+   Please make the ```tvm_linker``` executable visible in your ```PATH```, ensure
+   that ``tvm_linker`` command is working.
 
 2. Build and install FIFT from [here](https://github.com/ton-blockchain/ton)
 
-   Please make the ```fift``` executable visible in your ```PATH```.
+   Please make the ```fift``` executable visible in your ```PATH```, ensure that
+   ```fift``` command is working.
 
 3. Install Microsoft Dot Net framework.
 
    Don't worry, it is not that hard nowadays. See [here](https://learn.microsoft.com/en-us/dotnet/core/install/linux) for instruction on how to do that for your Linux distro.
 
    Ensure that ```dotnet fsi``` command is working.
+
+4. Put the directory <light>/scripts/ into the PATH
+
+   ```shell
+   export PATH=$PATH:<light>/scripts/
+   ```
+
+   Check that the command `genActorMessage.fsx` and `serializeExpression.fsx` are visible.
+
+5. Make the LHCompiler binary visible. For that, do one of the following:
+
+   * Put the directory <light>/src/LHCompiler/bin/net6.0/ into the PATH
+     ```shell
+     export PATH=$PATH:<light>/src/LHCompiler/bin/net6.0/
+     ```
+
+   * OR Make a symbolic link to LHCompiler binary:
+
+     ```shell
+     sudo ln -s <light>/src/LHCompiler/bin/Debug/net6.0/LHCompiler /usr/bin/LHCompiler
+     ```
+
+   Ensure that the command `LHCompiler` works afterwards.
+
+6. Go to <light>/samples/Sample<N> directory. There you will find `test.sh` script. Run it and do what it asks for. Inside the scripts, you can find all the necessary commands to deploy and interact with Light actors!
 
 # Community
 

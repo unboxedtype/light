@@ -6,6 +6,9 @@
 
 module LHExpr
 
+// Incomplete pattern matches on this expression.
+#nowarn "25"
+
 open type LHTypes.Type
 
 // global counter for generating new AST IDs
