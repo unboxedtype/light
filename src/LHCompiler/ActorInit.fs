@@ -21,10 +21,11 @@ type ActorInitArgs = {
 (* Replay protection is as follows:
       1. Read 4-byte integer from the message body (message identifier)
       2. Read 4-byte integer from the state        (last processed msg identifier)
-      3. If integer1 does not equal integer2 then proceed,
-         otherwise throw (replay detected). *)
+      3. If integer1 is less than integer2 then proceed,
+         otherwise throw error 100 (replay detected). *)
 type ActorState = {
   seqNo: uint32;   (* Sending actors must consequently increase this counter *)
+  deployed: bool;  (* Is actor already live inside the blockchain?           *)
   state: State     (* Application state of the actor                         *)
 }
 
@@ -54,21 +55,36 @@ let getC4 () =
   assembly \"c4 PUSHCTR\" :> VMCell
 ;;
 
+let acceptActor () =
+  assembly \"ACCEPT\" :> unit ;;
+
 (* actorStateReader and actorStateWriter functions are added
    by the compiler *)
 let actorInitPost (initArgs:ActorInitArgs) =
   let actState = actorStateReader (getC4 ()) in
-  let msg = messageReader (initArgs.msgBody) in
-  let msgSeqNo = msg.body.seqNo in
-  if msgSeqNo  = actState.seqNo then
-    failwith 100
+  (* replay protection is run only if the actor
+     is already deployed, otherwise it makes no sense *)
+  if actState.deployed then
+      let msg = messageReader (initArgs.msgBody) in
+      let msgSeqNo = msg.body.seqNo in
+      if msgSeqNo <= actState.seqNo then
+        failwith 100
+      else
+        let st = actState.state in
+        (* execute the main actor code *)
+        let st' = main msg.body.actorMsg st in
+        let actState' =
+            { seqNo = msgSeqNo; deployed = true; state = st' } in
+        putC4 (actorStateWriter actState')
   else
-    let st = actState.state in
-    (* execute the main actor code *)
-    let st' = main msg.body.actorMsg st in
-    let actState' =
-        { seqNo = msgSeqNo; state = st' } in
-    putC4 (actorStateWriter actState')
+      acceptActor () ;
+      (* when actor gets deployed, do not execute main;
+         just save the initial state and put deployed flag
+         to true *)
+      let actState' = { seqNo = actState.seqNo;
+                        deployed = true;
+                        state = actState.state } in
+      putC4 (actorStateWriter actState')
 ;;
 
 let actorInit =

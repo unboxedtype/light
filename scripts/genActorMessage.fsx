@@ -1,3 +1,5 @@
+#!/usr/bin/env -S dotnet fsi
+
 #r "/home/unboxedtype/src/lighthouse/src/LHCompiler/bin/Debug/net6.0/FsLexYacc.Runtime.dll"
 open FSharp.Text.Lexing ;;
 #r "/home/unboxedtype/src/lighthouse/src/LHCompiler/bin/Debug/net6.0/LHTypes.dll" ;;
@@ -116,7 +118,7 @@ if List.length args <> 5 then
     printfn "This script generates message.boc file to be sent into an actor"
     printfn ""
     printfn "USAGE: getActorMessage.fsx <pathToSource> <destId> <expression>"
-    printfn "%A" args
+    exit 1
 let sourcePath = args.[2]
 let destIdStr = args.[3]
 let expr = args.[4]

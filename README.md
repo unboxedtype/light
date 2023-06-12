@@ -124,7 +124,7 @@ We highlight the following features of the Light language:
   arrives;  after  that, the  actor  does  the pattern-matching  on  the
   message content.  If the corresponding  pattern is found, the  body of
   the corresponding pattern handler  is executed. Unmatched messages may
-  be skipped or bounced back. The "after" value specifies the message 
+  be skipped or bounced back. The "after" value specifies the message
   receiving deadline, i.e. for how long we wait for the message before giving up
   and continuing the execution. The operator "receive" can be nested.
 

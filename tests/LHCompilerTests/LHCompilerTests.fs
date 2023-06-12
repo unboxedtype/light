@@ -754,9 +754,62 @@ let testLetTuple1 () =
 [<Test>]
 [<Timeout(1000)>]
 let testCastInsideRecord () =
-    let prog = "contract testDoubleRec
+    let prog = "contract testCastInsideRecord
                 type State = { data: uint32 }
                 let main =
                     { data = 10 :> uint32 } ;;
                 "
     execAndCheckPrint prog false false "[ 10 ]"
+
+[<Test>]
+[<Timeout(1000)>]
+let testGeLe () =
+    let prog1 = "contract testGe
+                let main =
+                    let f1 x = x + 100 in
+                    let f2 y = y * 20 in
+                    if (f2 100 >= f1 10) then 10 else 20
+                ;;
+                "
+    execAndCheckPrint prog1 false false "10"
+
+    let prog2 = "contract testLe
+                let main =
+                    let f1 x = x + 100 in
+                    let f2 y = y * 20 in
+                    if (f2 100 <= f1 10) then 10 else 20
+                ;;
+                "
+    execAndCheckPrint prog2 false false "20"
+
+[<Test>]
+[<Timeout(1000)>]
+let testIfBool () =
+    let prog1 = "contract testIfBoolTrue
+                let main =
+                    let b = true in
+                    if b then 1 else 2
+                ;;
+                "
+    execAndCheckPrint prog1 false false "1"
+
+    let prog2 = "contract testIfBoolFalse
+                let main =
+                    let b = false in
+                    if b then 1 else 2
+                ;;
+                "
+    execAndCheckPrint prog2 false false "2"
+
+[<Test>]
+[<Timeout(1000)>]
+let testTrivialActorInit () =
+    let prog = "contract trivialActorInit
+                type State = { b : bool }
+                type ActorMessage = { b : bool }
+                let main msg state =
+                    state
+                ;;
+                "
+    let debug = false
+    execReal debug true prog "<b 0 32 u, -1 2 u, b>" "(null)"
