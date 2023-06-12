@@ -33,4 +33,5 @@ tonos-cli -c $CONFIG_PATH decode stateinit --tvc $TVC | \
     base64 -d > data.c4
 
 ~/src/lighthouse/src/LHGenDes/bin/Debug/net6.0/LHGenDes $SOURCE $TYPENAME
+
 fift ./reader.fif

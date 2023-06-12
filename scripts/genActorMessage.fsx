@@ -27,7 +27,10 @@ let getLetAst (m:Module) (n:int) =
     m.Decls.[n]
 
 let executeMsgConstrCode () =
-    FiftExecutor.runFiftScript "./msg_constr.fif" // produces msg_constr.boc
+    if (FiftExecutor.runFiftScript "./msg_constr.fif") = "empty" then
+        failwithf "Fift executed the script %s with an error" "msg_constr.fif"
+    else
+        ()
 
 let extractMsgBoc tvcPath =
     // now we need to extract data from msg_constr.boc. That

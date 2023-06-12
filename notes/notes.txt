@@ -126,3 +126,10 @@ deserializeValue [] (PT [("f",Bool); ("fun", Function (Int 256, Int 256))]) ;;
  echo '{ src = 10000; dst = 20000; body = { seqNo = 1; actorMsg = { n = 10000 } } } ' | dotnet fsi ./scripts/genActorMessage.fsx ./samples/Sample.lh
 
 tonos-cli decode stateinit --tvc ./writer.tvc
+
+
+Empty continuation, serialized with STCONT:
+B{b5ee9c720101020100160001113fffff0000008040080100109100c8cf43c9ed54}
+
+This value is useful when you need to put something inside a function type, but you don't
+yet have a proper function for the variable.
