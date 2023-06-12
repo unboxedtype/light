@@ -107,11 +107,11 @@ let deserializeValueSimpl (ty:TypeList) (t:Type) : string =
             |> String.concat " "
             // v1 v2 .. vn s --> s v1 v2 .. vn --> s (v1 .. vn)
             // --> (v1 .. vn) s
-            // |> (fun s -> s + sprintf " %i ROLLREV %i TUPLE SWAP " n n)
+            |> (fun s -> s + sprintf " %i ROLLREV %i TUPLE SWAP " n n)
         | Function (_, _) ->
             "LDREF NIP <{ }> PUSHCONT SWAP"   // empty push cont
         | UserType (n, Some t) ->
-            deserializeValueSlice ty t
+            deserializeValueInner ty t
         | _ ->
             failwithf "Parsing for type %A not implemented" t
     "CTOS " + (deserializeValueInner ty t) + " ENDS  "

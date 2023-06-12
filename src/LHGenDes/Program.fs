@@ -28,7 +28,7 @@ let main args =
     printfn "taken from its blockchain account."
     let argsL = List.ofSeq args
     if List.length argsL <> 2 then
-        printfn "USAGE: LHGenDes <pathToSource> <address>"
+        printfn "USAGE: LHGenDes <pathToSource> <StateType>"
         1
     else
         let asm = generateReader true argsL.[1] argsL.[0]
