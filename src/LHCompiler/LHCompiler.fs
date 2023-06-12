@@ -457,7 +457,7 @@ let compile (source:string) (withInit:bool) (debug:bool) : string =
 
 // compile Lighthouse source at filePath and output the result (FIFT)
 // into the same filePath, but with ".fif" extension
-let compileFile (debug:bool) (filePath:string) (data:string) =
+let compileFile (debug:bool) (filePath:string) (dataExpr:string) =
     let readFile (filePath: string) =
         File.ReadAllText(filePath)
     let replaceExt (filePath: string) (newExt: string) =
@@ -471,12 +471,32 @@ let compileFile (debug:bool) (filePath:string) (data:string) =
         File.WriteAllText(filePath, content)
     let fileContent = readFile filePath
     let code = LHMachine.asmAsCell (compile fileContent true debug)
+    let dataBoc = dataExpr //evalExprIntoBoc dataExpr
     let nameGenStateInitScript = (onlyName filePath) + ".fif"
     let nameGenStateInitTVC = (onlyName filePath) + ".tvc"
-    let nameGenMessageWithStateInitScript = (onlyName filePath) + "Deploy" + ".fif"
+    let nameGenMessageWithStateInitScript = (onlyName filePath) + "_deploy.fif"
     let nameMsgWithStateInitBOC = (onlyName filePath) + ".boc"
     TVM.dumpFiftScript
        nameGenStateInitScript
-       (TVM.genStateInit nameGenStateInitTVC code data)
+       (TVM.genStateInit nameGenStateInitTVC code dataBoc)
     TVM.dumpFiftScript nameGenMessageWithStateInitScript
-       (TVM.genMessageWithStateInit (onlyName filePath) nameMsgWithStateInitBOC code data)
+       (TVM.genMessageWithStateInit (onlyName filePath) nameMsgWithStateInitBOC code dataBoc)
+
+// Compiles expression into FIFT-assembly evaluating the
+// given expression. Needed to generate init-state and messages
+// for actors.
+let compileExprOfType (types:list<Name*Type>) exprTypeName exprStr : string =
+    let typeMap = Map.ofList types
+    if Map.tryFind exprTypeName typeMap = None then
+        failwithf "type %A not found" exprTypeName
+    let exprT = typeMap.[exprTypeName]
+    // TODO! Check type of the expr
+    let writerCode =
+        LHTypes.serializeValue types exprT
+    let res1  = parse ("contract Test\nlet main = " + exprStr + " ;; ")
+    let getLetAst (m:ParserModule.Module) (n:int) = m.Decls.[n]
+    let letBndMain = getLetAst res1.Value 0
+    let fullTypeDecls = types |> List.map ParserModule.TypeDef
+    (compileModule "eval" (fullTypeDecls @ [letBndMain]) false false) +
+      "\n" + writerCode + "\n"
+

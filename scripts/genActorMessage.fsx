@@ -23,9 +23,6 @@ let parse source =
   let lexbuf = LexBuffer<char>.FromString source
   Parser.start Lexer.read lexbuf ;;
 
-let getLetAst (m:Module) (n:int) =
-    m.Decls.[n]
-
 let executeMsgConstrCode () =
     if (FiftExecutor.runFiftScript "./msg_constr.fif") = "empty" then
         failwithf "Fift executed the script %s with an error" "msg_constr.fif"
@@ -35,7 +32,7 @@ let executeMsgConstrCode () =
 let extractMsgBoc tvcPath =
     // now we need to extract data from msg_constr.boc. That
     // will be our message object serialized into .boc.
-    FiftExecutor.executeShellCommand "extractData.sh" tvcPath
+    FiftExecutor.executeShellCommand "extractData.sh" (tvcPath + " msg.boc")
 
 let generateMsgConstructorCode destId msgBodyCode =
     "5 BLKDROP\n" +  // remove TVM shit from the stack
@@ -68,25 +65,15 @@ let generateMsgConstructorCode destId msgBodyCode =
      ENDC
      c4 POP"
 
-let compileExpr sourcePath exprStr =
+let compileMessageBody sourcePath exprStr =
     let fileContent = File.ReadAllText sourcePath
     let prog = fileContent + ActorInit.actorInitCode
-    // printfn "Full program text:\n%A" prog
     let res = LHCompiler.parse prog
     match res with
     | Some (Module (modName, decls)) ->
         let typesFull = ParserModule.extractTypes false decls
         let typeMap = Map.ofList typesFull
-        if Map.tryFind "MessageBody" typeMap = None then
-            failwithf "type %A not found" "MessageBody"
-        let messageType = typeMap.["MessageBody"]
-        let messageWriterCode =
-            LHTypes.serializeValue typesFull messageType
-        let fullTypeDecls = typesFull |> List.map ParserModule.TypeDef
-        let res1  = LHCompiler.parse ("contract Test\nlet main = " + exprStr + " ;; ")
-        let letBndMain = getLetAst res1.Value 0
-        (LHCompiler.compileModule "test" (fullTypeDecls @ [letBndMain]) false false) +
-            "\n" + messageWriterCode + "\n"
+        compileExprOfType typesFull "MessageBody" exprStr
     | _ ->
         failwith "No actor definition found in the file"
 
@@ -108,7 +95,7 @@ let executeMsgConstrBoc tvcPath =
 let generateMsgBoc sourcePath destId exprStr =
     let msgConstrFiftPath = "./msg_constr.fif"
     let msgConstrTvcPath = "./msg_constr.tvc"
-    compileExpr sourcePath exprStr
+    compileMessageBody sourcePath exprStr
     |> (fun expr -> " <{ " + (generateMsgConstructorCode destId expr) + " }>s s>c ")
     |> (fun code -> TVM.genStateInit msgConstrTvcPath code "<b b>")
     |> TVM.dumpFiftScript msgConstrFiftPath
