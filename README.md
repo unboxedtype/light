@@ -16,7 +16,7 @@ described in this README are planned features, not yet implemented**
 ```
 
 **Light**   is  a   next-generation  programming   language  targeting
-TON-inspired blockchains, and specifically [EverX](https://everscale.network/)
+TON-inspired blockchains, and specifically [EverScale](https://everscale.network/)
 and [Venom](https://venom.network/). Light is
 a   statically-typed  functional   reactive  actor-based   programming
 language with  lots of features  coming for the  first time ever  in a
