@@ -1,6 +1,7 @@
 #!/bin/bash
 
 TESTNAME=Sample1  # actor file without extension
+SALT=$((RANDOM))
 
 check_command() {
     if command -v "$1" &>/dev/null; then
@@ -18,6 +19,18 @@ check_command tonos-cli
 check_command genActorMessage.fsx
 check_command serializeExpression.fsx
 
+## Cleanup from previous potentially  aborted calls
+rm -f "$TESTNAME".address \
+   "$TESTNAME".fif \
+   "$TESTNAME"_deploy.fif \
+   "$TESTNAME".tvc \
+   "$TESTNAME".boc \
+   reader.fif \
+   msg_constr.* \
+   msg.boc \
+   exprConstr.* \
+   data.boc
+
 ## The system actor state is defined as follows:
 
 ## type ActorState = {
@@ -32,7 +45,7 @@ check_command serializeExpression.fsx
 ## and deployed to false. 
 echo "Compiling..."
 
-LHCompiler --input ./"$TESTNAME.lh" '{ seqNo = 0; deployed = false; state = { counter = 10; sum = 0 } }'
+LHCompiler --input ./"$TESTNAME.lh" "{ seqNo = 1; deployed = false; salt = $SALT; state = { counter = 10; sum = 0 } }"
 if [[ $? -ne 0 ]]; then
    echo "Compilation errors.. Exiting"
    exit 1
@@ -58,14 +71,22 @@ if [[ $? -ne 0 ]]; then
     exit 1
 fi
 
+echo "Retriving actor state..."
+getActorState.sh ./"$TESTNAME".lh "$(cat $TESTNAME.address)"
+if [[ $? -ne 0 ]]; then
+    echo "Retriving actor state failed"
+    exit 1
+fi
+
 echo "Generating message 1"
-genActorMessage.fsx ./"$TESTNAME".lh "$(cat $TESTNAME.address)" '{ seqNo = 1; actorMsg = { func = fun (x:int) -> x * x } }'
+MSG1='{ seqNo = 11; actorMsg = { n = 100 } }'
+genActorMessage.fsx ./"$TESTNAME".lh "$(cat $TESTNAME.address)" "$MSG1"
 if [[ $? -ne 0 ]]; then
     echo "Generating message 1 failed"
     exit 1
 fi
 
-echo "Sending message 1"
+echo "Sending message 1: " $MSG1
 tonos-cli -c ../../scripts/tonos-cli.conf.json sendfile ./msg.boc
 if [[ $? -ne 0 ]]; then
     echo "Sending message 1 failed"
@@ -78,3 +99,26 @@ if [[ $? -ne 0 ]]; then
     echo "Retriving actor state failed"
     exit 1
 fi
+
+echo "Generating message 2"
+MSG2='{ seqNo = 12; actorMsg = { n = 200 } }'
+genActorMessage.fsx ./"$TESTNAME".lh "$(cat $TESTNAME.address)" "$MSG2"
+if [[ $? -ne 0 ]]; then
+    echo "Generating message 2 failed"
+    exit 1
+fi
+
+echo "Sending message 2: " $MSG2
+tonos-cli -c ../../scripts/tonos-cli.conf.json sendfile ./msg.boc
+if [[ $? -ne 0 ]]; then
+    echo "Sending message 2 failed"
+    exit 1
+fi
+
+echo "Retriving actor state..."
+getActorState.sh ./"$TESTNAME".lh "$(cat $TESTNAME.address)"
+if [[ $? -ne 0 ]]; then
+    echo "Retriving actor state failed"
+    exit 1
+fi
+

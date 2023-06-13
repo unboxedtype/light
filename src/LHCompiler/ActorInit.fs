@@ -26,6 +26,7 @@ type ActorInitArgs = {
 type ActorState = {
   seqNo: uint32;   (* Sending actors must consequently increase this counter *)
   deployed: bool;  (* Is actor already live inside the blockchain?           *)
+  salt: uint;      (* Needed to randomise actor identifier                   *)
   state: State     (* Application state of the actor                         *)
 }
 
@@ -74,7 +75,10 @@ let actorInitPost (initArgs:ActorInitArgs) =
         (* execute the main actor code *)
         let st' = main msg.body.actorMsg st in
         let actState' =
-            { seqNo = msgSeqNo; deployed = true; state = st' } in
+            { seqNo = msgSeqNo;
+              deployed = true;
+              salt = actState.salt;
+              state = st' } in
         putC4 (actorStateWriter actState')
   else
       acceptActor () ;
@@ -83,6 +87,7 @@ let actorInitPost (initArgs:ActorInitArgs) =
          to true *)
       let actState' = { seqNo = actState.seqNo;
                         deployed = true;
+                        salt = actState.salt;
                         state = actState.state } in
       putC4 (actorStateWriter actState')
 ;;

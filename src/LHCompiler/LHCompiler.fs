@@ -459,7 +459,14 @@ let compile (source:string) (withInit:bool) (debug:bool) : string =
 // into the same filePath, but with ".fif" extension
 let compileFile (debug:bool) (filePath:string) (dataExpr:string) =
     let generateDataBocFromExpr dataExpr =
-        FiftExecutor.executeShellCommand "serializeExpression.fsx" (filePath + " ActorState " + dataExpr)
+        let args = "-c \"dotnet fsi $(which serializeExpression.fsx) " + filePath +
+                   " ActorState \'" + dataExpr + "\'\""
+        printfn "args = %A" args
+        let res = FiftExecutor.executeShellCommand "/bin/bash" args
+        if res.ExitCode <> 0 then
+            failwithf "Shell command executed with the error: %s; output: %s"
+                      res.StandardError
+                      res.StandardOutput
     let readFile (filePath: string) =
         File.ReadAllText(filePath)
     let replaceExt (filePath: string) (newExt: string) =

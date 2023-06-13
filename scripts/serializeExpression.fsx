@@ -21,19 +21,25 @@ let parse source =
   let lexbuf = LexBuffer<char>.FromString source
   Parser.start Lexer.read lexbuf ;;
 
-let constrFiftPath = "./expr_constr.fif"
-let constrTvcPath = "./expr_constr.tvc"
+let constrFiftPath = "./exprConstr.fif"
+let constrTvcPath = "./exprConstr.tvc"
 
 let executeConstrCode () =
-    if (FiftExecutor.runFiftScript constrFiftPath) = "empty" then
-        failwithf "Fift executed the script %s with an error" constrFiftPath
-    else
-        ()
+    let res = FiftExecutor.executeShellCommand "fift" constrFiftPath
+    if res.ExitCode <> 0 then
+        failwithf "Command executed with an error: %s; output: %s"
+                  res.StandardError
+                  res.StandardOutput
 
 let extractBoc tvcPath =
     // now we need to extract data from msg_constr.boc. That
     // will be our message object serialized into .boc.
-    FiftExecutor.executeShellCommand "extractData.sh" (tvcPath + " data.boc")
+    let res = FiftExecutor.executeShellCommand "extractData.sh" (tvcPath + " data.boc")
+    if res.ExitCode <> 0 then
+        failwithf "Command executed with an error: %s; output: %s"
+                  res.StandardError
+                  res.StandardOutput
+
 
 let compileExpr sourcePath exprType exprStr =
     let fileContent = File.ReadAllText sourcePath
@@ -50,10 +56,18 @@ let compileExpr sourcePath exprType exprStr =
 // Run FIFT with the construction script, so we have msg_constr.boc ready
 // to be executed by tvm_linker
 let assembleConstrBoc () =
-    FiftExecutor.executeShellCommand "fift" constrFiftPath
+    let res = FiftExecutor.executeShellCommand "fift" constrFiftPath
+    if res.ExitCode <> 0 then
+        failwithf "Command executed with an error: %s; output: %s"
+                  res.StandardError
+                  res.StandardOutput
 
 let executeConstrBoc tvcPath =
-    FiftExecutor.executeShellCommand "tvm_linker" ("test " + tvcPath)
+    let res = FiftExecutor.executeShellCommand "tvm_linker" ("test " + tvcPath)
+    if res.ExitCode <> 0 then
+        failwithf "Command executed with an error: %s; output: %s"
+                  res.StandardError
+                  res.StandardOutput
 
 // sourcePath = path to the receiver-actor source code
 // destId = a unique identifier of the destination actor
@@ -63,7 +77,7 @@ let executeConstrBoc tvcPath =
 // with each new message. The actual seqNo can be inspected by
 // getActorState.sh
 let generateExprBoc sourcePath exprType exprStr =
-    "<{ " + (compileExpr sourcePath exprType exprStr) + "}>s s>c "
+    "<{ " + (compileExpr sourcePath exprType exprStr) + " c4 POP }>s s>c "
     |> (fun code -> TVM.genStateInit constrTvcPath code "<b b>")
     |> TVM.dumpFiftScript constrFiftPath
     assembleConstrBoc () |> ignore ;
