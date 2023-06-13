@@ -277,15 +277,19 @@ Currently, Venom Dev-net has this cap turned off, so there are two options left:
 3. Build the Light compiler.
    From the Light source root directory, execute:
 
-   ```shell
-   $ make build
-   ```
+> sudo snap install dotnet-sdk  --classic # ubuntu
+
+```shell
+
+```shell
+$ make build
+```
 
 4. Put the directory `<light>/scripts/` into the `PATH`
 
-   ```shell
-   $ export PATH=$PATH:<light>/scripts/
-   ```
+```shell
+$ export PATH=$PATH:$(pwd)/scripts/
+```
 
    Check that the command `genActorMessage.fsx` and `serializeExpression.fsx` are visible.
 
@@ -293,14 +297,14 @@ Currently, Venom Dev-net has this cap turned off, so there are two options left:
 
    * Put the directory `<light>/src/LHCompiler/bin/net6.0/` into the `PATH`
      ```shell
-     $ export PATH=$PATH:<light>/src/LHCompiler/bin/net6.0/
+     $ export PATH=$PATH:$(pwd)/src/LHCompiler/bin/net6.0/
      ```
 
    * OR Make a symbolic link to `LHCompiler` binary:
 
-     ```shell
-     $ sudo ln -s <light>/src/LHCompiler/bin/Debug/net6.0/LHCompiler /usr/bin/LHCompiler
-     ```
+```shell
+$ ln -s $(pwd)/src/LHCompiler/bin/Release/net6.0/linux-x64/LHCompiler ~/bin/LHCompiler
+```
 
    Ensure that the command `LHCompiler` works afterwards.
 
