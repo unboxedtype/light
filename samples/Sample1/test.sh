@@ -42,7 +42,7 @@ rm -f "$TESTNAME".address \
 ## The 'state' field inside the ActorState record defines the 'application state',
 ## the part of state that is visible to actor program. However, during deploy, we
 ## need to provide the whole ActorState value, so we set the fields seqNo to zero
-## and deployed to false. 
+## and deployed to false.
 echo "Compiling..."
 
 LHCompiler --input ./"$TESTNAME.lh" "{ seqNo = 1; deployed = false; salt = $SALT; state = { counter = 10; sum = 0 } }"
