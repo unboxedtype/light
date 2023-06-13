@@ -1,17 +1,27 @@
 all: run test
 
+RUNTIME=win7-x64
+CONFIGURATION=Debug
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Linux)
+	RUNTIME=linux-x64
+endif
+ifeq ($(UNAME_S),Darwin)
+	RUNTIME=osx.10.12-x64
+endif
+
 build:
 	@echo ====================================
 	@echo Building LHCompiler binary...
 	@echo ====================================
 	@echo
-	@dotnet build -c Debug src/LHCompiler/
+	@dotnet build --configuration ${CONFIGURATION} --runtime ${RUNTIME} src/LHCompiler/
 	@echo
 	@echo ====================================
 	@echo building LHGenDes binary...
 	@echo ====================================
 	@echo
-	@dotnet build -c Debug src/LHGenDes/
+	@dotnet build --configuration ${CONFIGURATION} --runtime ${RUNTIME} src/LHGenDes/
 
 clean:
 	@find . -type d -name 'bin' | xargs rm -rf
