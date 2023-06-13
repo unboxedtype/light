@@ -36,6 +36,7 @@ rm -f "$TESTNAME".address \
 ## type ActorState = {
 ##  seqNo: uint32;   (* Sending actors must consequently increase this counter *)
 ##  deployed: bool;  (* Is actor already live inside the blockchain?           *)
+##  salt: uint ;     (* This number is needed to randomize identifiers for similar actors *)
 ##  state: State     (* Application state of the actor                         *)
 ## }
 
