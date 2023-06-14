@@ -5,13 +5,13 @@ build:
 	@echo Building LHCompiler binary...
 	@echo ====================================
 	@echo
-	@dotnet build -c debug src/LHCompiler/
+	@dotnet build -c Debug src/LHCompiler/
 	@echo
 	@echo ====================================
 	@echo building LHGenDes binary...
 	@echo ====================================
 	@echo
-	@dotnet build -c debug src/LHGenDes/
+	@dotnet build -c Debug src/LHGenDes/
 
 clean:
 	@find . -type d -name 'bin' | xargs rm -rf
