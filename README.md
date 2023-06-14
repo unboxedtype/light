@@ -260,13 +260,13 @@ Currently, Venom Dev-net has this cap turned off, so there are two options left:
 
 1. Build and install the following:
 
-   * tvm_linker from [here](https://github.com/unboxedtype/TVM-linker)
+   * `tvm_linker` from [here](https://github.com/unboxedtype/TVM-linker) (**NOTE**: it is our custom `tvm_linker`, not the one supplied by EverX!)
 
    * FIFT from [here](https://github.com/ton-blockchain/ton)
 
    * tonos-cli from [here](https://github.com/tonlabs/tonos-cli)
 
-   After installation, ensure that all commands are visible inside your PATH.
+   After installation, ensure that all commands are visible inside your `$PATH`.
 
 2. Install Microsoft Dot Net framework.
 
@@ -274,17 +274,18 @@ Currently, Venom Dev-net has this cap turned off, so there are two options left:
 
    Ensure that ```dotnet fsi``` command is working.
 
-3. Build the Light compiler.
-   From the Light source root directory, execute:
+3. Build the Light compiler.   
 
    ```shell
+   $ git clone https://github.com/unboxedtype/light
+   $ cd light
    $ make build
    ```
 
 4. Put the directory `<light>/scripts/` into the `PATH`
 
    ```shell
-   $ export PATH=$PATH:<light>/scripts/
+   $ export PATH=$PATH:$(pwd)/scripts/
    ```
 
    Check that the command `genActorMessage.fsx` and `serializeExpression.fsx` are visible.
@@ -293,13 +294,13 @@ Currently, Venom Dev-net has this cap turned off, so there are two options left:
 
    * Put the directory `<light>/src/LHCompiler/bin/net6.0/` into the `PATH`
      ```shell
-     $ export PATH=$PATH:<light>/src/LHCompiler/bin/net6.0/
+     $ export PATH=$PATH:$(pwd)/src/LHCompiler/bin/net6.0/
      ```
 
    * OR Make a symbolic link to `LHCompiler` binary:
 
      ```shell
-     $ sudo ln -s <light>/src/LHCompiler/bin/Debug/net6.0/LHCompiler /usr/bin/LHCompiler
+     $ sudo ln -s $(pwd)/src/LHCompiler/bin/Debug/net6.0/LHCompiler /usr/bin/LHCompiler
      ```
 
    Ensure that the command `LHCompiler` works afterwards.
