@@ -197,5 +197,5 @@ builder_begin  // b
       stateinit_data
       builder_ref_append
 builder_end dup cell_to_bytes
-"Sample1.tvc" file_write_bytes
+"sample1.tvc" file_write_bytes
 ."0:" cell_hash val_print_hex_ws
