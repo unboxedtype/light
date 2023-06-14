@@ -1,0 +1,39 @@
+(* This is an example of a full-blown contract with persistent state *)
+
+contract sample1
+
+(* This type defines a shape of the actor's persistent state *)
+type State = {
+  counter: int;
+  sum: int
+}
+
+(* This type defines kind of messages that the actor is able to
+   receive. In this example, actor receives just a single number *)
+type ActorMessage = {
+    n: int
+}
+
+let sum a b =
+    a + b
+;;
+
+let add_more (x: int) (st:State) =
+   let sum' = sum st.counter x in
+   let counter' = x in
+   { counter = counter'; sum = sum' }
+;;
+
+(* This will move into prelude library one day, but
+   for now we need to define it here, explicitly. *)
+let accept () =
+  assembly "ACCEPT" :> unit ;
+  ()
+;;
+
+let main (msg:ActorMessage) (st:State) =
+  let inc n = n + 1
+  in
+    accept () ;
+    add_more (inc msg.n) st
+;;

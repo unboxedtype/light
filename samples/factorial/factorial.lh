@@ -1,0 +1,11 @@
+(* Recursive factorial function *)
+
+contract factorial
+
+let rec factorial n =
+  if (n > 1) then n * factorial (n - 1) else 1
+;;
+
+let main =
+   factorial 10  (* =3628800 *)
+;;

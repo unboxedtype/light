@@ -1,6 +1,6 @@
 #!/bin/bash
 
-TESTNAME=Sample1  # actor file without extension
+TESTNAME=sample3  # actor file without extension
 SALT=$((RANDOM))
 
 check_command() {
@@ -46,7 +46,7 @@ rm -f "$TESTNAME".address \
 ## and deployed to false.
 echo "Compiling..."
 
-LHCompiler --input ./"$TESTNAME.lh" "{ seqNo = 1; deployed = false; salt = $SALT; state = { counter = 10; sum = 0 } }"
+LHCompiler --input ./"$TESTNAME.lh" "{ seqNo = 1; deployed = false; salt = $SALT; state = { res = 1; func = fun x -> x + 1 } }"
 if [[ $? -ne 0 ]]; then
    echo "Compilation errors.. Exiting"
    exit 1
@@ -80,7 +80,7 @@ if [[ $? -ne 0 ]]; then
 fi
 
 echo "Generating message 1"
-MSG1='{ seqNo = 11; actorMsg = { n = 100 } }'
+MSG1='{ seqNo = 2; actorMsg = { func = fun (x:int) -> x * x } }'
 genActorMessage.fsx ./"$TESTNAME".lh "$(cat $TESTNAME.address)" "$MSG1"
 if [[ $? -ne 0 ]]; then
     echo "Generating message 1 failed"
@@ -102,7 +102,7 @@ if [[ $? -ne 0 ]]; then
 fi
 
 echo "Generating message 2"
-MSG2='{ seqNo = 12; actorMsg = { n = 200 } }'
+MSG2='{ seqNo = 3; actorMsg = { func = fun (x:int) -> x + 200 } }'
 genActorMessage.fsx ./"$TESTNAME".lh "$(cat $TESTNAME.address)" "$MSG2"
 if [[ $? -ne 0 ]]; then
     echo "Generating message 2 failed"

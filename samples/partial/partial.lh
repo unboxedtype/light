@@ -1,0 +1,23 @@
+(* This program demonstrates partial a function application *)
+
+contract partial
+
+(* The function sum3 takes three arguments, but with partial application
+   we can construct new functions where only some of the arguments
+   applied, while other arguments will come later. *)
+let sum3 x y z =
+   x + y + z ;;
+
+(* Taking sum of two numbers is the same as taking
+   sum of three numbers, where one of them is zero. We leverage the
+   already defined sum3 for that. *)
+let sum2 x y =
+   sum3 0 x y ;;   
+
+let one = 1  ;;      (* just a constant, not a function *)
+
+let two () = 2  ;;   (* function with zero args *)
+
+let main =
+   sum2 one (two ())  (* =3 *)
+;;

@@ -1,0 +1,5 @@
+(* Minimal correct program *)
+
+contract minimal
+
+let main = 0 ;;

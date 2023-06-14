@@ -90,7 +90,7 @@
   builder_end
   cell_to_slice
   1 cursor_fetch_str_rem // s 8 -> s' wc_num
-  (number) drop
+  integer_from_str // s wc_str -> s wc
   swap // s wc -> wc s
   // skip separator ':' character
   8 cursor_skip_bits  // wc s 8 -> wc s'  ,
@@ -99,6 +99,6 @@
   drop          // ... slice bits
   8 /           // ... slice bytes
   cursor_fetch_str // wc s 256 -> wc acc_id_num
-  "0x" swap str_concat // append 0x to tell the parser it is hex  
-  (number) drop // integer_from_str // wc acc_id_num -> wc add_id
+  "0x" swap str_concat // append 0x to tell the parser it is hex
+  integer_from_str // wc acc_id_num -> wc add_id
 } : address_parse_text

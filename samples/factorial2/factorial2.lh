@@ -1,0 +1,11 @@
+(* Tail-recursive factorial function *)
+
+contract factorial2
+
+let rec factorial2 n res =
+  if (n > 1) then factorial2 (n - 1) (n * res) else res
+;;
+
+let main =
+   factorial2 10 1  (* =3628800 *)
+;;

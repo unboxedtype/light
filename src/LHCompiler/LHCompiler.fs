@@ -457,7 +457,7 @@ let compile (source:string) (withInit:bool) (debug:bool) : string =
 
 // compile Lighthouse source at filePath and output the result (FIFT)
 // into the same filePath, but with ".fif" extension
-let compileFile (debug:bool) (filePath:string) (dataExpr:string) =
+let compileFile (debug:bool) (prodAsm:bool) (withInit:bool) (filePath:string) (dataExpr:string) =
     let generateDataBocFromExpr dataExpr =
         let args = "-c \"dotnet fsi $(which serializeExpression.fsx) " + filePath +
                    " ActorState \'" + dataExpr + "\'\""
@@ -479,8 +479,7 @@ let compileFile (debug:bool) (filePath:string) (dataExpr:string) =
     let writeFile (filePath: string) (content: string) =
         File.WriteAllText(filePath, content)
     let fileContent = readFile filePath
-    let code = LHMachine.asmAsCell (compile fileContent true debug)
-    generateDataBocFromExpr dataExpr |> ignore   (* side effect: data.boc is created *)
+    let code = LHMachine.asmAsCell (compile fileContent withInit debug)
     let dataBoc = " \"data.boc\" file>B B>boc "
     let nameGenStateInitScript = (onlyName filePath) + ".fif"
     let nameGenStateInitTVC = (onlyName filePath) + ".tvc"
@@ -491,6 +490,8 @@ let compileFile (debug:bool) (filePath:string) (dataExpr:string) =
        (TVM.genStateInit nameGenStateInitTVC code dataBoc)
     TVM.dumpFiftScript nameGenMessageWithStateInitScript
        (TVM.genMessageWithStateInit (onlyName filePath) nameMsgWithStateInitBOC code dataBoc)
+    if (not prodAsm) then
+        generateDataBocFromExpr dataExpr |> ignore   (* side effect: data.boc is created *)
 
 // Compiles expression into FIFT-assembly evaluating the
 // given expression. Needed to generate init-state and messages

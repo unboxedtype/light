@@ -1,0 +1,18 @@
+"Asm.fif" include
+ <{ 
+ <{ s0 PUSH
+2 INDEX
+<{ s0 PUSH
+0 INDEX
+s1 PUSH
+1 INDEX
+MUL }> PUSHCONT <{ 0 INT }> PUSHCONT IFELSE }> PUSHCONT
+10 INT
+25 INT
+TRUE
+3 TUPLE
+s1 PUSH
+1 -1 SETCONTARGS
+ 0 1 CALLXARGS
+NIP 
+ }>s runvmcode .s

@@ -1,0 +1,47 @@
+"Asm.fif" include
+ <{ 
+ 
+ <{
+   <{
+     DEPTH
+     -2 ADDCONST
+     TUPLEVAR
+     s2 PUSH
+     s2 PUSH
+     DUP
+     2 -1 SETCONTARGS
+     s0 s2 XCHG
+     DROP
+     s1 s2 XCHG
+     15 EXPLODE
+     ROLLX
+     DEPTH
+     DEC
+     TRUE
+     CALLXVARARGS
+   }> PUSHCONT
+   DUP                // arg fix fix
+   2 -1 SETCONTARGS   // fix'[arg fix]
+ }> PUSHCONT
+ 2 SETGLOB
+NULL
+1 0 BLKPUSH
+<{ s0 PUSH
+1 INT
+GREATER
+<{ s0 PUSH
+s1 PUSH
+1 INT
+SUB
+s3 PUSH
+1 -1 SETCONTARGS
+ 0 1 CALLXARGS
+MUL }> PUSHCONT <{ 1 INT }> PUSHCONT IFELSE }> PUSHCONT
+1 -1 SETCONTARGS
+ 2 GETGLOB 1 -1 CALLXARGS 
+10 INT
+s1 PUSH
+1 -1 SETCONTARGS
+ 0 1 CALLXARGS
+NIP 
+ }>s runvmcode .s

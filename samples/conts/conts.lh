@@ -1,0 +1,17 @@
+(* This sample demonstrates the abilities of continuations,
+   i.e. functions with "memory" *)
+contract conts
+
+let x = 777 ;;
+
+(* this function constructs another function that
+   adds n to the supplied argument *)
+let cont n =
+   let func x = x + n in
+   func  (* func now 'remembers' the n *)
+;;
+
+let f1 = cont 10 ;;  (* fun x -> x + 10 *)
+let f2 = cont 5 ;;   (* fun x -> x + 5  *)
+
+let main = f1 (f2 5) ;;  (* =20 *)

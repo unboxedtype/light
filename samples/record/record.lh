@@ -1,0 +1,17 @@
+(* Record data type with a function *)
+
+contract record
+
+type Data =
+  { first:int; second:int; b:bool }
+
+let process (d:Data) =
+  if d.b then
+    d.first * d.second
+  else
+    0
+;;
+
+let main =
+  process ({ first = 10; second = 25; b = true })
+;;
