@@ -262,9 +262,9 @@ Currently, Venom Dev-net has this cap turned off, so there are two options left:
 
    * `tvm_linker` from [here](https://github.com/unboxedtype/TVM-linker) (**NOTE**: it is our custom `tvm_linker`, not the one supplied by EverX!)
 
-   * FIFT from [here](https://github.com/ton-blockchain/ton)
+   * `fift` from [here](https://github.com/ton-blockchain/ton)
 
-   * tonos-cli from [here](https://github.com/tonlabs/tonos-cli)
+   * `tonos-cli` from [here](https://github.com/tonlabs/tonos-cli)
 
    After installation, ensure that all commands are visible inside your `$PATH`.
 
