@@ -2,8 +2,6 @@
    i.e. functions with "memory" *)
 contract conts
 
-let x = 777 ;;
-
 (* this function constructs another function that
    adds n to the supplied argument *)
 let cont n =
