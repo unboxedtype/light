@@ -251,8 +251,8 @@ Light compiler rely on STCONT/LDCONT instructions. Both instructions present in 
 however, its availability for smart-contracts is regulated by the network capability CapStContNewFormat.
 
 Currently, Venom Dev-net has this cap turned off, so there are two options left:
-1. Run actors locally (not that fun)
-2. Run actors in FLD network: the FLD administrator kindly enabled this capability specifically
+1. Run actors locally using ```tvm_linker test``` (not that fun, but still a viable option)
+2. Run actors in FLD network: the FLD network administrator kindly enabled this capability specifically
    for Light programmers.
 
 
