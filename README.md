@@ -268,9 +268,9 @@ Currently, Venom Dev-net has this cap turned off, so there are two options left:
 
    After installation, ensure that all commands are visible inside your `$PATH`.
 
-**2.** Install Microsoft Dot Net framework.
+**2.** Install Microsoft .NET framework.
 
-   Don't worry, it is not that hard nowadays. See [here](https://learn.microsoft.com/en-us/dotnet/core/install/linux) for instruction on how to do that for your Linux distro.
+   See [here](https://learn.microsoft.com/en-us/dotnet/core/install/linux) for instruction on how to do that for your Linux distro.
 
    Ensure that ```dotnet fsi``` command is working.
 
