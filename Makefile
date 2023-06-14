@@ -1,8 +1,17 @@
 all: run test
 
 build:
-	dotnet build src/LHCompiler/
-	dotnet build src/LHGenDes/
+	@echo ====================================
+	@echo Building LHCompiler binary...
+	@echo ====================================
+	@echo
+	@dotnet build -c debug src/LHCompiler/
+	@echo
+	@echo ====================================
+	@echo building LHGenDes binary...
+	@echo ====================================
+	@echo
+	@dotnet build -c debug src/LHGenDes/
 
 clean:
 	@find . -type d -name 'bin' | xargs rm -rf
