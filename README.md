@@ -258,7 +258,7 @@ Currently, Venom Dev-net has this cap turned off, so there are two options left:
 
 ## Installation
 
-1. Build and install the following:
+**1.** Build and install the following:
 
    * `tvm_linker` from [here](https://github.com/unboxedtype/TVM-linker) (**NOTE**: it is our custom `tvm_linker`, not the one supplied by EverX!)
 
@@ -268,13 +268,13 @@ Currently, Venom Dev-net has this cap turned off, so there are two options left:
 
    After installation, ensure that all commands are visible inside your `$PATH`.
 
-2. Install Microsoft Dot Net framework.
+**2.** Install Microsoft Dot Net framework.
 
    Don't worry, it is not that hard nowadays. See [here](https://learn.microsoft.com/en-us/dotnet/core/install/linux) for instruction on how to do that for your Linux distro.
 
    Ensure that ```dotnet fsi``` command is working.
 
-3. Build the Light compiler.   
+**3.** Build the Light compiler.   
 
    ```shell
    $ git clone https://github.com/unboxedtype/light
@@ -282,7 +282,7 @@ Currently, Venom Dev-net has this cap turned off, so there are two options left:
    $ make build
    ```
 
-4. Put the directory `<light>/scripts/` into the `PATH`
+**4.** Put the directory `<light>/scripts/` into the `PATH`
 
    ```shell
    $ export PATH=$PATH:$(pwd)/scripts/
@@ -290,7 +290,7 @@ Currently, Venom Dev-net has this cap turned off, so there are two options left:
 
    Check that the command `genActorMessage.fsx` and `serializeExpression.fsx` are visible.
 
-5. Make the LHCompiler binary visible. For that, do one of the following:
+**5.** Make the LHCompiler binary visible. For that, do one of the following:
 
    * Put the directory `<light>/src/LHCompiler/bin/net6.0/` into the `PATH`
      ```shell
@@ -305,7 +305,7 @@ Currently, Venom Dev-net has this cap turned off, so there are two options left:
 
    Ensure that the command `LHCompiler` works afterwards.
 
-6. Go to `<light>/samples/Sample<N>` directory. There you will find `test.sh` script. Run it and do what it asks for. Inside the scripts, you can find all the necessary commands to deploy and interact with Light actors!
+**6.** Go to `<light>/samples/Sample<N>` directory. There you will find `test.sh` script. Run it and do what it asks for. Inside the scripts, you can find all the necessary commands to deploy and interact with Light actors!
 
 # Community
 
