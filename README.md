@@ -241,7 +241,7 @@ at  the moment.   Currently,  we  implemented:
  * Deploy scripts that let you prepare .BOC files to deploy actors
    in the blockchain
  * Message scripts that let you prepare .BOC with messages
- * Prepared samples in [samples](https://github.com/unboxedtype/lighthouse/tree/messageProc/samples) folder.
+ * Prepared samples in [samples](https://github.com/unboxedtype/light/tree/main/samples) folder.
 
 # Manual
 
