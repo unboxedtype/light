@@ -74,12 +74,14 @@ We highlight the following features of the Light language:
   ```OCaml
   (* Attach functions to messages as if it is an ordinary data. *)
   (* Later, the receiver will be able to execute the function   *)
-  type Message of (n:uint) * (func: uint -> uint)
+  type Message =
+    Message of (n:uint) * (func: uint -> uint)
 
   (* Recursive factorial function *)
   let rec fac n =
       if (n > 1) then n * fac (n - 1)
       else 1
+  ;;
 
   let sum a b = a + b ;;        (* sum of two numbers, just for example *)
   let sum5 = sum 5 ;;           (* partial function application *)
@@ -108,15 +110,15 @@ We highlight the following features of the Light language:
   | Deposit (NonFungibleTokens n) ->
     if n < 100 then
       let sender = ctx.msg.src in
-      sender ! DepositFeedback (SendExtraTokens (100 - n))
+      sender ! DepositFeedback (SendExtraTokens (100 - n)) ;
       receive
       | Deposit (NonFungibleTokens p) when ctx.msg.src = sender  ->
          assert (n + p > 100) ;
          depositTokens ctx.msg.src (n + p)
       after 100 ->
-         failWith #"extra deposit request failed"
+         failwith #"extra deposit request failed"
   after 100 ->
-    failWith #"amount is too small"
+    failwith #"amount is too small"
   end
   ```
 
@@ -274,7 +276,7 @@ Currently, Venom Dev-net has this cap turned off, so there are two options left:
 
    Ensure that ```dotnet fsi``` command is working.
 
-**3.** Build the Light compiler.   
+**3.** Build the Light compiler.
 
    ```shell
    $ git clone https://github.com/unboxedtype/light
