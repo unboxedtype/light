@@ -1,13 +1,13 @@
 #!/usr/bin/env -S dotnet fsi
 
-#r "../src/LHCompiler/bin/Debug/net6.0/FsLexYacc.Runtime.dll"
-#r "../src/FiftExecutor/bin/Debug/net6.0/FiftExecutor.dll" ;;
-#r "../src/LHCompiler/bin/Debug/net6.0/LHTypes.dll" ;;
-#r "../src/LHCompiler/bin/Debug/net6.0/Parser.dll" ;;
-#r "../src/LHCompiler/bin/Debug/net6.0/LHExpr.dll" ;;
-#r "../src/LHCompiler/bin/Debug/net6.0/TVM.dll" ;;
-#r "../src/LHCompiler/bin/Debug/net6.0/LHMachine.dll" ;;
-#r "../src/LHCompiler/bin/Debug/net6.0/LHCompiler.dll" ;;
+#r "FsLexYacc.Runtime.dll"
+#r "FiftExecutor.dll" ;;
+#r "LHTypes.dll" ;;
+#r "Parser.dll" ;;
+#r "LHExpr.dll" ;;
+#r "TVM.dll" ;;
+#r "LHMachine.dll" ;;
+#r "LHCompiler.dll" ;;
 open FSharp.Text.Lexing ;;
 open LHTypes ;;
 open Parser ;;

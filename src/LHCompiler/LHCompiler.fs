@@ -459,7 +459,7 @@ let compile (source:string) (withInit:bool) (debug:bool) : string =
 // into the same filePath, but with ".fif" extension
 let compileFile (debug:bool) (prodAsm:bool) (withInit:bool) (filePath:string) (dataExpr:string) =
     let generateDataBocFromExpr dataExpr =
-        let args = "-c \"dotnet fsi $(which serializeExpression.fsx) " + filePath +
+        let args = "-c \"dotnet fsi serializeExpression.fsx " + filePath +
                    " ActorState \'" + dataExpr + "\'\""
         printfn "args = %A" args
         let res = FiftExecutor.executeShellCommand "/bin/bash" args

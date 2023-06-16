@@ -6,6 +6,14 @@
     <OutputType>Exe</OutputType>
   </PropertyGroup>
 
+  <Target Name="ScriptsCopy" AfterTargets="Build">
+    <Message Text="Copying script files into output directory..." Importance="High" />
+    <Copy SourceFiles="$(ProjectDir)..\..\scripts\genActorMessage.fsx;
+                       $(ProjectDir)..\..\scripts\serializeExpression.fsx;
+                       $(ProjectDir)..\..\scripts\extractData.sh"
+          DestinationFolder="$(TargetDir)/" ContinueOnError="false"/>
+  </Target>  
+
   <ItemGroup>
     <Compile Include="ActorInit.fs" />
     <Compile Include="LHCompiler.fs" />
