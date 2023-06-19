@@ -1,3 +1,5 @@
+CWD := $(shell pwd)
+
 all: run test
 
 build:
@@ -5,20 +7,31 @@ build:
 	@echo Building LHCompiler binary...
 	@echo ====================================
 	@echo
-	@dotnet build -c Debug src/LHCompiler/
+	@dotnet build -c Debug src/LHCompiler/ -o ./bin/LHCompiler/
 	@echo
 	@echo ====================================
 	@echo building LHGenDes binary...
 	@echo ====================================
 	@echo
-	@dotnet build -c Debug src/LHGenDes/
+	@dotnet build -c Debug src/LHGenDes/ -o ./bin/LHGenDes/
+
+install:
+	@echo =================================================
+	@echo Creating a symbolic link to Light compiler binary
+	@echo =================================================
+	ln -fs "$(CWD)/bin/LHCompiler/LHCompiler" ~/.local/bin/lc
+	ln -fs "$(CWD)/bin/LHCompiler/LHCompiler" ~/.local/bin/LHCompiler
+	ln -fs "$(CWD)/bin/LHCompiler/genActorMessage.fsx" ~/.local/bin/genActorMessage.fsx
+	ln -fs "$(CWD)/bin/LHCompiler/serializeExpression.fsx" ~/.local/bin/serializeExpression.fsx
+	@echo
+	@echo Done. Execute 'lc' or 'LHCompiler' to run Light compiler.
+	@echo
+	@echo
 
 clean:
 	@find . -type d -name 'bin' | xargs rm -rf
 	@find . -type d -name 'obj' | xargs rm -rf
 
-## /m:1 switch is a workaround not to
-## let dotnet break the tty
 test: test_tvm test_lhm test_parser test_ti test_comp
 
 test_parser:

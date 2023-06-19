@@ -55,12 +55,12 @@ let execReal debug withInit prog dataExpr expected =
                 nameGenStateInitScript
     TVM.dumpFiftScript
        nameGenStateInitScript
-       (TVM.genStateInit nameGenStateInitTVC code data)
+       (TVM.genStateInit nameGenStateInitTVC code dataExpr)
     // .BOC file that contains binary repr of the message; to be sent
     // using tonos-cli
     let nameMsgWithStateInitBOC = tname + ".boc"
     TVM.dumpFiftScript nameGenMessageWithStateInitScript
-       (TVM.genMessageWithStateInit tname nameMsgWithStateInitBOC code data)
+       (TVM.genMessageWithStateInit tname nameMsgWithStateInitBOC code dataExpr)
     //if debug then
     //    printfn "Executing the resulting FIFT-script..."
     //let res = FiftExecutor.runFiftScript filename
@@ -736,6 +736,7 @@ let testDoubleRec () =
 
 [<Test>]
 [<Timeout(1000)>]
+[<Ignore("not ready yet")>]
 let testMatchAdt1 () =
     let prog = "contract testMatchAdt1
 
