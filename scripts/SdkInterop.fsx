@@ -76,21 +76,23 @@ let executeCode (client:EverClient) asmCode =
     let mutable stateInitSrc = new StateInitSource.StateInit () ;
     stateInitSrc.Code <- codeB64
     stateInitSrc.Data <- dataB64    
-    let (acc, id) = encodeAccount client stateInitSrc (new System.Numerics.BigInteger (1000000000))
+    let (acc, id) =
+        encodeAccount client stateInitSrc (new System.Numerics.BigInteger (1000000000))
     let msg = encodeExtMsg client ("0:" + id) EmptyCellB64 
     printfn "account boc: %s" acc
     printfn "account id: %s" id
     printfn "message: %s" msg
     let mutable parsOfRunExecutor = new ParamsOfRunExecutor () ;
-    parsOfRunExecutor.Message <- msg ;
     let mutable accExec = new AccountForExecutor.Account () ;
     accExec.Boc <- acc ;
     accExec.UnlimitedBalance <- false ;
     parsOfRunExecutor.Account <- accExec ;
+    parsOfRunExecutor.Message <- msg ;
+    parsOfRunExecutor.ReturnUpdatedAccount <- true ;
     let resRE =
         Async.AwaitTask (client.Tvm.RunExecutor (parsOfRunExecutor))
         |> Async.RunSynchronously
-    printfn "%A" resRE.Account 
+    printfn "updated account boc: %s" resRE.Account 
 ;;
 
 let contractCode =
