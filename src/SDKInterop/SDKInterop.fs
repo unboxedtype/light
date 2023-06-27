@@ -11,6 +11,9 @@ open System.Runtime.InteropServices
 
 let EmptyCellB64 = "te6ccgEBAQEAAgAAAA=="
 let [<Literal>] DllPath = "libever_assembler.so"
+let DefaultGasVolume = 1_000_000_000
+let DefaultWorkchainId = "0:"
+
 [<DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)>]
 extern IntPtr compile_code_to_b64(IntPtr code)
 
@@ -72,11 +75,8 @@ let executeCode (client:EverClient) asmCode : string =
     stateInitSrc.Code <- codeB64
     stateInitSrc.Data <- dataB64
     let (acc, id) =
-        encodeAccount client stateInitSrc (new System.Numerics.BigInteger (1000000000))
-    let msg = encodeExtMsg client ("0:" + id) EmptyCellB64
-    printfn "account boc: %s" acc
-    printfn "account id: %s" id
-    printfn "message: %s" msg
+        encodeAccount client stateInitSrc (new System.Numerics.BigInteger (DefaultGasVolume))
+    let msg = encodeExtMsg client (DefaultWorkchainId + id) EmptyCellB64
     let mutable parsOfRunExecutor = new ParamsOfRunExecutor () ;
     let mutable accExec = new AccountForExecutor.Account () ;
     accExec.Boc <- acc ;
