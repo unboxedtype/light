@@ -62,7 +62,7 @@ We highlight the following features of the Light language:
   | Some of (n:T)
   ```
 
-* *Functions as First-Class Objects*
+* **Functions as First-Class Objects**
 
   The  really distinguishing  feature  of the  Light  language is  its
   ability  to  send,  receive,  store,  extend  and  shrink  arbitrary
