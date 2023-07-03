@@ -28,7 +28,7 @@ let executeMsgConstrCode () =
         ()
 
 let extractMsgBoc tvcPath =
-    // now we need to extract data from msg_constr.boc. That
+    // now we need to extract data from msg_constr.tvc. That
     // will be our message object serialized into .boc.
     FiftExecutor.executeShellCommand "extractData.sh" (tvcPath + " msg.boc")
 

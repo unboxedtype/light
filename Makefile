@@ -1,4 +1,6 @@
 CWD := $(shell pwd)
+INSTALLDIR := "/usr/bin/"
+
 
 all: run test
 
@@ -16,16 +18,24 @@ build:
 	@dotnet build -c Debug src/LHGenDes/ -o ./bin/LHGenDes/
 
 install:
-	@echo =================================================
-	@echo Creating a symbolic link to Light compiler binary
-	@echo =================================================
-	ln -fs "$(CWD)/bin/LHCompiler/LHCompiler" ~/.local/bin/lc
-	ln -fs "$(CWD)/bin/LHCompiler/LHCompiler" ~/.local/bin/LHCompiler
-	ln -fs "$(CWD)/bin/LHCompiler/genActorMessage.fsx" ~/.local/bin/genActorMessage.fsx
-	ln -fs "$(CWD)/bin/LHCompiler/serializeExpression.fsx" ~/.local/bin/serializeExpression.fsx
+	@echo ======================================================
+	@echo Creating a symbolic link to Light compiler executables
+	@echo ======================================================
+	sudo ln -fs "$(CWD)/bin/LHCompiler/light" $(INSTALLDIR)/light
+	sudo ln -fs "$(CWD)/bin/LHCompiler/lightMessage.fsx" $(INSTALLDIR)/lightMessage.fsx
+	sudo ln -fs "$(CWD)/bin/LHCompiler/lightExpr.fsx" $(INSTALLDIR)/lightExpr.fsx
 	@echo
-	@echo Done. Execute 'lc' or 'LHCompiler' to run Light compiler.
+	@echo Done. Execute 'light' to run Light compiler.
 	@echo
+	@echo
+
+uninstall:
+	@echo =====================================================
+	@echo Removing symbolic links to Light compiler executables
+	@echo =====================================================
+	sudo rm -f $(INSTALLDIR)/light
+	sudo rm -f $(INSTALLDIR)/lightMessage.fsx
+	sudo rm -f $(INSTALLDIR)/lightExpr.fsx
 	@echo
 
 clean:

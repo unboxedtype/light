@@ -89,6 +89,29 @@ let executeCode (client:EverClient) asmCode : string =
         |> Async.RunSynchronously
     resRE.Account
 
+// Executes the given asm in an empty contract. Returns
+// the data cell of the account, as a string in base64.
+let executeTVMCode (client:EverClient) asmCode : Nullable<Text.Json.JsonElement> =
+    let codeB64 = compileCode asmCode
+    let dataB64 = EmptyCellB64
+    let msgBodyB64 = EmptyCellB64
+    let stateInitB64 = encodeStateInit client codeB64 dataB64
+    let mutable stateInitSrc = new StateInitSource.StateInit () ;
+    stateInitSrc.Code <- codeB64 ;
+    stateInitSrc.Data <- dataB64 ;
+    let (acc, id) =
+        encodeAccount client stateInitSrc (new System.Numerics.BigInteger (DefaultGasVolume))
+    let mutable paramsRunGet = new ParamsOfRunGet () ;
+    paramsRunGet.Account <- acc ;
+    paramsRunGet.FunctionName <- "";
+//  paramsRunGet.TupleListAsArray <- true;
+    let mutable execOptions = new ExecutionOptions () ;
+    paramsRunGet.ExecutionOptions <- execOptions ;
+    let resRE =
+        Async.AwaitTask (client.Tvm.RunGet (paramsRunGet))
+        |> Async.RunSynchronously
+    resRE.Output
+
 let parseAccount (client:EverClient) bocB64 =
     let mutable pars = new ParamsOfParse () ;
     pars.Boc <- bocB64 ;

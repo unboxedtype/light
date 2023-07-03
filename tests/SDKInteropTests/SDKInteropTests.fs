@@ -10,7 +10,7 @@ let Setup () =
     ()
 
 [<Test>]
-let Test1 () =
+let test1 () =
     let contractCode =
         "ACCEPT
          PUSHCONT { PUSHINT 1 }
@@ -23,3 +23,19 @@ let Test1 () =
     let json = (jsonNull.GetValueOrDefault())
     let dataBocB64 = (json.GetProperty("data"))
     Assert.Pass()
+
+[<Test>]
+let test2 () =
+    let contractCode =
+        "DROP
+         PUSHINT 100"
+    let res = executeTVMCode client contractCode
+    Assert.AreEqual ( "100", res.Value.[0].ToString() )
+
+[<Test>]
+let test3 () =
+    let contractCode =
+        "DROP
+         PUSHCONT { PUSHINT 200 }"
+    let res = executeTVMCode client contractCode
+    Assert.AreEqual ( "Continuation", res.Value.[0].GetProperty("type").ToString() )
