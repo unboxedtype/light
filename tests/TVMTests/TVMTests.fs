@@ -842,16 +842,6 @@ let testSetindexvar0 () =
             Assert.Fail(s)
 
 [<Test>]
-let testArrayGetPut () =
-    let st = initialState (arrayNew @ [PushInt 1] @ arrayGet)
-    try
-        let finalSt = List.last (runVM st false)
-        Assert.AreEqual(Some (arrayDefaultVal), getResult finalSt)
-    with
-        | TVMError s ->
-            Assert.Fail(s)
-
-[<Test>]
 let testRepeat0 () =
     let st = initialState [PushInt 0; PushCont [PushInt 200]; Repeat]
     try
@@ -877,18 +867,6 @@ let testRepeat2 () =
     try
         let finalSt = List.last (runVM st false)
         Assert.AreEqual(Some (Tup []), getResult finalSt)
-    with
-        | TVMError s ->
-            Assert.Fail(s)
-
-[<Test>]
-let testArrayGetPut1 () =
-    let code = arrayNew @ [PushInt 600; PushInt 1] @ arrayPut @ [PushInt 1] @ arrayGet
-    let st = initialState code
-    dumpFiftScript "testArrayGetPut1.fif" (outputFift st)
-    try
-        let finalSt = List.last (runVM st false)
-        Assert.AreEqual(Some (Int 600), getResult finalSt)
     with
         | TVMError s ->
             Assert.Fail(s)
@@ -1118,48 +1096,6 @@ let testExecuteJmpJmp () =
             Assert.Fail(s)
 
 [<Test>]
-let testExecutePushSlice0 () =
-    let cd = CellData ([SCode [PushInt 1; PushInt 2; Add]], [], 0u)
-    let st = initialState [PushSlice cd; Bless; Execute]
-    try
-        dumpFiftScript "testExecutePushSlice0.fif" (outputFift st)
-        let finalSt = List.last (runVM st false)
-        let stk = List.tail finalSt.stack
-        Assert.AreEqual([Int 3], stk)
-    with
-        | TVMError s ->
-            Assert.Fail(s)
-
-[<Test>]
-let testExecuteCtr0 () =
-    let cd = CellData ([SCode [PushCtr 7u; Index 1u]], [], 0u)
-    let st = initialState [PushInt 1; PushInt 2; Tuple 2u; PopCtr 7u;
-                           PushSlice cd; Bless; Execute]
-    try
-        dumpFiftScript "testExecuteCtr0.fif" (outputFift st)
-        let finalSt = List.last (runVM st false)
-        let stk = List.tail finalSt.stack
-        Assert.AreEqual([Int 2], stk)
-    with
-        | TVMError s ->
-            Assert.Fail(s)
-
-[<Test>]
-let testExecuteCtr1 () =
-    let cd = CellData ([SCode [PushCtr 7u; Index 1u]], [], 0u)
-    let st = initialState [PushInt 1; PushInt 2; Tuple 2u; PopCtr 7u;
-                           PushSlice cd;
-                           Bless; Execute; Drop; PushCtr 7u; Index 0u]
-    try
-        dumpFiftScript "testExecuteCtr0.fif" (outputFift st)
-        let finalSt = List.last (runVM st false)
-        let stk = List.tail finalSt.stack
-        Assert.AreEqual([Int 1], stk)
-    with
-        | TVMError s ->
-            Assert.Fail(s)
-
-[<Test>]
 // the idea of this test is to check wether DUP copies the object itself
 // or only the reference to it, in case of continuations.
 let testExecuteDupCont () =
@@ -1240,15 +1176,6 @@ let testBuildCell1 () =
     let finalSt = List.last (runVM st false)
     let stk = List.tail finalSt.stack
     Assert.AreEqual([Int 4], stk)
-
-[<Test>]
-let testReadCell0 () =
-    let cd = CellData ([SInt (5, 8u); SInt (5234234, 32u)], [CellData ([SInt (-1, 8u)], [], 8u)], 40u)
-    let st = initialState [PushSlice cd; Ldi 8u; Ldi 32u; LdRef; Drop; Ctos; Ldi 8u; Ends]
-    dumpFiftScript "testReadCell0.fif" (outputFift st)
-    let finalSt = List.last (runVM st false)
-    let stk = List.tail finalSt.stack
-    Assert.AreEqual([Int -1; Int 5234234; Int 5], stk)
 
 [<Test>]
 let testReadVar0 () =

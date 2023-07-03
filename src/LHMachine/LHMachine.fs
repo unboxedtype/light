@@ -27,8 +27,8 @@ type Instruction =
     | True
     | False
     | Not
-    | GetGlob of name: Name
-    | SetGlob of name: Name
+    | GetGlob of i: int
+    | SetGlob of i: int
     | Integer of v: int
     | String of s:string
     | Tuple of n:int
@@ -58,9 +58,9 @@ type Instruction =
     | Throw of n:int
     | Alloc of n:int  // Allocate n Null values on the stack
     | Update of i:int // Update the i-th stack value with the one residing on the top
-    | Asm of s:string // Assembler inline code
+    | Asm of s:list<TVM.Instruction> // Assembler inline code
     | FailWith of n:int // raise exception with the given number
-and LHCode = Instruction list
+and LHCode = list<Instruction>
 
 // index + variable name
 // [(1,"x"); (2,"y"); ...]
@@ -128,8 +128,7 @@ and compileAST (ast:ASTNode) (env:Environment) (ty:NodeTypeMap) : LHCode =
             | Some n ->
                 [Push n]
             | None ->
-                // a number for the global is assigned in the prelude code
-                [GetGlob v]
+                failwithf "Unbound variable %s" v
     | ENum n ->
         [Integer n]
     | EStr s ->
@@ -276,115 +275,133 @@ and compileLetDefs defs env ty  =
         | (name, expr) :: defs' ->
             (compileAST expr env ty ) @ compileLetDefs defs' (argOffset 1 env) ty
 
-let rec instrToTVM (i:Instruction) : string =
+// Compile the given Light Machine instruction into one or several
+// TVM instructions.
+let rec lightInstructionToTVM (i:Instruction) : list<TVM.Instruction> =
     match i with
-    | Null -> "NULL"
-    | False -> "FALSE"
-    | True -> "TRUE"
-    | Alloc n -> String.concat " " [for i in [1..n] -> "NULL"]
-    | Apply n ->  sprintf "%i -1 SETCONTARGS" n  // inject n consecutive stack values into cont
-    | Update i -> "s0 s" + (string i) + " XCHG DROP"
-    | GetGlob n -> n + " GETGLOB"
-    | SetGlob n -> n + " SETGLOB"
-    | Integer n -> (string n) + " INT"
-    | String s -> failwith "Strings are not implemented"
-    | Tuple n -> if n <= 15 then sprintf "%i TUPLE" n
+    | Null -> [TVM.PushNull]
+    | False -> [TVM.False]
+    | True -> [TVM.True]
+    | Alloc n -> [for i in [1..n] -> TVM.PushNull]
+    //sprintf "%i -1 SETCONTARGS" n  // inject n consecutive stack values into cont
+    | Apply n -> [TVM.SetContArgs (n, -1)]
+    | Update i -> [TVM.Xchg i; TVM.Drop]  //"s0 s" + (string i) + " XCHG DROP"
+    | GetGlob n -> [TVM.GetGlob n]  // n + " GETGLOB"
+    | SetGlob n -> [TVM.SetGlob n]  // n + " SETGLOB"
+    | Integer n -> [TVM.PushInt n]  // (string n) + " INT"
+    | String s ->
+        failwith "Strings are not implemented"
+    | Tuple n -> if n <= 15 then [TVM.Tuple n] // sprintf "%i TUPLE" n
                  else failwithf "Tuples has to be more than 1 and less than 16 elements"
-    | Push n -> if (n <= 15) then sprintf "s%i PUSH" n
-                else sprintf "x{56%02x} s," n
-    | Pop n -> if (n <= 15) then sprintf "s%i POP" n
-               else sprintf "x{57%02x} s," n
-    | Slide n -> String.concat " " [for i in [1..n] -> "NIP"]
-    | Function b -> "<{ " + (compileToTVM b) + " }> PUSHCONT"
-    | Fixpoint -> " 2 GETGLOB 1 -1 CALLXARGS "
-    | Execute -> " 0 1 CALLXARGS" // execute a saturated function
-    | Not -> "INC NEGATE"   // 0 --> -1, -1 --> 0
-    | Add -> "ADD"
-    | Sub -> "SUB"
-    | Mul -> "MUL"
-    | Equal -> "EQUAL"
-    | Greater -> "GREATER"
-    | Less -> "LESS"
-    | GreaterEq -> "GEQ"
-    | LessEq -> "LEQ"
+    | Push n -> [TVM.Push n] // if n > 15 then use this string "x{56%02x} s,"
+    | Pop n -> [TVM.Pop n]   // "x{57%02x} s," n
+    | Slide n -> [for i in [1..n] -> TVM.Nip]
+    | Function b ->
+        let body =
+            b
+            |> List.map lightInstructionToTVM
+            |> List.concat
+        [TVM.PushCont body]
+    | Fixpoint -> [TVM.GetGlob 2; TVM.CallXArgs (1,-1)]
+    | Execute -> [TVM.CallXArgs (0, 1)]
+    | Not -> [TVM.Inc; TVM.Negate]
+    | Add -> [TVM.Add]
+    | Sub -> [TVM.Sub]
+    | Mul -> [TVM.Mul]
+    | Equal -> [TVM.Equal]
+    | Greater -> [TVM.Greater]
+    | Less -> [TVM.Less]
+    | GreaterEq -> [TVM.Geq]
+    | LessEq -> [TVM.Leq]
     | IfElse (t, f) ->
-        "<{ " + (compileToTVM t) + " }> PUSHCONT " +
-        "<{ " + (compileToTVM f) + " }> PUSHCONT IFELSE"
-    | DumpStk -> "DUMPSTK"
-    | Throw n -> (string n) + " THROW"
+        let tbody =
+            t
+            |> List.map lightInstructionToTVM
+            |> List.concat
+        let fbody =
+            f
+            |> List.map lightInstructionToTVM
+            |> List.concat
+        [TVM.PushCont tbody; TVM.PushCont fbody; TVM.IfElse]
+    | DumpStk -> [TVM.DumpStk]
+    | Throw n -> [TVM.Throw n]  // (string n) + " THROW"
     | Pack (tag, arity) ->
-        (string arity) + " TUPLE" +
-        " " + (string tag) + " INT" +
-        " SWAP" +
-        " 2 TUPLE"
+        [TVM.Tuple arity;
+         TVM.PushInt tag;
+         TVM.Swap;
+         TVM.Tuple 2]
     | Split n when n < 16 ->
-        " SECOND" + " " +
-        (string n) + " UNTUPLE"
+        [TVM.Second;
+         TVM.Untuple n]
     | Select n when n < 16 ->
-        (string n) + " INDEX"
+        [TVM.Index n]
     | Record n when n < 16 ->
-        (string n) + " TUPLE"
+        [TVM.Tuple n]
     | UpdateRec n when n < 16 ->
-        " SWAP" +      // x t
-        " 2 UNTUPLE" + // x tag args
-        " ROT " +      // tag args x
-        (string n) + " SETINDEX" +
-        " 2 TUPLE"
+        [TVM.Swap;
+         TVM.Untuple 2;
+         TVM.Rot;
+         TVM.SetIndex n;
+         TVM.Tuple 2]
     | Casejump l ->
         let rec compileCasejumpSelector l =
             match l with
             | [] ->
-                "10 THROW " // proper case selector not found (shall not happen)
+                [TVM.Throw 10]  // "10 THROW " // proper case selector not found (shall not happen)
             | (tag, code) :: t ->
-                "DUP " + (string tag) + " INT EQUAL " +
-                "<{ DROP " + compileToTVM code + " }> PUSHCONT IFJMP " +
-                compileCasejumpSelector t
-        let l' = compileCasejumpSelector l
-        "DUP 0 INDEX <{ " + l' + " }> " + " PUSHCONT EXECUTE"
+                let caseBody =
+                    code
+                    |> List.map lightInstructionToTVM
+                    |> List.concat
+                [TVM.Dup;
+                 TVM.PushInt tag;
+                 TVM.Equal;
+                 TVM.PushCont ([TVM.Drop] @ caseBody);
+                 TVM.IfJmp] @ compileCasejumpSelector t
+        let l' = compileCasejumpSelector l in
+        [TVM.Dup;
+         TVM.Index 0;
+         TVM.PushCont l';
+         TVM.Execute]
     | BulkDup (from, n) ->
-        sprintf "%i %i BLKPUSH" n from
+        [TVM.BlkPush (n, from)]
     | Asm s ->
         s
     | FailWith n ->
-        " " + (string n) + " THROW"
+        [TVM.Throw n]
     | _ ->
         failwith (sprintf "unimplemented instruction %A"  i)
-and compileToTVM (code:LHCode) : string =
+and compileToTVM (code:LHCode) : list<TVM.Instruction> =
     code
-    |> List.map instrToTVM
-    |> String.concat "\n"
-and mkFiftCell (body: string) : string =
-    "<{ " + body + "}>c "
+    |> List.map lightInstructionToTVM
+    |> List.concat
 
 // Fixpoint operator.
 // Takes function (T -> T) as input and produces
 // another function (T -> T).
 // Please keep in mind that there is a hard limit of 15 arguments for
 // recursive functions.
-let fixpointImpl = "
- <{
-   <{
-     DEPTH
-     -2 ADDCONST
-     TUPLEVAR
-     s2 PUSH
-     s2 PUSH
-     DUP
-     2 -1 SETCONTARGS
-     s0 s2 XCHG
-     DROP
-     s1 s2 XCHG
-     15 EXPLODE
-     ROLLX
-     DEPTH
-     DEC
-     TRUE
-     CALLXVARARGS
-   }> PUSHCONT
-   DUP                // arg fix fix
-   2 -1 SETCONTARGS   // fix'[arg fix]
- }> PUSHCONT
- 2 SETGLOB"  // fixpoint operator is stored in global 2
+let fixpointTVMImpl : list<TVM.Instruction> =
+    [TVM.PushCont [
+      TVM.PushCont [TVM.Depth;
+                    TVM.AddConst -2;
+                    TVM.TupleVar;
+                    TVM.Push 2;
+                    TVM.Push 2;
+                    TVM.Dup;
+                    TVM.SetContArgs (2, -1);
+                    TVM.Xchg 2;
+                    TVM.Drop;
+                    TVM.Xchg2 (1, 2);
+                    TVM.Explode 15;
+                    TVM.RollX;
+                    TVM.Depth;
+                    TVM.Dec;
+                    TVM.True;
+                    TVM.CallXVarArgs];
+     TVM.Dup;
+     TVM.SetContArgs (2, -1)];
+    TVM.SetGlob 2]
 
 let tprintf str debug =
     fun x ->
@@ -394,20 +411,22 @@ let tprintf str debug =
 let rec hasInstruction (i:Instruction) (ir:LHCode) : bool =
     match ir with
     | [] -> false
-    | Fixpoint :: t -> true
     | (Function c) :: t -> (hasInstruction i c) || hasInstruction i t
     | (IfElse (tr, fl)) :: t -> hasInstruction i tr || hasInstruction i fl || hasInstruction i t
     | (Casejump cases) :: t ->
         (cases
         |> List.map (fun (_, c) -> hasInstruction i c)
         |> List.contains true) || hasInstruction i t
+    | i1 :: t when i1 = i -> true
     | _ :: t -> hasInstruction i t
 
-// Translation of AST into TVM assembly language written in FIFT syntax.
-let compileIRIntoAssembly debug ir : string =
-    let hasFixpoint = ir |> hasInstruction Fixpoint
-    (if hasFixpoint then [fixpointImpl] else []) @
-    List.singleton   (compileToTVM ir)
+// Translation of AST into TVM assembly language.
+let compileIRIntoAssembly debug isFift (ir:LHCode) : string =
+    let hasFixpoint =
+        ir
+        |> hasInstruction Fixpoint
+    (if hasFixpoint then fixpointTVMImpl else []) @ compileToTVM ir
+    |> List.map (TVM.instructionToAsmString isFift)
     |> String.concat "\n"
 
 let asmAsSlice (c:string) =

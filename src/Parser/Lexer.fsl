@@ -31,6 +31,10 @@ rule read =
   | newline  { newline lexbuf; read lexbuf }
   | '('      { LPAREN }
   | ')'      { RPAREN }
+  | "INC"    { TVMI (TVM.Inc) }
+  | "DEC"    { TVMI (TVM.Dec) }
+  // TODO!! 
+  | "TUPLE [1-9]+"  { printf "**** %s" (lexeme lexbuf); TVMI (TVM.Tuple 5) } 
   | "true"   { TRUE }
   | "false"  { FALSE }
   | "not"    { NOT }

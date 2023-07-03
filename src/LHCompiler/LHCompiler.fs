@@ -345,7 +345,7 @@ let compileModule modName decls withInit debug : string =
                     "actorArgs", [], false,
                     mkAST (
                       ETypeCast (
-                         mkAST (EAsm "5 TUPLE"),
+                         mkAST (EAsm [TVM.Tuple 5]),
                          UserType ("ActorInitArgs", None)
                       )
                     )
@@ -423,7 +423,7 @@ let compileModule modName decls withInit debug : string =
           debug
 
     let ir = LHMachine.compileAST ast1 [] newMap
-    let assembly = LHMachine.compileIRIntoAssembly debug ir
+    let assembly = LHMachine.compileIRIntoAssembly debug true ir
 
     if (debug) then
         use file1 = System.IO.File.CreateText(modName + ".sexpr")
