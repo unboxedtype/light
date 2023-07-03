@@ -39,3 +39,11 @@ let test3 () =
          PUSHCONT { PUSHINT 200 }"
     let res = executeTVMCode client contractCode
     Assert.AreEqual ( "Continuation", res.Value.[0].GetProperty("type").ToString() )
+
+[<Test>]
+let test4 () =
+    let contractCode =
+        "DROP NEWC ENDC"
+    let res = executeTVMCode client contractCode
+    Assert.AreEqual ( "Cell", res.Value.[0].GetProperty("type").ToString() )
+    Assert.AreEqual ( EmptyCellB64, res.Value.[0].GetProperty("value").ToString() )
