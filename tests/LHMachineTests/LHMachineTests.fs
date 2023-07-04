@@ -24,7 +24,7 @@ let execAndCheckPrint (expr:ASTNode) expected ifPrint =
     LHMachine.compileAST expr [] (Map [])
     |> LHMachine.compileIRIntoAssembly ifPrint true
     |> asmAsRunVM
-    |> TVM.dumpFiftScript filename
+    |> TVM.dumpString filename
     let res = FiftExecutor.runFiftScript filename
     Assert.AreEqual (expected, res)
 

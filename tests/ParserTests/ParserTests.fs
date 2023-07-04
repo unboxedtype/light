@@ -264,10 +264,26 @@ let testLetBindings1 () =
 
 [<Test>]
 let testTypecast1 () =
+    // This nonsense assembly is only for parser testing.
     let res = parse "contract test
-                     let number = assembly \"100 INT\" :> int  ;;
+                     let number = assembly {
+                        INC;
+                        DEC;
+                        NEWC;
+                        ENDC;
+                        PUSHCTR c4;
+                        PUSHINT 100;
+                        PUSHINT 200;
+                        NULL;
+                        PUSHNULL;
+                        TUPLE 2;
+                        ACCEPT
+                      } :> int  ;;
                     "
-    let expected = STypeCast (SAsm ("100 INT"), LHTypes.Int 256)
+    let expected = STypeCast (SAsm [TVM.Inc; TVM.Dec; TVM.Newc; TVM.Endc;
+                                    TVM.PushCtr 4; TVM.PushInt 100; TVM.PushInt 200;
+                                    TVM.PushNull; TVM.PushNull; TVM.Tuple 2; TVM.Accept],
+                              LHTypes.Int 256)
     Assert.AreEqual( expected, getLetAst res.Value 0 );
 
 [<Test>]

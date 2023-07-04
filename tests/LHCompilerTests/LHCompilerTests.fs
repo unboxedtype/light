@@ -19,7 +19,7 @@ let execAndCheckPrint (prog:string) addInit debug expected =
     if debug then
         printfn "Dumping compiled program into file..."
     let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".fif"
-    TVM.dumpFiftScript filename code
+    TVM.dumpString filename code
     if debug then
         printfn "Executing the resulting FIFT-script..."
     let res = FiftExecutor.runFiftScript filename
@@ -28,15 +28,21 @@ let execAndCheckPrint (prog:string) addInit debug expected =
 let execAndCheck prog expected =
     execAndCheckPrint prog false false expected
 
-let execIR irProg expected =
+let execIRext irProg expected isFift =
     let code = LHMachine.asmAsRunVM ((LHMachine.fixpointTVMImpl
                                       @ LHMachine.compileToTVM irProg)
-                                     |> List.map (TVM.instructionToAsmString true)
+                                     |> List.map (TVM.instructionToAsmString isFift)
                                      |> String.concat "\n")
-    let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".fif"
-    TVM.dumpFiftScript filename code
+    let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".asm"
+    TVM.dumpString filename code
     let res = FiftExecutor.runFiftScript filename
     Assert.AreEqual (expected, res)
+
+let execIR irProg expected =
+    execIRext irProg expected true
+
+let execIRever irProg expected =
+    execIRext irProg expected false
 
 
 let execReal debug withInit prog dataExpr expected =
@@ -55,13 +61,13 @@ let execReal debug withInit prog dataExpr expected =
     if debug then
         printfn "Dumping compiled program into file %A"
                 nameGenStateInitScript
-    TVM.dumpFiftScript
+    TVM.dumpString
        nameGenStateInitScript
        (TVM.genStateInit nameGenStateInitTVC code dataExpr)
     // .BOC file that contains binary repr of the message; to be sent
     // using tonos-cli
     let nameMsgWithStateInitBOC = tname + ".boc"
-    TVM.dumpFiftScript nameGenMessageWithStateInitScript
+    TVM.dumpString nameGenMessageWithStateInitScript
        (TVM.genMessageWithStateInit tname nameMsgWithStateInitBOC code dataExpr)
     //if debug then
     //    printfn "Executing the resulting FIFT-script..."

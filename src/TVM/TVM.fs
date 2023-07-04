@@ -1697,7 +1697,7 @@ let outputFiftCodeWithC4 code c4 =
 let outputFiftWithC4 (st:TVMState) (c4:string) : string =
     outputFiftCodeWithC4 (codeToAssembly true st.code) c4
 
-let dumpFiftScript (fname:string) (str:string)  =
+let dumpString (fname:string) (str:string)  =
     use f = System.IO.File.CreateText(fname)
     f.WriteLine(str)
 

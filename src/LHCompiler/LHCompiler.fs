@@ -485,10 +485,10 @@ let compileFile (debug:bool) (prodAsm:bool) (withInit:bool) (filePath:string) (d
     let nameGenStateInitTVC = (onlyName filePath) + ".tvc"
     let nameGenMessageWithStateInitScript = (onlyName filePath) + "_deploy.fif"
     let nameMsgWithStateInitBOC = (onlyName filePath) + ".boc"
-    TVM.dumpFiftScript
+    TVM.dumpString
        nameGenStateInitScript
        (TVM.genStateInit nameGenStateInitTVC code dataBoc)
-    TVM.dumpFiftScript nameGenMessageWithStateInitScript
+    TVM.dumpString nameGenMessageWithStateInitScript
        (TVM.genMessageWithStateInit (onlyName filePath) nameMsgWithStateInitBOC code dataBoc)
     if (not prodAsm) then
         generateDataBocFromExpr dataExpr |> ignore   (* side effect: data.boc is created *)
