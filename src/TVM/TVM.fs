@@ -1550,11 +1550,17 @@ let rec instructionToAsmString (isFift:bool) (i:Instruction) : string =
     | CallXVarArgs -> "CALLXVARARGS"
     | IfElse -> "IFELSE"
     | Explode n -> sprintf "%i EXPLODE" n
-    | CallXArgs (i, j) -> sprintf "%i %i CALLXARGS" i j
+    | CallXArgs (i, j) ->
+        if isFift then sprintf "%i %i CALLXARGS" i j
+        else sprintf "CALLXARGS %i, %i" i j
     | Nip -> "NIP"
     | AddConst n -> sprintf "%i ADDCONST" n
-    | SetContArgs (i, j) -> sprintf "%i %i SETCONTARGS" i j
-    | BlkPush (i, j) -> sprintf "%i %i BLKPUSH" i j
+    | SetContArgs (i, j) ->
+        if isFift then sprintf "%i %i SETCONTARGS" i j
+        else sprintf "SETCONTARGS %i, %i" i j
+    | BlkPush (i, j) ->
+        if isFift then sprintf "%i %i BLKPUSH" i j
+        else sprintf "BLKPUSH %i, %i" i j
     | Ctos -> "CTOS"
     | SRefs -> "SREFS"
     | StRef -> "STREF"
