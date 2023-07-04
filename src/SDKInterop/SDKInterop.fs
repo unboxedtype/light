@@ -8,6 +8,8 @@ open EverscaleNet.Models
 open Microsoft.Extensions.Options
 open System
 open System.Runtime.InteropServices
+open System.Text.Json
+open System.Collections.Immutable
 
 let EmptyCellB64 = "te6ccgEBAQEAAgAAAA=="
 let [<Literal>] DllPath = "libever_assembler.so"
@@ -34,6 +36,7 @@ let encodeStateInit (client:EverClient) codeB64 dataB64 =
 let compileCode asmCode =
     let ptr = compile_code_to_b64 (Marshal.StringToCoTaskMemAnsi(asmCode))
     Marshal.PtrToStringAnsi(ptr)
+    // TODO!! The memory must be de-allocated after use.
 
 // Determine destination address of the contract represented by
 // the given state init. The address is given without workchain
@@ -91,7 +94,7 @@ let executeCode (client:EverClient) asmCode : string =
 
 // Executes the given asm in an empty contract. Returns
 // the data cell of the account, as a string in base64.
-let executeTVMCode (client:EverClient) asmCode : Nullable<Text.Json.JsonElement> =
+let executeTVMCode (client:EverClient) asmCode : list<Text.Json.JsonElement> =
     let codeB64 = compileCode asmCode
     let dataB64 = EmptyCellB64
     let msgBodyB64 = EmptyCellB64
@@ -110,7 +113,14 @@ let executeTVMCode (client:EverClient) asmCode : Nullable<Text.Json.JsonElement>
     let resRE =
         Async.AwaitTask (client.Tvm.RunGet (paramsRunGet))
         |> Async.RunSynchronously
-    resRE.Output
+    if resRE.Output.HasValue then
+        let mutable iter = resRE.Output.Value.EnumerateArray()
+        let mutable res = []
+        iter.MoveNext ();
+        while iter.MoveNext () do
+           res <- iter.Current :: res
+        List.rev res
+    else []
 
 let parseAccount (client:EverClient) bocB64 =
     let mutable pars = new ParamsOfParse () ;

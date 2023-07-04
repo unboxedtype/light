@@ -42,7 +42,10 @@ clean:
 	@find . -type d -name 'bin' | xargs rm -rf
 	@find . -type d -name 'obj' | xargs rm -rf
 
-test: test_tvm test_lhm test_parser test_ti test_comp
+test: test_tvm test_lhm test_parser test_ti test_comp test_interop
+
+test_interop:
+	@dotnet test ./tests/SDKInteropTests/
 
 test_parser:
 	@dotnet test ./tests/ParserTests

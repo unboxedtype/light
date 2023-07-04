@@ -27,23 +27,21 @@ let test1 () =
 [<Test>]
 let test2 () =
     let contractCode =
-        "DROP
-         PUSHINT 100"
+        "PUSHINT 100"
     let res = executeTVMCode client contractCode
-    Assert.AreEqual ( "100", res.Value.[0].ToString() )
+    Assert.AreEqual ( "100", res.[0].ToString() )
 
 [<Test>]
 let test3 () =
     let contractCode =
-        "DROP
-         PUSHCONT { PUSHINT 200 }"
+        "PUSHCONT { PUSHINT 200 }"
     let res = executeTVMCode client contractCode
-    Assert.AreEqual ( "Continuation", res.Value.[0].GetProperty("type").ToString() )
+    Assert.AreEqual ( "Continuation", res.[0].GetProperty("type").ToString() )
 
 [<Test>]
 let test4 () =
     let contractCode =
-        "DROP NEWC ENDC"
+        "NEWC ENDC"
     let res = executeTVMCode client contractCode
-    Assert.AreEqual ( "Cell", res.Value.[0].GetProperty("type").ToString() )
-    Assert.AreEqual ( EmptyCellB64, res.Value.[0].GetProperty("value").ToString() )
+    Assert.AreEqual ( "Cell", res.[0].GetProperty("type").ToString() )
+    Assert.AreEqual ( EmptyCellB64, res.[0].GetProperty("value").ToString() )
