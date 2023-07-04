@@ -51,7 +51,7 @@ let execAndCheckPrint addInit debug isFift (prog:string) expected =
     Assert.AreEqual (expected, res)
 
 let execAndCheck prog expected =
-    execAndCheckPrint false false true prog expected
+    execAndCheckPrint false false false prog expected
 
 let execReal debug withInit prog dataExpr expected =
     if debug then
@@ -186,7 +186,7 @@ let testTuple0 () =
     let prog = "contract Simple
                    let main = ()
                    ;;"
-    execAndCheck prog "(null)"
+    execAndCheck prog ""
 
 [<Test>]
 let testRecord5 () =
@@ -199,7 +199,7 @@ let testRecord5 () =
                     let func2 f x = (f x) + 1000 in
                     { bal = func2 func11 stdef + 1000 } in
                   main2 func1 stateDefault ;;"
-    execAndCheck prog "[ 2000 ]"
+    execAndCheck prog "[\"2000\"]"
 
 [<Test>]
 let testBoolCheck () =
@@ -310,7 +310,7 @@ let testTuple2 () =
                   let func x y () = { a = x; b = y } in
                       func 5 6 ()
                    ;;"
-    execAndCheck prog "[ 5 6 ]"
+    execAndCheck prog "[\"5\",\"6\"]"
 
 [<Test>]
 [<Timeout(1000)>]
@@ -330,7 +330,7 @@ let testTuple3 () =
                   else
                       actorStateWrite 1
                   ;;"
-    execAndCheck prog "(null)"
+    execAndCheck prog ""
 
 [<Test>]
 let testMkAdder () =
@@ -505,7 +505,7 @@ let testRecord3 () =
                      let st' = { bal = sumN 5 } in
                      { st = st' }
                    ;;"
-    execAndCheck prog "[ [ 15 ] ]"
+    execAndCheck prog "[[\"15\"]]"
 
 [<Test>]
 [<Ignore("messageReader needs to be inserted. Not there yet")>]
@@ -559,7 +559,7 @@ let testChain2 () =
                 let someFunc x =
                     x + 1; () ;;
                 let main = someFunc 100 ;;"
-    execAndCheck prog  "(null)"
+    execAndCheck prog  ""
 
 [<Test>]
 [<Timeout(1000)>]
@@ -567,7 +567,7 @@ let testChain3 () =
     let prog = "contract Simple
                 let someFunc x = x + 1; () ;;
                 let main = someFunc 100 ;;"
-    execAndCheck prog "(null)"
+    execAndCheck prog ""
 
 [<Test>]
 let testFib1 () =
@@ -721,7 +721,7 @@ let testTuple4 () =
                 let main =
                     (0,1,(2,true)) ;;
                 "
-    execAndCheck prog "[ 0 1 [ 2 -1 ] ]"
+    execAndCheck prog "[\"0\",\"1\",[\"2\",\"-1\"]]"
 
 [<Test>]
 [<Timeout(1000)>]
@@ -731,7 +731,7 @@ let testTuple5 () =
                 let main =
                     (0,1,2,fact 3) ;;
                 "
-    execAndCheck prog "[ 0 1 2 6 ]"
+    execAndCheck prog "[\"0\",\"1\",\"2\",\"6\"]"
 
 [<Test>]
 [<Timeout(1000)>]
@@ -787,7 +787,7 @@ let testCastInsideRecord () =
                 let main =
                     { data = 10 :> uint32 } ;;
                 "
-    execAndCheck prog "[ 10 ]"
+    execAndCheck prog "[\"10\"]"
 
 [<Test>]
 [<Timeout(1000)>]

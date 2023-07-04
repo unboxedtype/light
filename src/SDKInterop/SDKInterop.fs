@@ -114,12 +114,12 @@ let executeTVMCode (client:EverClient) asmCode : list<Text.Json.JsonElement> =
         Async.AwaitTask (client.Tvm.RunGet (paramsRunGet))
         |> Async.RunSynchronously
     if resRE.Output.HasValue then
+        printfn "json result: %s" (resRE.Output.Value.ToString ())
         let mutable iter = resRE.Output.Value.EnumerateArray()
         let mutable res = []
-        iter.MoveNext ();
         while iter.MoveNext () do
            res <- iter.Current :: res
-        List.rev res
+        res
     else []
 
 let parseAccount (client:EverClient) bocB64 =
