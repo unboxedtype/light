@@ -51,7 +51,7 @@ let main argv =
             0
         elif results.Contains Core then
             let path = results.GetResult Core
-            LHCompiler.compile (File.ReadAllText(path)) false debug
+            LHCompiler.compile (File.ReadAllText(path)) false debug true
             |> (fun s ->
                 use output = System.IO.File.CreateText(path + ".asm")
                 fprintf output "\"Asm.fif\" include\n <{ \n %s \n }>s runvmcode .s" s)

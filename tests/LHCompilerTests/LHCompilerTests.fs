@@ -11,24 +11,7 @@ let getLetAst (m:Module) (n:int) =
     m.Decls.[n].letBinding
     |> (function | (_, _, _, c) -> c)
 
-let execAndCheckPrint (prog:string) addInit debug expected =
-    if debug then
-        printfn "%A" prog |> ignore
-        printfn "Passing program to the compiler..."
-    let code = LHMachine.asmAsRunVM (compile prog addInit debug)
-    if debug then
-        printfn "Dumping compiled program into file..."
-    let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".asm"
-    TVM.dumpString filename code
-    if debug then
-        printfn "Executing the resulting FIFT-script..."
-    let res = FiftExecutor.runFiftScript filename
-    Assert.AreEqual (expected, res)
-
-let execAndCheck prog expected =
-    execAndCheckPrint prog false false expected
-
-let execIRext irProg expected isFift =
+let execIRext isFift irProg expected =
     let code = (LHMachine.fixpointTVMImpl
                 @ LHMachine.compileToTVM irProg)
                |> List.map (TVM.instructionToAsmString isFift)
@@ -45,17 +28,36 @@ let execIRext irProg expected isFift =
     Assert.AreEqual (expected, res)
 
 let execIR irProg expected =
-    execIRext irProg expected true
+    execIRext true irProg expected
 
 let execIRever irProg expected =
-    execIRext irProg expected false
+    execIRext false irProg expected 
 
+let execAndCheckPrint addInit debug isFift (prog:string) expected =
+    if debug then
+        printfn "%A" prog |> ignore
+        printfn "Passing program to the compiler..."
+    let code = compile prog addInit debug isFift
+    if debug then
+        printfn "Dumping compiled program into file..."
+    let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".asm"
+    let res = 
+       if isFift then
+           TVM.dumpString filename (LHMachine.asmAsRunVM code) ;
+           FiftExecutor.runFiftScript filename
+       else
+           TVM.dumpString filename code ;
+           (SDKInterop.executeTVMCode SDKInterop.client code).[0].ToString()
+    Assert.AreEqual (expected, res)
+
+let execAndCheck prog expected =
+    execAndCheckPrint false false true prog expected
 
 let execReal debug withInit prog dataExpr expected =
     if debug then
         printfn "%A" prog |> ignore
         printfn "Passing program to the compiler..."
-    let code = LHMachine.asmAsCell (compile prog withInit debug)
+    let code = LHMachine.asmAsCell (compile prog withInit debug true)
     let tname = NUnit.Framework.TestContext.CurrentContext.Test.Name
     // FIFT script that produces state init into .TVC file
     let nameGenStateInitScript = tname + ".fif"
@@ -80,10 +82,6 @@ let execReal debug withInit prog dataExpr expected =
     //let res = FiftExecutor.runFiftScript filename
     // Assert.AreEqual (expected, res)
     Assert.Pass ()
-
-
-//let execActorMain prog actorMainParams debug expected =
-//    execAndCheckPrintActorMain prog actorMainParams true debug expected
 
 [<SetUp>]
 let Setup () =
@@ -545,7 +543,7 @@ let testCurry2 () =
                     let sum x y = x + y in
                     let inc x = x + 1 in
                        f inc sum 10 20 ;;"
-    execAndCheckPrint prog false false "32"
+    execAndCheck prog "32"
 
 [<Test>]
 [<Timeout(1000)>]
@@ -849,7 +847,6 @@ let testIRtest5 () =
     let prog = [Integer 100; Integer 200; Add]
     execIRever prog  "300"
 
-(*
 [<Test>]
 [<Timeout(1000)>]
 let testIfBool3 () =
@@ -859,5 +856,4 @@ let testIfBool3 () =
                     if b then 1 else 2
                 ;;
                 "
-    execIRext prog1 "1" false
-*)
+    execAndCheckPrint false false false prog1 "1" 

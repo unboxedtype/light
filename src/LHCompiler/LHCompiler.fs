@@ -317,7 +317,7 @@ let makeReductions debug (ast:ASTNode) : ASTNode =
 
 exception CompilerError of string
 
-let compileModule modName decls withInit debug : string =
+let compileModule modName decls withInit debug isFift : string =
     if debug then
         printfn "Compiling actor %A" modName ;
     let typesFull = ParserModule.extractTypes debug decls
@@ -423,7 +423,7 @@ let compileModule modName decls withInit debug : string =
           debug
 
     let ir = LHMachine.compileAST ast1 [] newMap
-    let assembly = LHMachine.compileIRIntoAssembly debug true ir
+    let assembly = LHMachine.compileIRIntoAssembly debug isFift ir
 
     if (debug) then
         use file1 = System.IO.File.CreateText(modName + ".sexpr")
@@ -435,12 +435,11 @@ let compileModule modName decls withInit debug : string =
 
     assembly
 
-// The function compiles Lighthouse source code
-// into the FIFT source code.
+// The function compiles Light source code into the assembly code.
 // Arguments:
 //  - source = a string representing the source code
 //    of an actor.
-let compile (source:string) (withInit:bool) (debug:bool) : string =
+let compile (source:string) (withInit:bool) (debug:bool) (isFift:bool) : string =
     let prog = if withInit then (source + ActorInit.actorInitCode)
                else source
     let res = parse prog
@@ -451,12 +450,11 @@ let compile (source:string) (withInit:bool) (debug:bool) : string =
             fprintfn file1 "%A" prog
             use file2 = System.IO.File.CreateText(modName + ".parse")
             fprintfn file2 "%A" res
-        compileModule modName decls withInit debug
+        compileModule modName decls withInit debug isFift
     | _ ->
         failwith "Actor not found"
 
-// compile Lighthouse source at filePath and output the result (FIFT)
-// into the same filePath, but with ".fif" extension
+// compile Light source at filePath and output the assembly file
 let compileFile (debug:bool) (prodAsm:bool) (withInit:bool) (filePath:string) (dataExpr:string) =
     let generateDataBocFromExpr dataExpr =
         let args = "-c \"dotnet fsi serializeExpression.fsx " + filePath +
@@ -479,7 +477,7 @@ let compileFile (debug:bool) (prodAsm:bool) (withInit:bool) (filePath:string) (d
     let writeFile (filePath: string) (content: string) =
         File.WriteAllText(filePath, content)
     let fileContent = readFile filePath
-    let code = LHMachine.asmAsCell (compile fileContent withInit debug)
+    let code = LHMachine.asmAsCell (compile fileContent withInit debug true)
     let dataBoc = " \"data.boc\" file>B B>boc "
     let nameGenStateInitScript = (onlyName filePath) + ".fif"
     let nameGenStateInitTVC = (onlyName filePath) + ".tvc"
@@ -496,7 +494,7 @@ let compileFile (debug:bool) (prodAsm:bool) (withInit:bool) (filePath:string) (d
 // Compiles expression into FIFT-assembly evaluating the
 // given expression. Needed to generate init-state and messages
 // for actors.
-let compileExprOfType (types:list<Name*Type>) exprTypeName exprStr : string =
+let compileExprOfType (types:list<Name*Type>) exprTypeName exprStr isFift : string =
     let typeMap = Map.ofList types
     if Map.tryFind exprTypeName typeMap = None then
         failwithf "type %A not found" exprTypeName
@@ -512,5 +510,5 @@ let compileExprOfType (types:list<Name*Type>) exprTypeName exprStr : string =
     let getLetAst (m:ParserModule.Module) (n:int) = m.Decls.[n]
     let letBndMain = getLetAst res1.Value 0
     let fullTypeDecls = types |> List.map ParserModule.TypeDef
-    (compileModule "eval" (fullTypeDecls @ [letBndMain]) false false) +
+    (compileModule "eval" (fullTypeDecls @ [letBndMain]) false false isFift) +
       "\n" + writerCodeStr + "\n"

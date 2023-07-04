@@ -422,10 +422,8 @@ let rec hasInstruction (i:Instruction) (ir:LHCode) : bool =
 
 // Translation of AST into TVM assembly language.
 let compileIRIntoAssembly debug isFift (ir:LHCode) : string =
-    let hasFixpoint =
-        ir
-        |> hasInstruction Fixpoint
-    (if hasFixpoint then fixpointTVMImpl else []) @ compileToTVM ir
+    let hasFixpoint = ir |> hasInstruction Fixpoint
+    (if hasFixpoint then fixpointTVMImpl else []) @ (compileToTVM ir)
     |> List.map (TVM.instructionToAsmString isFift)
     |> String.concat "\n"
 
