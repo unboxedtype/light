@@ -70,16 +70,15 @@ let rec deserializeValueSlice ty t : list<TVM.Instruction> =
         [TVM.Ldi 2] // sprintf "2 LDI"
     | Record fields ->
         let n = List.length fields
-        List.map snd fields // [t1; t2; ...]
+        (List.map snd fields // [t1; t2; ...]
         |> List.map (deserializeValueSlice ty)  // [str; str; str]
-        // v1 v2 .. vn s --> s v1 v2 .. vn --> s (v1 .. vn)
-        // --> (v1 .. vn) s
-        |> (fun s -> s @ [TVM.RollRev n; TVM.Tuple n; TVM.Swap])  // sprintf " %i ROLLREV %i TUPLE SWAP " n n)
+        |> List.concat) 
+        @ [TVM.RollRev n; TVM.Tuple n; TVM.Swap]
     | Function (_, _) ->
         [TVM.LdRefRtos;
          TVM.LdCont;
          TVM.Ends;
-         TVM.Swap]         // "LDREFRTOS x{D766} s, ENDS SWAP"   // D766 = LDCONT
+         TVM.Swap]
     | UserType (n, Some t) ->
         deserializeValueSlice ty t
     | _ ->
@@ -104,37 +103,37 @@ let deserializeValueSimpl (ty:TypeList) (t:Type) : list<TVM.Instruction> =
             [TVM.Ldi 2]  // sprintf "2 LDI"
         | Record fields ->
             let n = List.length fields
-            List.map snd fields // [t1; t2; ...]
+            (List.map snd fields // [t1; t2; ...]
             |> List.map (deserializeValueInner ty)  // [str; str; str]
-            // v1 v2 .. vn s --> s v1 v2 .. vn --> s (v1 .. vn)
-            // --> (v1 .. vn) s
-            |> (fun s -> s @ [TVM.RollRev n; TVM.Tuple n; TVM.Swap])
+            |> List.concat)
+            @ [TVM.RollRev n; TVM.Tuple n; TVM.Swap]
         | Function (_, _) ->
             [TVM.LdRef; TVM.Nip; TVM.PushCont []; TVM.Swap]
         | UserType (n, Some t) ->
             deserializeValueInner ty t
         | _ ->
             failwithf "Parsing for type %A not implemented" t
-    [TVM.Ctos] @ [deserializeValueInner ty t] @ [TVM.Ends]
+    [TVM.Ctos] @ (deserializeValueInner ty t) @ [TVM.Ends]
 
 // v b -> b'
-let serializeValue (ty:TypeList) (t:Type) : string =
-    let rec serializeValueInner ty t : string =
+let serializeValue (ty:TypeList) (t:Type) : list<TVM.Instruction> =
+    let rec serializeValueInner ty t : list<TVM.Instruction> =
         match t with
         | Int n ->
-            sprintf "%i STI" n
+            [TVM.Sti n] // sprintf "%i STI" n
         | UInt n ->
-            sprintf "%i STU" n
+            [TVM.Stu n] // sprintf "%i STU" n
         | Bool ->
-            sprintf "2 STI"
+            [TVM.Sti 2] // sprintf "2 STI"
         | Record fields ->
             let n = List.length fields
-            " SWAP " +
-            (sprintf " %i UNTUPLE " n) +    // b [v1; v2; ... vn] --> b v1 v2 .. vn
-            (sprintf " %i 0 REVERSE " (n+1)) +    // vn ... v1 b
+            [TVM.Swap;
+             TVM.Untuple n;
+             TVM.Reverse (n+1, 0)] @
             (List.map snd fields // [t1; t2; ...]
-             |> List.map (serializeValueInner ty)  // [str; str; str]
-             |> String.concat " ") // ... -> b'
+             |> List.map (serializeValueInner ty)
+             |> List.concat)
+             // ... -> b'
         | UserType (n, Some t) ->
             serializeValueInner ty t
         | Function _ ->
@@ -143,10 +142,15 @@ let serializeValue (ty:TypeList) (t:Type) : string =
             // -> b c
             // -> c b
             // -> b''
-            "SWAP NEWC x{CF43} s, ENDC SWAP STREF"   // CF43 = STCONT
+            [TVM.Swap;
+             TVM.Newc;
+             TVM.StCont;
+             TVM.Endc;
+             TVM.Swap;
+             TVM.StRef]
         | _ ->
             failwith "not implemented"
-    "NEWC " + serializeValueInner ty t + " ENDC "
+    [TVM.Newc] @ (serializeValueInner ty t) @ [TVM.Endc]
 // substitute type name with the given definition def
 // in the type t
 let rec insertType (name:Name) (typDefs:ProgramTypes) (expr:Type) : Type =

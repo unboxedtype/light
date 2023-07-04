@@ -337,7 +337,7 @@ let compileModule modName decls withInit debug : string =
             let actorStateWriterCode =
                 LHTypes.serializeValue typesFull actorStateType
             let messageBodyReaderCode =
-                (LHTypes.deserializeValueSlice typesFull messageBodyType) + " ENDS "
+                (LHTypes.deserializeValueSlice typesFull messageBodyType) @ [TVM.Ends] // " ENDS "
             // pack 5 elements from the stack into a tuple, this will be an
             // ActorInitParams value.
             let aargsLet =
@@ -504,10 +504,13 @@ let compileExprOfType (types:list<Name*Type>) exprTypeName exprStr : string =
     // TODO! Check type of the expr
     let writerCode =
         LHTypes.serializeValue types exprT
+    let writerCodeStr =
+        writerCode
+        |> List.map (TVM.instructionToAsmString true)
+        |> String.concat "\n"
     let res1  = parse ("contract Test\nlet main = " + exprStr + " ;; ")
     let getLetAst (m:ParserModule.Module) (n:int) = m.Decls.[n]
     let letBndMain = getLetAst res1.Value 0
     let fullTypeDecls = types |> List.map ParserModule.TypeDef
     (compileModule "eval" (fullTypeDecls @ [letBndMain]) false false) +
-      "\n" + writerCode + "\n"
-
+      "\n" + writerCodeStr + "\n"

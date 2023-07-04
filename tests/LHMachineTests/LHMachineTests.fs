@@ -22,7 +22,7 @@ let execAndCheckPrint (expr:ASTNode) expected ifPrint =
         printfn "%A" (expr.toSExpr ())
     let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".fif"
     LHMachine.compileAST expr [] (Map [])
-    |> LHMachine.compileIRIntoAssembly ifPrint
+    |> LHMachine.compileIRIntoAssembly ifPrint true
     |> asmAsRunVM
     |> TVM.dumpFiftScript filename
     let res = FiftExecutor.runFiftScript filename

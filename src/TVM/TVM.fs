@@ -27,17 +27,21 @@ type Action =
     | Reserve
 
 type Instruction =
+    | LdRefRtos
+    | LdCont
+    | StCont
+    | CallXVarArgs
+    | CallXArgs of int * int
+    | SetContArgs of int * int
+    | Reverse of int * int
     | BlkPush of int * int
     | AddConst of int
     | Explode of int
     | RollX
-    | CallXVarArgs
     | Negate
     | Geq
     | Leq
-    | CallXArgs of int * int
     | Nip
-    | SetContArgs of int * int
     | False
     | True
     | LdRef
@@ -118,7 +122,7 @@ type Instruction =
     | Equal
     | Ret
     | SetNumArgs of n:int
-    | RollRev of n:uint
+    | RollRev of n:int
     | RollRevX
     | Roll of n:int
     | Repeat
@@ -1529,9 +1533,20 @@ let getResult st : Value option =
 let rec instructionToAsmString (isFift:bool) (i:Instruction) : string =
     let ifSwap (flag:bool) (str:string) =
         match (str.Split (" ") |> List.ofSeq) with
-        | a :: b :: [] -> if flag then b + a else a + b
+        | a :: b :: [] -> if flag then b + " " + a else a + " " + b
         | _ -> str
     match i with
+    | RollX -> "ROLLX"
+    | True -> "TRUE"
+    | False -> "FALSE"
+    | CallXVarArgs -> "CALLXVARARGS"
+    | IfElse -> "IFELSE"
+    | Explode n -> sprintf "%i EXPLODE" n
+    | CallXArgs (i, j) -> sprintf "%i %i CALLXARGS" i j
+    | Nip -> "NIP"
+    | AddConst n -> sprintf "%i ADDCONST" n
+    | SetContArgs (i, j) -> sprintf "%i %i SETCONTARGS" i j
+    | BlkPush (i, j) -> sprintf "%i %i BLKPUSH" i j
     | Ctos -> "CTOS"
     | SRefs -> "SREFS"
     | StRef -> "STREF"
