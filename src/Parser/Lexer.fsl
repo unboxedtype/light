@@ -33,8 +33,15 @@ rule read =
   | ')'      { RPAREN }
   | "INC"    { TVMI (TVM.Inc) }
   | "DEC"    { TVMI (TVM.Dec) }
+  | "NEWC"   { TVMI (TVM.Newc) }
+  | "ENDC"   { TVMI (TVM.Endc) }
+  | "POPCTR c4" { TVMI (TVM.PopCtr 4) }
+  | "PUSHCTR c4" { TVMI (TVM.PushCtr 4) }
+  | "ACCEPT" { TVMI (TVM.Accept) }
+  | "NULL"
+  | "PUSHNULL" { TVMI (TVM.PushNull) }
   // TODO!! 
-  | "TUPLE [1-9]+"  { printf "**** %s" (lexeme lexbuf); TVMI (TVM.Tuple 5) } 
+  // | "TUPLE [1-9]+"  { printf "**** %s" (lexeme lexbuf); TVMI (TVM.Tuple 5) } 
   | "true"   { TRUE }
   | "false"  { FALSE }
   | "not"    { NOT }

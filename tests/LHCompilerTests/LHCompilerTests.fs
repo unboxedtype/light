@@ -29,8 +29,10 @@ let execAndCheck prog expected =
     execAndCheckPrint prog false false expected
 
 let execIR irProg expected =
-    let code = LHMachine.asmAsRunVM (LHMachine.fixpointImpl + "\n\n" +
-                                      LHMachine.compileToTVM irProg)
+    let code = LHMachine.asmAsRunVM ((LHMachine.fixpointTVMImpl
+                                      @ LHMachine.compileToTVM irProg)
+                                     |> List.map (TVM.instructionToAsmString true)
+                                     |> String.concat "\n")
     let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".fif"
     TVM.dumpFiftScript filename code
     let res = FiftExecutor.runFiftScript filename
@@ -428,7 +430,7 @@ let testIRtest1 () =
 [<Timeout(1000)>]
 let testIRtest2 () =
     let prog = [Integer 100;
-                Function [Asm "DUMPSTK";
+                Function [Asm [TVM.DumpStk];
                           Integer 1; Sub; Push 0; Integer 0; Equal;
                           IfElse ([Integer 777], [Push 1; Apply 1; Execute ])];
                 Fixpoint; // 100 (fix f)
@@ -633,7 +635,7 @@ let testFunType4 () =
     let prog = "contract FunType4
                 type ActorState = { cont : VMCell -> State -> VMCell }
                 type State = { n : int }
-                let cell = assembly \"NEWC ENDC\" :> VMCell ;;
+                let cell = assembly { NEWC ; ENDC } :> VMCell ;;
                 let step (c:VMCell) (st:State) = cell ;;
                 let main =
                     { cont = step }; 0 ;;

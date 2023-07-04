@@ -142,7 +142,7 @@ funcArgs:
 
 asmInstructions:
    | TVMI { [$1] }
-   | TVMI DSCOLON asmInstructions { [$1] @ $3 }
+   | TVMI SEMICOLON asmInstructions { [$1] @ $3 }
 
 // ex.varEquation
 recordConstrVar:
@@ -262,9 +262,9 @@ expr:
          failwith "failwith requires integer value as parameter"
   }
 
-  | ASM asmInstructions
+  | ASM LBRACE asmInstructions RBRACE
   {
-     mkAST (EAsm $2)
+     mkAST (EAsm $3)
   }
 
   // | expr LARROW expr

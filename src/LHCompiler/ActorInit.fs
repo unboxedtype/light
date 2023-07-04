@@ -49,15 +49,15 @@ let messageReader (body:VMSlice) =
 ;;
 
 let putC4 (c4 : VMCell) =
-  assembly \"c4 POPCTR NULL\" :> unit
+  assembly { POPCTR c4; NULL } :> unit
 ;;
 
 let getC4 () =
-  assembly \"c4 PUSHCTR\" :> VMCell
+  assembly { PUSHCTR c4 } :> VMCell
 ;;
 
 let acceptActor () =
-  assembly \"ACCEPT\" :> unit ;;
+  assembly { ACCEPT } :> unit ;;
 
 (* actorStateReader and actorStateWriter functions are added
    by the compiler *)
