@@ -1,4 +1,4 @@
-(* This is an example of a full-blown contract with persistent state *)
+(* This is an example of a full-blown actor with persistent state *)
 
 contract sample1
 
@@ -27,7 +27,7 @@ let add_more (x: int) (st:State) =
 (* This will move into prelude library one day, but
    for now we need to define it here, explicitly. *)
 let accept () =
-  assembly "ACCEPT" :> unit ;
+  assembly { ACCEPT } :> unit ;
   ()
 ;;
 

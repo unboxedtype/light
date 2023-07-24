@@ -4,9 +4,8 @@ module LHTypesTests
 
 open NUnit.Framework
 open FSharp.Text.Lexing
-open ParserModule
-open Parser
 open type LHTypes.Type
+open TestsCommon
 
 let execAndCheck debug dataCell expected program =
     let fiftScript =

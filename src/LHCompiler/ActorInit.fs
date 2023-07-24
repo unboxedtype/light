@@ -57,7 +57,8 @@ let getC4 () =
 ;;
 
 let acceptActor () =
-  assembly { ACCEPT } :> unit ;;
+  assembly { ACCEPT } :> unit
+;;
 
 (* actorStateReader and actorStateWriter functions are added
    by the compiler *)

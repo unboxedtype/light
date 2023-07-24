@@ -4,84 +4,8 @@ module LHCompilerTests
 open NUnit.Framework
 open LHExpr
 open LHCompiler
-open ParserModule
 open type LHMachine.Instruction
-
-let getLetAst (m:Module) (n:int) =
-    m.Decls.[n].letBinding
-    |> (function | (_, _, _, c) -> c)
-
-let execIRext isFift irProg expected =
-    let code = (LHMachine.fixpointTVMImpl
-                @ LHMachine.compileToTVM irProg)
-               |> List.map (TVM.instructionToAsmString isFift)
-               |> String.concat "\n"
-    let res =
-        let filename =
-            NUnit.Framework.TestContext.CurrentContext.Test.Name + ".asm"
-        if isFift then
-            TVM.dumpString filename  (LHMachine.asmAsRunVM code) ;
-            FiftExecutor.runFiftScript filename
-        else
-            TVM.dumpString filename code ;
-            (SDKInterop.executeTVMCode SDKInterop.client code).[0].ToString()
-    Assert.AreEqual (expected, res)
-
-let execIR irProg expected =
-    execIRext true irProg expected
-
-let execIRever irProg expected =
-    execIRext false irProg expected 
-
-let execAndCheckPrint addInit debug isFift (prog:string) expected =
-    if debug then
-        printfn "%A" prog |> ignore
-        printfn "Passing program to the compiler..."
-    let code = compile prog addInit debug isFift
-    if debug then
-        printfn "Dumping compiled program into file..."
-    let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".asm"
-    let res = 
-       if isFift then
-           TVM.dumpString filename (LHMachine.asmAsRunVM code) ;
-           FiftExecutor.runFiftScript filename
-       else
-           TVM.dumpString filename code ;
-           (SDKInterop.executeTVMCode SDKInterop.client code).[0].ToString()
-    Assert.AreEqual (expected, res)
-
-let execAndCheck prog expected =
-    execAndCheckPrint false false false prog expected
-
-let execReal debug withInit prog dataExpr expected =
-    if debug then
-        printfn "%A" prog |> ignore
-        printfn "Passing program to the compiler..."
-    let code = LHMachine.asmAsCell (compile prog withInit debug true)
-    let tname = NUnit.Framework.TestContext.CurrentContext.Test.Name
-    // FIFT script that produces state init into .TVC file
-    let nameGenStateInitScript = tname + ".fif"
-    // Where to dump the TVC
-    let nameGenStateInitTVC = tname + ".tvc"
-    // FIFT script that produces message with state init attachd
-    let nameGenMessageWithStateInitScript = "genMsg" + tname + ".fif"
-
-    if debug then
-        printfn "Dumping compiled program into file %A"
-                nameGenStateInitScript
-    TVM.dumpString
-       nameGenStateInitScript
-       (TVM.genStateInit nameGenStateInitTVC code dataExpr)
-    // .BOC file that contains binary repr of the message; to be sent
-    // using tonos-cli
-    let nameMsgWithStateInitBOC = tname + ".boc"
-    TVM.dumpString nameGenMessageWithStateInitScript
-       (TVM.genMessageWithStateInit tname nameMsgWithStateInitBOC code dataExpr)
-    //if debug then
-    //    printfn "Executing the resulting FIFT-script..."
-    //let res = FiftExecutor.runFiftScript filename
-    // Assert.AreEqual (expected, res)
-    Assert.Pass ()
+open TestsCommon
 
 [<SetUp>]
 let Setup () =
@@ -287,9 +211,6 @@ let testLet0() =
                    let other x = x + 1 ;;
                    let main = other 10 ;;"
     execAndCheck prog "11"
-(**
-
-**)
 
 [<Test>]
 [<Timeout(1000)>]
@@ -845,7 +766,7 @@ let testTrivialActorInit () =
 [<Test>]
 let testIRtest5 () =
     let prog = [Integer 100; Integer 200; Add]
-    execIRever prog  "300"
+    execIR prog  "300"
 
 [<Test>]
 [<Timeout(1000)>]
@@ -856,4 +777,4 @@ let testIfBool3 () =
                     if b then 1 else 2
                 ;;
                 "
-    execAndCheckPrint false false false prog1 "1" 
+    execAndCheck prog1 "1" 

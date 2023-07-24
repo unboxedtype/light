@@ -38,10 +38,10 @@ let compileCode asmCode =
     Marshal.PtrToStringAnsi(ptr)
     // TODO!! The memory must be de-allocated after use.
 
-// Determine destination address of the contract represented by
-// the given state init. The address is given without workchain
-// prefix, in hex.
-let addrOfStateInit (client:EverClient) stateInitB64 =
+// Determine destination account id of the contract represented by
+// the given state init. To create an address, you have to add
+// chain id, like "0:"
+let accountIdOfStateInit (client:EverClient) stateInitB64 =
     let parsOfHash = new ParamsOfHash ()
     parsOfHash.Data <- stateInitB64 ;
     let res =
@@ -51,8 +51,17 @@ let addrOfStateInit (client:EverClient) stateInitB64 =
 
 let encodeExtMsg (client:EverClient) addressFullHex bodyB64 =
     let extMsgPars = new ParamsOfEncodeExternalInMessage () ;
-    extMsgPars.Dst <- addressFullHex ;
+    extMsgPars.Dst <- addressFullHex
     extMsgPars.Body <- bodyB64 ;
+    let res =
+        Async.AwaitTask (client.Boc.EncodeExternalInMessage (extMsgPars))
+        |> Async.RunSynchronously ;
+    res.Message
+
+let encodeInitMsg (client:EverClient) stateInitB64 =
+    let extMsgPars = new ParamsOfEncodeExternalInMessage () ;
+    extMsgPars.Dst <- "0:" + (accountIdOfStateInit client stateInitB64) ;
+    extMsgPars.Init <- stateInitB64;
     let res =
         Async.AwaitTask (client.Boc.EncodeExternalInMessage (extMsgPars))
         |> Async.RunSynchronously ;
@@ -114,7 +123,7 @@ let executeTVMCode (client:EverClient) asmCode : list<Text.Json.JsonElement> =
         Async.AwaitTask (client.Tvm.RunGet (paramsRunGet))
         |> Async.RunSynchronously
     if resRE.Output.HasValue then
-        printfn "json result: %s" (resRE.Output.Value.ToString ())
+        // printfn "json result: %s" (resRE.Output.Value.ToString ())
         let mutable iter = resRE.Output.Value.EnumerateArray()
         let mutable res = []
         while iter.MoveNext () do

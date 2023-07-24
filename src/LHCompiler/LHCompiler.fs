@@ -322,8 +322,7 @@ let compileModule modName decls withInit debug isFift : string =
         printfn "Compiling actor %A" modName ;
     let typesFull = ParserModule.extractTypes debug decls
     if debug then
-        use fileTy = System.IO.File.CreateText(modName + ".types")
-        fprintfn fileTy "%A" typesFull
+        File.WriteAllText(modName + ".types", sprintf "%A" typesFull)
 
     let finalDecls =
         if withInit then
@@ -431,7 +430,7 @@ let compileModule modName decls withInit debug isFift : string =
         use file2 = System.IO.File.CreateText(modName + ".ir")
         fprintfn file2 "%A" ir
         use file3 = System.IO.File.CreateText(modName + ".asm")
-        fprintfn file3 "%A" assembly
+        fprintfn file3 "%s" assembly
 
     assembly
 
@@ -446,52 +445,13 @@ let compile (source:string) (withInit:bool) (debug:bool) (isFift:bool) : string 
     match res with
     | Some (Module (modName, decls)) ->
         if debug then
-            use file1 = System.IO.File.CreateText(modName + ".full")
-            fprintfn file1 "%A" prog
-            use file2 = System.IO.File.CreateText(modName + ".parse")
-            fprintfn file2 "%A" res
+            File.WriteAllText(modName + ".full", prog);
+            File.WriteAllText(modName + ".parse", sprintf "%A" res);
         compileModule modName decls withInit debug isFift
     | _ ->
         failwith "Actor not found"
 
-// compile Light source at filePath and output the assembly file
-let compileFile (debug:bool) (prodAsm:bool) (withInit:bool) (filePath:string) (dataExpr:string) =
-    let generateDataBocFromExpr dataExpr =
-        let args = "-c \"dotnet fsi serializeExpression.fsx " + filePath +
-                   " ActorState \'" + dataExpr + "\'\""
-        printfn "args = %A" args
-        let res = FiftExecutor.executeShellCommand "/bin/bash" args
-        if res.ExitCode <> 0 then
-            failwithf "Shell command executed with the error: %s; output: %s"
-                      res.StandardError
-                      res.StandardOutput
-    let readFile (filePath: string) =
-        File.ReadAllText(filePath)
-    let replaceExt (filePath: string) (newExt: string) =
-        let directory = Path.GetDirectoryName (filePath)
-        let fileName = Path.GetFileNameWithoutExtension (filePath)
-        let newFilePath = Path.Combine(directory, fileName + newExt)
-        newFilePath
-    let onlyName (filePath: string) =
-        Path.GetFileNameWithoutExtension (filePath)
-    let writeFile (filePath: string) (content: string) =
-        File.WriteAllText(filePath, content)
-    let fileContent = readFile filePath
-    let code = LHMachine.asmAsCell (compile fileContent withInit debug true)
-    let dataBoc = " \"data.boc\" file>B B>boc "
-    let nameGenStateInitScript = (onlyName filePath) + ".fif"
-    let nameGenStateInitTVC = (onlyName filePath) + ".tvc"
-    let nameGenMessageWithStateInitScript = (onlyName filePath) + "_deploy.fif"
-    let nameMsgWithStateInitBOC = (onlyName filePath) + ".boc"
-    TVM.dumpString
-       nameGenStateInitScript
-       (TVM.genStateInit nameGenStateInitTVC code dataBoc)
-    TVM.dumpString nameGenMessageWithStateInitScript
-       (TVM.genMessageWithStateInit (onlyName filePath) nameMsgWithStateInitBOC code dataBoc)
-    if (not prodAsm) then
-        generateDataBocFromExpr dataExpr |> ignore   (* side effect: data.boc is created *)
-
-// Compiles expression into FIFT-assembly evaluating the
+// Compiles expression into assembly evaluating the
 // given expression. Needed to generate init-state and messages
 // for actors.
 let compileExprOfType (types:list<Name*Type>) exprTypeName exprStr isFift : string =
@@ -504,11 +464,65 @@ let compileExprOfType (types:list<Name*Type>) exprTypeName exprStr isFift : stri
         LHTypes.serializeValue types exprT
     let writerCodeStr =
         writerCode
-        |> List.map (TVM.instructionToAsmString true)
+        |> List.map (TVM.instructionToAsmString isFift)
         |> String.concat "\n"
     let res1  = parse ("contract Test\nlet main = " + exprStr + " ;; ")
     let getLetAst (m:ParserModule.Module) (n:int) = m.Decls.[n]
     let letBndMain = getLetAst res1.Value 0
     let fullTypeDecls = types |> List.map ParserModule.TypeDef
-    (compileModule "eval" (fullTypeDecls @ [letBndMain]) false false isFift) +
+    (compileModule "eval" (fullTypeDecls @ [letBndMain]) false true isFift) +
       "\n" + writerCodeStr + "\n"
+
+let compileExpr sourcePath exprType exprStr isFift =
+    let fileContent = File.ReadAllText sourcePath
+    let prog = fileContent + ActorInit.actorInitCode
+    let res = parse prog
+    match res with
+    | Some (Module (modName, decls)) ->
+        let typesFull = ParserModule.extractTypes false decls
+        let typeMap = Map.ofList typesFull
+        compileExprOfType typesFull exprType exprStr isFift
+    | _ ->
+        failwith "No actor definition found in the file"
+
+// Compile Light source located at filePath into .BOC file containing
+// a message with the given code and initial data. Data is given in a form
+// of a Light expression.
+let compileFile (debug:bool) (prodAsm:bool) (withInit:bool) (filePath:string) (dataExpr:string) =
+    // 1. Using SDKInterop.executeTVMCode, compile and execute dataExpr, result is stored in Base64
+    // 2. Using LHCompiler.compile, compile filePath into Base64
+    // 3. Using SDKInterop.encodeStateInit, using (1) data and (2) code, build the stateinit in Base64.
+    // 4. Using SDKInterop.encodeInitMsg, using (3), build init message in Base64.
+    // 5. Using Convert.FromBase64String, convert (4) into a binary form
+    // 6. Using File.WriteAllBytes(path,bytes), store (5) into a file
+    let readTextFile (filePath: string) =
+        File.ReadAllText(filePath)
+    let writeBinaryFile (filePath: string) (content: array<byte>) =
+        File.WriteAllBytes(filePath, content)
+    let replaceExt (filePath: string) (newExt: string) =
+        let directory = Path.GetDirectoryName (filePath)
+        let fileName = Path.GetFileNameWithoutExtension (filePath)
+        let newFilePath = Path.Combine(directory, fileName + newExt)
+        newFilePath
+    let onlyName (filePath: string) =
+        Path.GetFileNameWithoutExtension (filePath)
+    let isFift = false
+    let dataGenCode = compileExpr filePath "ActorState" dataExpr isFift
+    if debug then
+        printfn "data expression compiled successfully:"
+        printfn "%s" dataGenCode
+    let stk = SDKInterop.executeTVMCode SDKInterop.client dataGenCode
+    let dataBase64 = stk.[0].ToString()
+    if debug then
+        printfn "Expression value in base64: %s" dataBase64
+    let withInit, isFift = true, false
+    let codeAsm = compile filePath withInit debug isFift
+    if debug then
+        File.WriteAllText(replaceExt filePath "asm", codeAsm);
+    let codeBase64 = SDKInterop.compileCode codeAsm
+    let stateInitBase64 = SDKInterop.encodeStateInit SDKInterop.client codeBase64 dataBase64
+    let addr = "0:" + (SDKInterop.accountIdOfStateInit SDKInterop.client stateInitBase64)
+    let initMsgBase64 = SDKInterop.encodeInitMsg SDKInterop.client stateInitBase64
+    let initMsgBytes  = System.Convert.FromBase64String (initMsgBase64)
+    let bocPath = replaceExt filePath "boc"
+    File.WriteAllBytes (bocPath, initMsgBytes) ;
