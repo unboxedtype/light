@@ -252,7 +252,7 @@ expr:
 
   | elems
     %prec prec_tuple
-  { mkAST (ETuple $1) }
+      { mkAST (ETuple $1) }
 
   // LET TUPLE has to be here
 
@@ -272,9 +272,7 @@ expr:
   }
 
   | ASM LBRACE asmInstructions RBRACE
-  {
-     mkAST (EAsm $3)
-  }
+      { mkAST (EAsm $3) }
 
  | error
    {

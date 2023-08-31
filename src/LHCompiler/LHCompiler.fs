@@ -15,8 +15,17 @@ open LHExpr
 open type LHTypes.Type
 open type ParserModule.Module
 
+let replaceExt (filePath: string) (newExt: string) =
+    let directory = Path.GetDirectoryName (filePath)
+    let fileName = Path.GetFileNameWithoutExtension (filePath)
+    let newFilePath = Path.Combine(directory, fileName + newExt)
+    newFilePath
+
+let onlyName (filePath: string) =
+    Path.GetFileNameWithoutExtension (filePath)
+
 // TODO: put all parse functions into a single module
-let parse source =
+let parse source filename =
     let lexbuf = LexBuffer<char>.FromString source
     let res = Parser.start Lexer.read lexbuf
     res
@@ -414,6 +423,7 @@ let compileModule modName decls withInit debug isFift : string =
         else prepareAstMain letBndsUpd typesFull
     let ast1 = makeReductions debug finalExpr
     let typeEnv = LHTypeInfer.TypeEnv.ofProgramTypes typesFull
+    let debug = false
     let (ty, (oldMap, newMap)) =
         LHTypeInfer.typeInferenceDebug
           typeEnv
@@ -436,16 +446,19 @@ let compileModule modName decls withInit debug isFift : string =
 
 // The function compiles Light source code into the assembly code.
 // Arguments:
-//  - source = a string representing the source code
-//    of an actor.
-let compile (source:string) (withInit:bool) (debug:bool) (isFift:bool) : string =
-    let prog = if withInit then (source + ActorInit.actorInitCode)
-               else source
-    let res = parse prog
+//  - sourcePath = a string representing the source code path
+let compile (sourcePath:string) (withInit:bool) (debug:bool) (isFift:bool) : string =
+    if debug then
+        printfn "compiling with params: withInit = %A, debug = %A, isFift = %A" withInit debug isFift
+    let fileContent = File.ReadAllText sourcePath
+    let prog = if withInit then (fileContent + "\n" + ActorInit.actorInitCode)
+               else fileContent
+    if debug then
+       File.WriteAllText(replaceExt sourcePath ".lh.full", prog);
+    let res = parse prog sourcePath
     match res with
     | Some (Module (modName, decls)) ->
         if debug then
-            File.WriteAllText(modName + ".full", prog);
             File.WriteAllText(modName + ".parse", sprintf "%A" res);
         compileModule modName decls withInit debug isFift
     | _ ->
@@ -466,17 +479,19 @@ let compileExprOfType (types:list<Name*Type>) exprTypeName exprStr isFift : stri
         writerCode
         |> List.map (TVM.instructionToAsmString isFift)
         |> String.concat "\n"
-    let res1  = parse ("contract Test\nlet main = " + exprStr + " ;; ")
+    let res1  = parse ("contract Test\nlet main = " + exprStr + " ;; ") "noname"
     let getLetAst (m:ParserModule.Module) (n:int) = m.Decls.[n]
     let letBndMain = getLetAst res1.Value 0
     let fullTypeDecls = types |> List.map ParserModule.TypeDef
-    (compileModule "eval" (fullTypeDecls @ [letBndMain]) false true isFift) +
+    let debug = false
+    (compileModule "Test" (fullTypeDecls @ [letBndMain]) false debug isFift) +
       "\n" + writerCodeStr + "\n"
 
 let compileExpr sourcePath exprType exprStr isFift =
     let fileContent = File.ReadAllText sourcePath
-    let prog = fileContent + ActorInit.actorInitCode
-    let res = parse prog
+    let prog = fileContent + "\n" + ActorInit.actorInitCode
+    // File.WriteAllText(sourcePath + ".full", prog)
+    let res = parse prog sourcePath
     match res with
     | Some (Module (modName, decls)) ->
         let typesFull = ParserModule.extractTypes false decls
@@ -499,30 +514,29 @@ let compileFile (debug:bool) (prodAsm:bool) (withInit:bool) (filePath:string) (d
         File.ReadAllText(filePath)
     let writeBinaryFile (filePath: string) (content: array<byte>) =
         File.WriteAllBytes(filePath, content)
-    let replaceExt (filePath: string) (newExt: string) =
-        let directory = Path.GetDirectoryName (filePath)
-        let fileName = Path.GetFileNameWithoutExtension (filePath)
-        let newFilePath = Path.Combine(directory, fileName + newExt)
-        newFilePath
-    let onlyName (filePath: string) =
-        Path.GetFileNameWithoutExtension (filePath)
     let isFift = false
     let dataGenCode = compileExpr filePath "ActorState" dataExpr isFift
     if debug then
         printfn "data expression compiled successfully:"
         printfn "%s" dataGenCode
     let stk = SDKInterop.executeTVMCode SDKInterop.client dataGenCode
-    let dataBase64 = stk.[0].ToString()
+    let dataBase64 = stk.[0].GetProperty("value").ToString()
     if debug then
         printfn "Expression value in base64: %s" dataBase64
     let withInit, isFift = true, false
     let codeAsm = compile filePath withInit debug isFift
     if debug then
-        File.WriteAllText(replaceExt filePath "asm", codeAsm);
+        File.WriteAllText(replaceExt filePath ".asm", codeAsm);
+    if debug then
+        printfn "Compiling assembly code into binary (in B64 repr)..."
     let codeBase64 = SDKInterop.compileCode codeAsm
+    if debug then
+        printfn "Compiling state-init into binary (in B64 repr)..."
     let stateInitBase64 = SDKInterop.encodeStateInit SDKInterop.client codeBase64 dataBase64
     let addr = "0:" + (SDKInterop.accountIdOfStateInit SDKInterop.client stateInitBase64)
+    if debug then
+        printfn "Actor address is %s" addr
     let initMsgBase64 = SDKInterop.encodeInitMsg SDKInterop.client stateInitBase64
     let initMsgBytes  = System.Convert.FromBase64String (initMsgBase64)
-    let bocPath = replaceExt filePath "boc"
+    let bocPath = replaceExt filePath ".boc"
     File.WriteAllBytes (bocPath, initMsgBytes) ;

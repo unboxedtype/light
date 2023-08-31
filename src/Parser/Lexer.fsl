@@ -11,6 +11,7 @@ let lexeme = LexBuffer<_>.LexemeString
 
 let newline (lexbuf: LexBuffer<_>) =
   lexbuf.StartPos <- lexbuf.StartPos.NextLine
+  lexbuf.EndPos <- lexbuf.EndPos.AsNewLinePos()
 
 let mutable pushInt = false
 let mutable tuple = false
