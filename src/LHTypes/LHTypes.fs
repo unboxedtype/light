@@ -81,6 +81,9 @@ let rec deserializeValueSlice ty t : list<TVM.Instruction> =
          TVM.Swap]
     | UserType (n, Some t) ->
         deserializeValueSlice ty t
+    | Unit ->
+        [TVM.LdRef; TVM.Nip; TVM.PushNull; TVM.Swap]
+        // [TVM.SkipOptRef; TVM.PushNull; TVM.Swap]
     | _ ->
         failwithf "Parsing for type %A not implemented" t
 
@@ -111,6 +114,8 @@ let deserializeValueSimpl (ty:TypeList) (t:Type) : list<TVM.Instruction> =
             [TVM.LdRef; TVM.Nip; TVM.PushCont []; TVM.Swap]
         | UserType (n, Some t) ->
             deserializeValueInner ty t
+        | Unit ->
+            [TVM.LdRef; TVM.Nip; TVM.PushNull; TVM.Swap]
         | _ ->
             failwithf "Parsing for type %A not implemented" t
     [TVM.Ctos] @ (deserializeValueInner ty t) @ [TVM.Ends]
@@ -148,6 +153,11 @@ let serializeValue (ty:TypeList) (t:Type) : list<TVM.Instruction> =
              TVM.Endc;
              TVM.Swap;
              TVM.StRef]
+        | Unit ->
+            [TVM.Newc;
+             TVM.Endc;
+             TVM.Swap;
+             TVM.StRef] (* empty cell will be put *)
         | _ ->
             failwith "not implemented"
     [TVM.Newc] @ (serializeValueInner ty t) @ [TVM.Endc]

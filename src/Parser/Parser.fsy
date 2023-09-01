@@ -135,6 +135,15 @@ ADTCtors:
 ADTDecl:
   | ADTCtors { ADT $1 }
 
+UnitDecl:
+  | UNIT     { Unit }
+
+
+TypeDecl:
+  | recordDecl { $1 }
+  | ADTDecl    { $1 }
+  | UnitDecl   { $1 }
+
 // =================================================
 // Function and Handler declaration argument
 // "(x:int)" "y" "()"
@@ -308,10 +317,7 @@ elems:
 //  * let binding
 // =================================================
 decl:
-  | TYPEDEF UIDENT EQ recordDecl
-  { TypeDef ($2, $4) }
-
-  | TYPEDEF UIDENT EQ ADTDecl
+  | TYPEDEF UIDENT EQ TypeDecl
   { TypeDef ($2, $4) }
 
   | HANDLER LIDENT funcArgs EQ expr

@@ -533,10 +533,13 @@ let compileFile (debug:bool) (prodAsm:bool) (withInit:bool) (filePath:string) (d
     if debug then
         printfn "Compiling state-init into binary (in B64 repr)..."
     let stateInitBase64 = SDKInterop.encodeStateInit SDKInterop.client codeBase64 dataBase64
+    let stateInitBytes  = System.Convert.FromBase64String (stateInitBase64)
+    let stateInitPath = replaceExt filePath ".stateinit.tvc"
+    File.WriteAllBytes (stateInitPath, stateInitBytes) ;
     let addr = "0:" + (SDKInterop.accountIdOfStateInit SDKInterop.client stateInitBase64)
     if debug then
         printfn "Actor address is %s" addr
     let initMsgBase64 = SDKInterop.encodeInitMsg SDKInterop.client stateInitBase64
     let initMsgBytes  = System.Convert.FromBase64String (initMsgBase64)
-    let bocPath = replaceExt filePath ".boc"
+    let bocPath = replaceExt filePath ".initmsg.boc"
     File.WriteAllBytes (bocPath, initMsgBytes) ;
