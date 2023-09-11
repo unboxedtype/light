@@ -465,8 +465,8 @@ let compile (sourcePath:string) (withInit:bool) (debug:bool) (isFift:bool) : str
         failwith "Actor not found"
 
 // Compiles expression into assembly evaluating the
-// given expression. Needed to generate init-state and messages
-// for actors.
+// given expression. Needed to generate init-state and
+// messages for actors.
 let compileExprOfType (types:list<Name*Type>) exprTypeName exprStr isFift : string =
     let typeMap = Map.ofList types
     if Map.tryFind exprTypeName typeMap = None then
@@ -537,9 +537,30 @@ let compileFile (debug:bool) (prodAsm:bool) (withInit:bool) (filePath:string) (d
     let stateInitPath = replaceExt filePath ".stateinit.tvc"
     File.WriteAllBytes (stateInitPath, stateInitBytes) ;
     let addr = "0:" + (SDKInterop.accountIdOfStateInit SDKInterop.client stateInitBase64)
+    let addrPath = replaceExt filePath ".address"
+    File.WriteAllText (addrPath, addr)
     if debug then
         printfn "Actor address is %s" addr
     let initMsgBase64 = SDKInterop.encodeInitMsg SDKInterop.client stateInitBase64
     let initMsgBytes  = System.Convert.FromBase64String (initMsgBase64)
     let bocPath = replaceExt filePath ".initmsg.boc"
     File.WriteAllBytes (bocPath, initMsgBytes) ;
+
+(* Compile the given expression as an actor message that has
+   to be sent to actor with the given id. The side-effect of
+   this function is a file.msg.boc file containing the message *)
+let compileMessage (filePath:string) (id:string) (msgExpr:string) : unit =
+    let idHex =
+        if id.[0..1] = "0:" then "0x" + id.[2..]
+        elif id.[0..2] = "-1:" then
+            failwith "Masterchain messages are not supported"
+        else
+            failwith "Unknown workchain id in the actor address"
+    let isFift = false (* TODO *)
+    let msgBodyGenCode = compileExpr filePath "MessageBody" msgExpr isFift
+    let stk = SDKInterop.executeTVMCode SDKInterop.client msgBodyGenCode
+    let msgBodyB64 = stk.[0].GetProperty("value").ToString()
+    let msgBocB64 = SDKInterop.encodeExtMsg SDKInterop.client id msgBodyB64
+    let msgBytes  = System.Convert.FromBase64String msgBocB64
+    let bocPath = replaceExt filePath ".msg.boc"
+    File.WriteAllBytes (bocPath, msgBytes)

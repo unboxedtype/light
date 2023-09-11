@@ -10,7 +10,7 @@ open LHCompiler
 type CliArguments =
     | Input of path:string * dataExpr:string
     | Core of path:string
-    // | LightExpr of expr:string
+    | Message of path:string * id:string * expr:string
     | AsmOnly
     | Version
     | Debug
@@ -20,7 +20,7 @@ type CliArguments =
             match s with
             | Input _ -> "Compile a full Light program together with its initial state."
             | Core _ -> "Compile Light Core program into assembly."
-            // | LightExpr _ -> "Compile arbitrary Light expression given in a string."
+            | Message _ -> "Generate message for a Light actor."
             | AsmOnly -> "Produce assembly file and stop."
             | Debug -> "Output all available information during the compilation process (debugging mode)."
             | Version -> "Print compiler version and quit."
@@ -52,11 +52,16 @@ let main argv =
             0
         elif results.Contains Core then
             let path = results.GetResult Core
-            LHCompiler.compile (File.ReadAllText(path)) false debug isFift
+            let progText = File.ReadAllText(path)
+            LHCompiler.compile progText  false debug isFift
             |> (fun s ->
                 use output = System.IO.File.CreateText(path + ".asm")
                 if isFift then fprintf output "\"Asm.fif\" include\n <{ \n %s \n }>s runvmcode .s" s
                 else fprintf output "%s" s) |> ignore
+            0
+        elif results.Contains Message then
+            let (path, id, expr) = results.GetResult Message
+            LHCompiler.compileMessage path id expr
             0
         else
             printfn "%s" (parser.PrintUsage()) |> ignore

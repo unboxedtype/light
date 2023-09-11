@@ -27,8 +27,7 @@ let add_more (x: int) (st:State) =
 (* This will move into prelude library one day, but
    for now we need to define it here, explicitly. *)
 let accept () =
-  assembly { ACCEPT } :> unit ;
-  ()
+  assembly { ACCEPT } :> unit
 ;;
 
 let main (msg:ActorMessage) (st:State) =

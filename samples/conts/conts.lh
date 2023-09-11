@@ -2,6 +2,9 @@
    i.e. functions with "memory" *)
 contract conts
 
+type State = unit
+type ActorMessage = unit
+
 (* this function constructs another function that
    adds n to the supplied argument *)
 let cont n =
@@ -12,4 +15,4 @@ let cont n =
 let f1 = cont 10 ;;  (* fun x -> x + 10 *)
 let f2 = cont 5 ;;   (* fun x -> x + 5  *)
 
-let main = f1 (f2 5) ;;  (* =20 *)
+let main (msg:ActorMessage) (st:State) = f1 (f2 5) ; () ;;  (* =20 *)

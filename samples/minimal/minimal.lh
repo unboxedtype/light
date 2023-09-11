@@ -2,4 +2,7 @@
 
 contract minimal
 
-let main = 0 ;;
+type State = unit
+type ActorMessage = unit
+
+let main (msg:ActorMessage) (st:State) = () ;;

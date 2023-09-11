@@ -27,6 +27,7 @@ type Action =
     | Reserve
 
 type Instruction =
+    | SkipOptRef
     | Accept
     | LdRefRtos
     | LdCont
@@ -1540,6 +1541,7 @@ let rec instructionToAsmString (isFift:bool) (i:Instruction) : string =
     | Reverse (i,j) ->
         if isFift then sprintf "%i %i REVERSE" i j
         else sprintf "REVERSE %i, %i" i j   // Whitespaces are required here.
+    | SkipOptRef -> "SKIPOPTREF"
     | Accept -> "ACCEPT"
     | Negate -> "NEGATE"
     | Geq -> "GEQ"
