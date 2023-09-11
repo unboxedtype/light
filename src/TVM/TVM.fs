@@ -27,6 +27,25 @@ type Action =
     | Reserve
 
 type Instruction =
+    | SkipOptRef
+    | Accept
+    | LdRefRtos
+    | LdCont
+    | StCont
+    | CallXVarArgs
+    | CallXArgs of int * int
+    | SetContArgs of int * int
+    | Reverse of int * int
+    | BlkPush of int * int
+    | AddConst of int
+    | Explode of int
+    | RollX
+    | Negate
+    | Geq
+    | Leq
+    | Nip
+    | False
+    | True
     | LdRef
     | Ctos
     | BRefs
@@ -35,26 +54,26 @@ type Instruction =
     | DumpHeap          // this is artificial instruction introduced for debugging.
     | GasLeft           // this is artificial instruction introduced for debugging.
     | PrintStr of s:string
-    | Push of n:uint
-    | PushRef of c:CellData
-    | PushSlice of s:CellData
+    | Push of n:int
+    // | PushRef of c:CellData
+    // | PushSlice of s:CellData
     | Dup               // Push 0 alias
-    | Pop of n:uint
+    | Pop of n:int
     | Drop              // Pop 0 alias
-    | BlkDrop of n:uint
+    | BlkDrop of n:int
     | DropX
-    | Xchg of i:uint      // Xchg s0, s(i)
-    | Xchg2 of uint * uint // Xchg s(i),s(j)
+    | Xchg of i:int      // Xchg s0, s(i)
+    | Xchg2 of int * int // Xchg s(i),s(j)
     | Swap               // Xchg 0 alias
     | Swap2              // a b c d -> c d a b
     | Greater
     | Less
-    | GetGlob of k:uint   // 1 <= k <= 31
-    | SetGlob of k:uint   // 1 <= k <= 31
+    | GetGlob of k:int   // 1 <= k <= 31
+    | SetGlob of k:int   // 1 <= k <= 31
     | PushInt of n:int
     | PushCont of c:Code // this should also be int8 list, but for now..
-    | PushCtr of n:uint
-    | PopCtr of n:uint
+    | PushCtr of n:int
+    | PopCtr of n:int
     | IfElse
     | IfRet
     | If
@@ -66,12 +85,12 @@ type Instruction =
     | Div
     | DivMod
     | Execute
-    | CallDict of n:uint
+    | CallDict of n:int
     | JmpX
     | DictUGetJmp
     | DumpStk
     | Nop
-    | Tuple of n:uint
+    | Tuple of n:int
     | TLen
     | TupleVar
     | UntupleVar
@@ -79,20 +98,20 @@ type Instruction =
     | PushNull
     | Second
     | Third
-    | Index of k:uint
+    | Index of k:int
     | IndexVar
     | IndexVarQ
-    | Untuple of n:uint
-    | SetIndex of k:uint
+    | Untuple of n:int
+    | SetIndex of k:int
     | SetIndexVar
     | SetIndexVarQ
     | TPush
     | Newc
     | Endc
-    | Sti of cc:uint
-    | Ldi of cc:uint
-    | Stu of cc:uint
-    | Ldu of cc:uint
+    | Sti of cc:int
+    | Ldi of cc:int
+    | Stu of cc:int
+    | Ldu of cc:int
     | LdDict
     | Ends
     | StRef
@@ -105,9 +124,9 @@ type Instruction =
     | Equal
     | Ret
     | SetNumArgs of n:int
-    | RollRev of n:uint
+    | RollRev of n:int
     | RollRevX
-    | Roll of n:uint
+    | Roll of n:int
     | Repeat
     | Depth
     | Dec
@@ -122,7 +141,7 @@ type Instruction =
     | RotRev
     | Bless
 and Code =
-    Instruction list
+    list<Instruction>
 and CellData =
     CellData of data:SValue list *   // data has to fit into 1023 bits
                 refs:CellData list * // up to 4 cell references
@@ -470,9 +489,9 @@ let pushnull st =
     st.stack <- Null :: stack'
     st
 
-let pushslice (c:CellData) st =
-    st.stack <- (Slice c) :: st.stack
-    st
+//let pushslice (c:CellData) st =
+//    st.stack <- (Slice c) :: st.stack
+//    st
 
 let stslice st =
     let (b :: s :: stack') = st.stack
@@ -583,8 +602,8 @@ let swap2 st =
     st.put_stack (b :: a :: d :: c :: stack)
     st
 
-let True = -1
-let False = 0
+// let True = -1
+// let False = 0
 
 let ifelse st =
     let (fb :: tb :: f :: stack') = st.stack
@@ -1084,10 +1103,10 @@ let lddict st =
             failwith "LDDICT: Dictionary within slice expected"
     st
 
-let pushref (c:CellData) (st:TVMState) =
+//let pushref (c:CellData) (st:TVMState) =
     // validation checks ?
-    st.put_stack ( (Cell c) :: st.stack )
-    st
+//    st.put_stack ( (Cell c) :: st.stack )
+//    st
 
 // log of the mere instruction is enough to see the dbg message
 let printstr s trace st =
@@ -1355,10 +1374,10 @@ let dispatch (i:Instruction) (trace:bool) =
             isnull
         | IsZero ->
             iszero
-        | PushSlice s ->
-            pushslice s
-        | PushRef s ->
-            pushref s
+        // | PushSlice s ->
+        //    pushslice s
+        //| PushRef s ->
+        //    pushref s
         | _ ->
             failwith ("unsupported instruction: " + (string i))
 
@@ -1368,19 +1387,19 @@ let gasCost (i: Instruction) : uint =
         | Ldu _ -> 26u
         | LdRef -> 18u
         | SRefs -> 26u
-        | Ctos -> 100u  // 500 ?
+        | Ctos -> 100u         // First cell read costs 100
         | BRefs -> 26u
         | StRef -> 18u
         | PrintStr _ -> 26u
         | GasLeft -> 0u
         | DumpHeap -> 0u
         | GetGlob n -> 26u
-        | SetGlob n -> 26u + n + 1u
+        | SetGlob n -> 26u + (uint n) + 1u
         | PushInt n -> 18u     // not precise
         | PushNull -> 18u
         | PushCont c -> 26u
-        | PushRef c -> 18u + 25u
-        | Tuple n -> 26u + n
+        // | PushRef c -> 18u + 25u
+        | Tuple n -> 26u + (uint n)
         | Swap -> 18u
         | TPush -> 26u + 10u    // 26 + n, where n is a tuple length
         | Dup -> 18u
@@ -1419,11 +1438,11 @@ let gasCost (i: Instruction) : uint =
         | RollRev n -> 26u
         | RollRevX -> 26u
         | Roll _ -> 26u
-        | Untuple n -> 26u + n
+        | Untuple n -> 26u + (uint n)
         | Swap2 -> 26u
         | Sti n -> 26u
         | SetIndexVar -> 26u   // 26 + s0 ?
-        | SetIndex n -> 26u + n
+        | SetIndex n -> 26u + (uint n)
         | PushCtr _ -> 26u
         | PopCtr _ -> 26u
         | Pop n -> 18u
@@ -1432,7 +1451,7 @@ let gasCost (i: Instruction) : uint =
         | Greater -> 18u
         | Less -> 18u
         | SetNumArgs _ -> 26u
-        | PushSlice c -> 22u
+        // | PushSlice c -> 22u
         | IfElse -> 18u
         | Inc -> 18u
         | Bless -> 26u
@@ -1513,153 +1532,157 @@ let getResult st : Value option =
         | _ ->
             raise (TVMError "Virtual machine executed with error")
 
-let cellToSliceFift v = v + " <s "
-
-let rec instrToFift (i:Instruction) : string =
+let rec instructionToAsmString (isFift:bool) (i:Instruction) : string =
+    let ifSwap (flag:bool) (str:string) =
+        match (str.Split (" ") |> List.ofSeq) with
+        | a :: b :: [] -> if flag then b + " " + a else a + " " + b
+        | _ -> str
     match i with
-        | Ctos -> " CTOS"
-        | SRefs -> " SREFS"
-        | StRef -> " STREF"
-        | BRefs -> " BREFS"
-        | GasLeft -> ""
-        | DumpHeap -> ""
-        | PrintStr s -> "\"" + s + "\" PRINTSTR"
-        | Push n -> "s" + (string n) + " PUSH"
-        | PushSlice v ->
-            (celldataIntoSlice v) + " PUSHSLICE"
-        | PushRef v ->
-            (celldataIntoCell v) + " PUSHREF"
-        | IsNull -> "ISNULL"
-        | IsZero -> "ISZERO"
-        | Add -> "ADD"
-        | Mul -> "MUL"
-        | Div -> "DIV"
-        | Sub -> "SUB"
-        | Nil -> "NIL"
-        | PushNull -> "PUSHNULL"
-        | TPush -> "TPUSH"
-        | Equal -> "EQUAL"
-        | Greater -> "GREATER"
-        | Swap -> "SWAP"
-        | If -> "IF"
-        | IfJmp -> "IFJMP"
-        | Dup -> "DUP"
-        | DictIGet -> "DICTIGET"
-        | Inc -> "INC"
-        | Dec -> "DEC"
-        | Newc -> "NEWC"
-        | Drop -> "DROP"
-        | DictISetB -> "DICTISETB"
-        | Sti n -> (string n) + " STI"
-        | Stu n -> (string n) + " STU"
-        | LdRef -> " LDREF"
-        | Ldi n -> (string n) + " LDI"
-        | Ldu n -> (string n) + " LDU"
-        | PushCtr n -> "c" + (string n) + " PUSHCTR"
-        | PopCtr n -> "c" + (string n) + " POPCTR"
-        | Pop n -> "s" + (string n) + " POP"
-        | PushInt n -> (string n) + " INT"
-        | Index n -> (string n) + " INDEX"
-        | ThrowIfNot n -> (string n) + " THROWIFNOT"
-        | ThrowIf n -> (string n) + " THROWIF"
-        | Untuple n -> (string n) + " UNTUPLE"
-        | UntupleVar -> "UNTUPLEVAR"
-        | SetNumArgs n -> (string n) + " SETNUMARGS"
-        | Throw n -> (string n) + " THROW"
-        | CallDict n -> (string n) + " CALLDICT"
-        | SetIndex n -> (string n) + " SETINDEX"
-        | PushCont c ->
-            "<{ " + String.concat "\n" (List.map instrToFift c) + " }> PUSHCONT"
-        | Repeat -> "REPEAT"
-        | Pick -> "PICK"
-        | TupleVar -> "TUPLEVAR"
-        | TLen -> "TLEN"
-        | Second -> "SECOND"
-        | Third -> "THIRD"
-        | Depth -> "DEPTH"
-        | Xchg n -> "s0 s" + (string n) + " XCHG" // XCHG s0,sn
-        | XchgX -> "XCHGX"
-        | DivMod -> "DIVMOD"
-        | IndexVar -> "INDEXVAR"
-        | IndexVarQ -> "INDEXVARQ"
-        | SetIndexVar -> "SETINDEXVAR"
-        | SetIndexVarQ -> "SETINDEXVARQ"
-        | DumpStk -> "DUMPSTK"
-        | Tuple n -> (string n) + " TUPLE"
-        | BlkDrop n -> (string n) + " BLKDROP"
-        | Xchg2 (i,j) -> "s" + (string i) + " " + "s" + (string j) + " XCHG"
-        | Swap2 -> "SWAP2"
-        | RollRev n -> (string n) + " ROLLREV"
-        | Roll n -> (string n) + " ROLL"
-        | Dup2 -> "DUP2"
-        | Rot -> "ROT"
-        | Rot2 -> "ROT2"
-        | RotRev -> "ROTREV"
-        | Execute -> "EXECUTE"
-        | SetGlob n -> (string n) + " SETGLOB"
-        | GetGlob n -> (string n) + " GETGLOB"
-        | DictUGetJmp -> "DICTUGETJMP"
-        | Ret -> "RET"
-        | Less -> "LESS"
-        | LdDict -> "LDDICT"
-        | Ends -> "ENDS"
-        | Bless -> "BLESS"
-        | StSlice -> "STSLICE"
-        | Endc -> "ENDC"
-        | JmpX -> "JMPX"
-        | RollRevX -> "ROLLREVX"
-        | CondSel -> "CONDSEL"
-        | _ ->
-            failwith (sprintf "unsupported instruction: %A" i)
-
-and celldataIntoSlice (cd:CellData) : string =
-    (celldataIntoCell cd) + " <s "
-and celldataIntoCell (cd:CellData) : string =
-    let (CellData (vs, refs, _)) = cd
-    "<b " + (addDataValuesToBuilder vs) + (addRefsToBuilder refs) + " b> "
-// This function is able to add only up to 1023 bits worth of items.
-// In larger cases, you have to pack it into cells on your own and call
-// celldataIntoCell
-and addDataValuesToBuilder (vs:SValue list) : string =
-    match vs with
-    | h :: t ->
-        (addDataToBuilder h) + (addDataValuesToBuilder t)
-    | [] ->
-        ""
-and addDataToBuilder (v:SValue) : string =
-    match v with
-    | SInt (n, w) ->
-        " " + (string n) + " " + (string w) + " i, "  // b x y - b'
-    | SCode c ->
-        "<{ " + (codeToFift c |> String.concat " ") + " }>c ref, "   // b c - b'
-    | SDict d ->
-        (addDictToBuilder d)
+    | Reverse (i,j) ->
+        if isFift then sprintf "%i %i REVERSE" i j
+        else sprintf "REVERSE %i, %i" i j   // Whitespaces are required here.
+    | SkipOptRef -> "SKIPOPTREF"
+    | Accept -> "ACCEPT"
+    | Negate -> "NEGATE"
+    | Geq -> "GEQ"
+    | Leq -> "LEQ"
+    | RollX -> "ROLLX"
+    | True -> "TRUE"
+    | False -> "FALSE"
+    | CallXVarArgs -> "CALLXVARARGS"
+    | IfElse -> "IFELSE"
+    | Explode n -> sprintf "%i EXPLODE" n
+    | CallXArgs (i, j) ->
+        if isFift then sprintf "%i %i CALLXARGS" i j
+        else sprintf "CALLXARGS %i, %i" i j
+    | Nip -> "NIP"
+    | AddConst n -> sprintf "%i ADDCONST" n
+    | SetContArgs (i, j) ->
+        if isFift then sprintf "%i %i SETCONTARGS" i j
+        else sprintf "SETCONTARGS %i, %i" i j
+    | BlkPush (i, j) ->
+        if isFift then sprintf "%i %i BLKPUSH" i j
+        else sprintf "BLKPUSH %i, %i" i j
+    | Ctos -> "CTOS"
+    | SRefs -> "SREFS"
+    | StRef -> "STREF"
+    | BRefs -> "BREFS"
+    | GasLeft -> ""
+    | DumpHeap -> ""
+    | PrintStr s ->
+        if isFift then ("\"" + s + " \" PRINTSTR")
+        else ("PRINTSTR \"" + s + "\" ") // extra WS for ifSwap
+    | Push n -> "s" + (string n) + " PUSH"
+    | IsNull -> "ISNULL"
+    | IsZero -> "ISZERO"
+    | Add -> "ADD"
+    | Mul -> "MUL"
+    | Div -> "DIV"
+    | Sub -> "SUB"
+    | Nil -> "NIL"
+    | PushNull -> "PUSHNULL"
+    | TPush -> "TPUSH"
+    | Equal -> "EQUAL"
+    | Greater -> "GREATER"
+    | Swap -> "SWAP"
+    | If -> "IF"
+    | IfJmp -> "IFJMP"
+    | Dup -> "DUP"
+    | DictIGet -> "DICTIGET"
+    | Inc -> "INC"
+    | Dec -> "DEC"
+    | Newc -> "NEWC"
+    | Drop -> "DROP"
+    | DictISetB -> "DICTISETB"
+    | Sti n -> (string n) + " STI"
+    | Stu n -> (string n) + " STU"
+    | LdRef -> "LDREF"
+    | Ldi n -> (string n) + " LDI"
+    | Ldu n -> (string n) + " LDU"
+    | PushCtr n ->
+        "c" + (string n) + " PUSHCTR"
+    | PopCtr n ->
+        "c" + (string n) + " POPCTR"
+    | Pop n ->
+        "s" + (string n) + " POP"
+    | PushInt n ->
+        (string n) + " PUSHINT"
+    | Index n ->
+        (string n) + " INDEX"
+    | ThrowIfNot n ->
+        (string n) + " THROWIFNOT"
+    | ThrowIf n ->
+        (string n) + " THROWIF"
+    | Untuple n ->
+        (string n) + " UNTUPLE"
+    | UntupleVar -> "UNTUPLEVAR"
+    | SetNumArgs n -> (string n) + " SETNUMARGS"
+    | Throw n -> (string n) + " THROW"
+    | CallDict n -> (string n) + " CALLDICT"
+    | SetIndex n -> (string n) + " SETINDEX"
+    | PushCont c ->
+        let contBody =
+            List.map (instructionToAsmString isFift) c
+            |> String.concat "\n"
+        if isFift then "<{ " + contBody + " }> PUSHCONT"
+        else "PUSHCONT { " + contBody + " }"
+    | Repeat -> "REPEAT"
+    | Pick -> "PICK"
+    | TupleVar -> "TUPLEVAR"
+    | TLen -> "TLEN"
+    | Second -> "SECOND"
+    | Third -> "THIRD"
+    | Depth -> "DEPTH"
+    | Xchg n ->
+        if isFift then "s0 s" + (string n) + " XCHG"
+        else "XCHG s0, s" + (string n)  // extra WS for ifSwap
+    | XchgX -> "XCHGX"
+    | DivMod -> "DIVMOD"
+    | IndexVar -> "INDEXVAR"
+    | IndexVarQ -> "INDEXVARQ"
+    | SetIndexVar -> "SETINDEXVAR"
+    | SetIndexVarQ -> "SETINDEXVARQ"
+    | DumpStk -> "DUMPSTK"
+    | Tuple n -> (string n) + " TUPLE"
+    | BlkDrop n -> (string n) + " BLKDROP"
+    | Xchg2 (i,j) ->
+        if isFift then (sprintf "s%i s%i XCHG" i j)
+        // The whitespace after comma is crucial here,
+        // otherwise isSwap will swap it.
+        else (sprintf "XCHG s%i, s%i" i j)
+    | Swap2 -> "SWAP2"
+    | RollRev n -> (string n) + " ROLLREV"
+    | Roll n -> (string n) + " ROLL"
+    | Dup2 -> "DUP2"
+    | Rot -> "ROT"
+    | Rot2 -> "ROT2"
+    | RotRev -> "ROTREV"
+    | Execute -> "EXECUTE"
+    | SetGlob n -> (string n) + " SETGLOB"
+    | GetGlob n -> (string n) + " GETGLOB"
+    | DictUGetJmp -> "DICTUGETJMP"
+    | Ret -> "RET"
+    | Less -> "LESS"
+    | LdDict -> "LDDICT"
+    | Ends -> "ENDS"
+    | Bless -> "BLESS"
+    | StSlice -> "STSLICE"
+    | Endc -> "ENDC"
+    | JmpX -> "JMPX"
+    | RollRevX -> "ROLLREVX"
+    | CondSel -> "CONDSEL"
     | _ ->
-        failwith "not implemented"
-and addDictToBuilder (d:Map<int,SValue list>) : string =
-    let kv = Map.toList d
-    // udict!+ (v k D n - D')
-    // k = key : n-bit int
-    // v = val : slice
-    let dictnew = "dictnew"
-    let udictadd (k,v,D,n) =
-        [" "; "<b"; addDataValuesToBuilder v; "b>"; "<s"; string k; D; string n; "udict!+"; "drop"]
-        |> String.concat " "
-    (List.fold (fun D (k,v) -> udictadd(k, v, D, 8)) dictnew kv) + " "
-and addRefsToBuilder (refs: CellData list) : string =
-    failIf (List.length refs > 4) "Cell overflow"
-    match refs with
-    | [] -> ""
-    | cd :: t ->
-        (celldataIntoCell cd) + " ref, " + (addRefsToBuilder t)
-and codeToFift c : string list =
-    c |> List.map instrToFift
+        failwith (sprintf "unsupported instruction: %A" i)
+    |> ifSwap (not isFift)
+
+let codeToAssembly isFift c : string list =
+    List.map (instructionToAsmString isFift) c
 
 let outputFift (st:TVMState) : string =
     String.concat "\n" [
         "\"Asm.fif\" include";
         "<{";
-        (codeToFift st.code |> String.concat "\n")
+        (codeToAssembly true st.code |> String.concat "\n")
         "}>s";
         "1000000 gasrunvmcode";  // 1000000 = TVM gas limit
         "swap drop"; // omit VM exit code
@@ -1680,9 +1703,9 @@ let outputFiftCodeWithC4 code c4 =
     ]
 
 let outputFiftWithC4 (st:TVMState) (c4:string) : string =
-    outputFiftCodeWithC4 (codeToFift st.code) c4
+    outputFiftCodeWithC4 (codeToAssembly true st.code) c4
 
-let dumpFiftScript (fname:string) (str:string)  =
+let dumpString (fname:string) (str:string)  =
     use f = System.IO.File.CreateText(fname)
     f.WriteLine(str)
 
@@ -1749,49 +1772,3 @@ let genMessageWithStateInit name outputPath codeFift dataFift : string =
        0b0 1 builder_uint_append // No body attached
      builder_end
      cell_to_bytes \"" + outputPath + "\" file_write_bytes"
-
-let bucketSize = 255
-let arrayDefaultVal = Null
-let arrayNew = [PushNull]
-
-// a v -> a'
-let arrayAppend =
-    [TPush]
-
-// a v -> a'
-let arrayPut =
-    [SetIndexVarQ]
-
-// a k -> a[k]
-let arrayGet =
-    [IndexVarQ]
-
-// a k -> a[k] -1 | null 0
-let arrayGetWithCode =
-    arrayGet @ [Dup; IsNull; IsZero]
-
-
-// encode a list of serialized items into CellData according to
-// the following rule:
-// Each time there is insufficient data bits available in the current cell,
-// we insert a reference to a new cell and continue storing data there.
-let rec valsIntoCelldataRec (v: SValue list) (res:CellData) (iter:int) : CellData =
-    match v with
-        | (SInt (n, w) :: t) ->
-            if (iter % 4 = 0) then
-                // pack the other values into the cell c1 and
-                // put the reference to it into the current cell
-                let c1 = valsIntoCelldataRec v CellData.Default 1
-                res.appendRef c1
-            else
-                // create new cell for the value and append the reference to the result
-                let c1 = CellData.Default.appendVal (List.head v)
-                valsIntoCelldataRec t (res.appendRef c1) (iter + 1)
-        | _ :: t ->
-            failwith "not implemented"
-        | [] ->
-            res
-
-let valsIntoCelldata (v: SValue list) : CellData =
-    let n = List.length v
-    valsIntoCelldataRec v CellData.Default 1

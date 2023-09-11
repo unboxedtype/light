@@ -36,7 +36,7 @@ let executeCommand (cmd: string) (args: string) =
 let executeShellCommand command arg =
     executeCommand command arg
 
-let runFiftScript (scriptPath: string) =
+let runFiftScript (scriptPath: string) : string =
     let res = executeShellCommand FiftPath scriptPath
     let out =
         res.StandardOutput.Split(Environment.NewLine) |>

@@ -11,6 +11,10 @@ let lexeme = LexBuffer<_>.LexemeString
 
 let newline (lexbuf: LexBuffer<_>) =
   lexbuf.StartPos <- lexbuf.StartPos.NextLine
+  lexbuf.EndPos <- lexbuf.EndPos.AsNewLinePos()
+
+let mutable pushInt = false
+let mutable tuple = false
 }
 
 let int = ['-' '+']? ['0'-'9']+
@@ -34,7 +38,12 @@ rule read =
   | "true"   { TRUE }
   | "false"  { FALSE }
   | "not"    { NOT }
-  | int      { NUM (int (lexeme lexbuf)) }
+  | int      { let n = int (lexeme lexbuf) in
+               if pushInt = true then
+                  (pushInt <- false ; TVMI (TVM.PushInt n))
+               elif tuple = true then
+                  (tuple <- false ; TVMI (TVM.Tuple n))
+               else NUM n }
   | ":>"     { TYPECAST }
   | ";;"     { DSCOLON }
   | "->"     { RARROW  }  // function type
@@ -57,6 +66,17 @@ rule read =
   | '_'      { UNDERSCORE }
   | '"'      { read_string "" false lexbuf }
   | "assembly" { ASM }
+  | "INC"    { TVMI (TVM.Inc) }
+  | "DEC"    { TVMI (TVM.Dec) }
+  | "NEWC"   { TVMI (TVM.Newc) }
+  | "ENDC"   { TVMI (TVM.Endc) }
+  | "POPCTR c4" { TVMI (TVM.PopCtr 4) }
+  | "PUSHCTR c4" { TVMI (TVM.PushCtr 4) }
+  | "ACCEPT" { TVMI (TVM.Accept) }
+  | "NULL"
+  | "PUSHNULL" { TVMI (TVM.PushNull) }
+  | "PUSHINT"  { pushInt <- true; read lexbuf }
+  | "TUPLE"  { tuple <- true; read lexbuf }
   | "contract" { MODULE }
   | "type"   { TYPEDEF }
   | "of"     { OF }
@@ -98,12 +118,12 @@ and read_string str ignorequote =
   | [^ '"' '\\']+ { read_string (str+(lexeme lexbuf)) false lexbuf }
   | eof           { raise (Exception ("String is not terminated")) }
 and comment = parse
-| "*)"
+  | "*)"
     { () }
-| "(*"
+  | "(*"
     { comment lexbuf;
       comment lexbuf }
-| eof
+  | eof
     { printf "Warning: unterminated comment." }
-| _
+  | _
     { comment lexbuf }

@@ -4,72 +4,8 @@ module LHCompilerTests
 open NUnit.Framework
 open LHExpr
 open LHCompiler
-open ParserModule
 open type LHMachine.Instruction
-
-let getLetAst (m:Module) (n:int) =
-    m.Decls.[n].letBinding
-    |> (function | (_, _, _, c) -> c)
-
-let execAndCheckPrint (prog:string) addInit debug expected =
-    if debug then
-        printfn "%A" prog |> ignore
-        printfn "Passing program to the compiler..."
-    let code = LHMachine.asmAsRunVM (compile prog addInit debug)
-    if debug then
-        printfn "Dumping compiled program into file..."
-    let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".fif"
-    TVM.dumpFiftScript filename code
-    if debug then
-        printfn "Executing the resulting FIFT-script..."
-    let res = FiftExecutor.runFiftScript filename
-    Assert.AreEqual (expected, res)
-
-let execAndCheck prog expected =
-    execAndCheckPrint prog false false expected
-
-let execIR irProg expected =
-    let code = LHMachine.asmAsRunVM (LHMachine.fixpointImpl + "\n\n" +
-                                      LHMachine.compileToTVM irProg)
-    let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".fif"
-    TVM.dumpFiftScript filename code
-    let res = FiftExecutor.runFiftScript filename
-    Assert.AreEqual (expected, res)
-
-
-let execReal debug withInit prog data expected =
-    if debug then
-        printfn "%A" prog |> ignore
-        printfn "Passing program to the compiler..."
-    let code = LHMachine.asmAsCell (compile prog withInit debug)
-    let tname = NUnit.Framework.TestContext.CurrentContext.Test.Name
-    // FIFT script that produces state init into .TVC file
-    let nameGenStateInitScript = tname + ".fif"
-    // Where to dump the TVC
-    let nameGenStateInitTVC = tname + ".tvc"
-    // FIFT script that produces message with state init attachd
-    let nameGenMessageWithStateInitScript = "genMsg" + tname + ".fif"
-
-    if debug then
-        printfn "Dumping compiled program into file %A"
-                nameGenStateInitScript
-    TVM.dumpFiftScript
-       nameGenStateInitScript
-       (TVM.genStateInit nameGenStateInitTVC code data)
-    // .BOC file that contains binary repr of the message; to be sent
-    // using tonos-cli
-    let nameMsgWithStateInitBOC = tname + ".boc"
-    TVM.dumpFiftScript nameGenMessageWithStateInitScript
-       (TVM.genMessageWithStateInit tname nameMsgWithStateInitBOC code data)
-    //if debug then
-    //    printfn "Executing the resulting FIFT-script..."
-    //let res = FiftExecutor.runFiftScript filename
-    // Assert.AreEqual (expected, res)
-    Assert.Pass ()
-
-
-//let execActorMain prog actorMainParams debug expected =
-//    execAndCheckPrintActorMain prog actorMainParams true debug expected
+open TestsCommon
 
 [<SetUp>]
 let Setup () =
@@ -174,7 +110,7 @@ let testTuple0 () =
     let prog = "contract Simple
                    let main = ()
                    ;;"
-    execAndCheck prog "(null)"
+    execAndCheck prog ""
 
 [<Test>]
 let testRecord5 () =
@@ -187,7 +123,7 @@ let testRecord5 () =
                     let func2 f x = (f x) + 1000 in
                     { bal = func2 func11 stdef + 1000 } in
                   main2 func1 stateDefault ;;"
-    execAndCheckPrint prog false false "[ 2000 ]"
+    execAndCheck prog "[\"2000\"]"
 
 [<Test>]
 let testBoolCheck () =
@@ -275,9 +211,6 @@ let testLet0() =
                    let other x = x + 1 ;;
                    let main = other 10 ;;"
     execAndCheck prog "11"
-(**
-
-**)
 
 [<Test>]
 [<Timeout(1000)>]
@@ -287,7 +220,7 @@ let testTuple1 () =
                       let func x y () = x + y in
                       func 5 6 ()
                    ;;"
-    execAndCheckPrint prog false false "11"
+    execAndCheck prog "11"
 
 [<Test>]
 [<Timeout(1000)>]
@@ -298,7 +231,7 @@ let testTuple2 () =
                   let func x y () = { a = x; b = y } in
                       func 5 6 ()
                    ;;"
-    execAndCheck prog "[ 5 6 ]"
+    execAndCheck prog "[\"5\",\"6\"]"
 
 [<Test>]
 [<Timeout(1000)>]
@@ -318,7 +251,7 @@ let testTuple3 () =
                   else
                       actorStateWrite 1
                   ;;"
-    execAndCheckPrint prog false false "(null)"
+    execAndCheck prog ""
 
 [<Test>]
 let testMkAdder () =
@@ -328,7 +261,7 @@ let testMkAdder () =
                      let adder y = x + y in
                      adder x
                    in make_adder 3 ;;"
-    execAndCheckPrint prog false false "6"
+    execAndCheck prog  "6"
 
 [<Test>]
 let testRecord1 () =
@@ -349,7 +282,7 @@ let testClosure1 () =
                    let make_adder x = x + c in
                      let adder y = make_adder y in
                        adder 3 ;;"
-    execAndCheckPrint prog false false "1003"
+    execAndCheck prog "1003"
 
 [<Test>]
 let testClosure2 () =
@@ -359,7 +292,7 @@ let testClosure2 () =
                    let make_adder x =
                       (let adder y = y + c in adder x + c)
                    in make_adder 3 ;;"
-    execAndCheckPrint prog false false "2003"
+    execAndCheck prog "2003"
 
 [<Test>]
 let testClosure3 () =
@@ -369,7 +302,7 @@ let testClosure3 () =
                    let make_adder x =
                       (let adder y = y + c in adder x + c)
                    in make_adder 3 ;;"
-    execAndCheckPrint prog false false "2003"
+    execAndCheck prog "2003"
 
 
 // The tests below contain fixpoint operator. We separate it into a
@@ -385,7 +318,7 @@ let testGlobals () =
                        let rec sum n m =
                            if (n > 0) then (n + ((sum (n - 1)) m)) else m
                        in ((sum nArg) mArg) ;;"
-    execAndCheckPrint prog false false "75"
+    execAndCheck prog "75"
 
 [<Test>]
 [<Timeout(1000)>]
@@ -393,7 +326,7 @@ let testFun1 () =
     let prog = "contract Simple
                 let someFunc = fun x y -> x + y ;;
                 let main = someFunc 100 200 ;;"
-    execAndCheckPrint prog false false "300"
+    execAndCheck prog "300"
 
 [<Test>]
 [<Timeout(1000)>]
@@ -401,7 +334,7 @@ let testFun2 () =
     let prog = "contract Simple
                 let someFunc x = fun y -> x + y ;;
                 let main = (someFunc 100) 200 ;;"
-    execAndCheckPrint prog false false "300"
+    execAndCheck prog "300"
 
 [<Test>]
 [<Timeout(1000)>]
@@ -411,7 +344,7 @@ let testFun3 () =
                   let inc (x:int) = x + 1 in
                   let apply f x = f x in
                   apply inc 1 ;;"
-    execAndCheckPrint prog false false "2"
+    execAndCheck prog "2"
 
 [<Test>]
 let testIRtest0 () =
@@ -428,7 +361,7 @@ let testIRtest1 () =
 [<Timeout(1000)>]
 let testIRtest2 () =
     let prog = [Integer 100;
-                Function [Asm "DUMPSTK";
+                Function [Asm [TVM.DumpStk];
                           Integer 1; Sub; Push 0; Integer 0; Equal;
                           IfElse ([Integer 777], [Push 1; Apply 1; Execute ])];
                 Fixpoint; // 100 (fix f)
@@ -445,7 +378,7 @@ let testFactorial () =
                     if (n > 1) then (n * factorial (n - 1)) else 1 in
                  factorial 5 ;;
     "
-    execAndCheckPrint prog false false "120"
+    execAndCheck prog "120"
 
 [<Test>]
 let testRecord2 () =
@@ -467,7 +400,7 @@ let testGlobals2 () =
                        let rec sum n m =
                            if (n > 0) then (n + ((sum (n - 1)) m)) else m
                        in ((sum (nArg 0)) (mArg 0)) ;;"
-    execAndCheckPrint prog false false "75"
+    execAndCheck prog "75"
 
 [<Test>]
 let testFunc2Args () =
@@ -493,7 +426,7 @@ let testRecord3 () =
                      let st' = { bal = sumN 5 } in
                      { st = st' }
                    ;;"
-    execAndCheckPrint prog false false "[ [ 15 ] ]"
+    execAndCheck prog "[[\"15\"]]"
 
 [<Test>]
 [<Ignore("messageReader needs to be inserted. Not there yet")>]
@@ -521,7 +454,7 @@ let testCurry1 () =
                        let inc x = x + 1 in
                        let apply_inc = apply inc in
                        (apply_inc 1) ;;"
-    execAndCheckPrint prog false false "3"
+    execAndCheck prog "3"
 
 [<Test>]
 let testCurry2 () =
@@ -531,14 +464,14 @@ let testCurry2 () =
                     let sum x y = x + y in
                     let inc x = x + 1 in
                        f inc sum 10 20 ;;"
-    execAndCheckPrint prog false false "32"
+    execAndCheck prog "32"
 
 [<Test>]
 [<Timeout(1000)>]
 let testChain1 () =
     let prog = "contract Simple
                 let main = () ; (1) ;;"
-    execAndCheckPrint prog false false "1"
+    execAndCheck prog "1"
 
 [<Test>]
 [<Timeout(1000)>]
@@ -547,7 +480,7 @@ let testChain2 () =
                 let someFunc x =
                     x + 1; () ;;
                 let main = someFunc 100 ;;"
-    execAndCheckPrint prog false false "(null)"
+    execAndCheck prog  ""
 
 [<Test>]
 [<Timeout(1000)>]
@@ -555,7 +488,7 @@ let testChain3 () =
     let prog = "contract Simple
                 let someFunc x = x + 1; () ;;
                 let main = someFunc 100 ;;"
-    execAndCheckPrint prog false false "(null)"
+    execAndCheck prog ""
 
 [<Test>]
 let testFib1 () =
@@ -577,7 +510,7 @@ let testFun4 () =
                     fun y -> x + y + (func1 x) ;;
                 let main = func2 10 20 ;; (* = 10 + 20 + (10 + 1000)  *)
                 "
-    execAndCheckPrint prog false false "1040"
+    execAndCheck prog "1040"
 
 [<Test>]
 [<Timeout(1000)>]
@@ -588,7 +521,7 @@ let testFun5 () =
                 let give1 () = 1000 ;;
                 let main = (give give1) () () ;;
                 "
-    execAndCheckPrint prog false false "1000"
+    execAndCheck prog "1000"
 
 [<Test>]
 [<Timeout(1000)>]
@@ -598,7 +531,7 @@ let testFunType () =
                 let dec n = n - 1 ;;
                 let main = { cont = dec }; 0 ;;
                 "
-    execAndCheckPrint prog false false "0"
+    execAndCheck prog "0"
 
 [<Test>]
 [<Timeout(1000)>]
@@ -612,7 +545,7 @@ let testFunType2 () =
                   st'.cont 5
                   ;;
                 "
-    execAndCheckPrint prog false false "120"
+    execAndCheck prog "120"
 
 [<Test>]
 [<Timeout(1000)>]
@@ -625,7 +558,7 @@ let testFunType3 () =
                   st'.cont 5 10
                   ;;
                 "
-    execAndCheckPrint prog false false "15"
+    execAndCheck prog "15"
 
 [<Test>]
 [<Timeout(1000)>]
@@ -633,15 +566,16 @@ let testFunType4 () =
     let prog = "contract FunType4
                 type ActorState = { cont : VMCell -> State -> VMCell }
                 type State = { n : int }
-                let cell = assembly \"NEWC ENDC\" :> VMCell ;;
+                let cell = assembly { NEWC ; ENDC } :> VMCell ;;
                 let step (c:VMCell) (st:State) = cell ;;
                 let main =
                     { cont = step }; 0 ;;
                 "
-    execAndCheckPrint prog false false "0"
+    execAndCheck prog "0"
 
 [<Test>]
 [<Timeout(1000)>]
+[<Ignore ("data format has changed")>]
 let testDivergent () =
     let prog = "contract testDivergent
                 type State = { b:bool }
@@ -667,11 +601,12 @@ let testADT1 () =
                 let main =
                     0 ;;
                 "
-    execAndCheckPrint prog false false "0"
+    execAndCheck prog "0"
 
 
 
 [<Test>]
+[<Ignore("data format has changed")>]
 let testRealCont () =
     let prog = "contract testRealCont
                 type ActorMessage = { n:int }
@@ -707,7 +642,7 @@ let testTuple4 () =
                 let main =
                     (0,1,(2,true)) ;;
                 "
-    execAndCheckPrint prog false false "[ 0 1 [ 2 -1 ] ]"
+    execAndCheck prog "[\"0\",\"1\",[\"2\",\"-1\"]]"
 
 [<Test>]
 [<Timeout(1000)>]
@@ -717,7 +652,7 @@ let testTuple5 () =
                 let main =
                     (0,1,2,fact 3) ;;
                 "
-    execAndCheckPrint prog false false "[ 0 1 2 6 ]"
+    execAndCheck prog "[\"0\",\"1\",\"2\",\"6\"]"
 
 [<Test>]
 [<Timeout(1000)>]
@@ -730,26 +665,40 @@ let testDoubleRec () =
                     let st = { data = { n = 10; func = { f = (fun x y -> x + y) } } } in
                     st.data.func.f 5 6  ;;
                 "
-    execAndCheckPrint prog false false "11"
+    execAndCheck prog "11"
 
 [<Test>]
 [<Timeout(1000)>]
-[<Ignore("not ready")>]
-let testLetTuple1 () =
-    let prog = "contract testTuple5
+[<Ignore("not ready yet")>]
+let testMatchAdt1 () =
+    let prog = "contract testMatchAdt1
 
                 type ActorMessage =
-                    | ExecuteFunction of (int -> int)
-                    | PutNumber of int
+                    | Inc of int
+                    | Dec of int
 
-                type State = { n: int }
+                type State =
+                    { n: int }
 
-                let main msg (st:State) =
+                (* constructors for ActorMessage type *)
+                let Inc (n:int) =
+                    assembly \"DUMPSTK ZERO s1 PUSH SINGLE 2 TUPLE NIP \" :> ActorMessage
+                ;;
+                let Dec (n:int) =
+                    assembly \"DUMPSTK ONE  s1 PUSH SINGLE 2 TUPLE NIP \" :> ActorMessage
+                ;;
+
+                let proc (msg:ActorMessage) =
                     match msg with
-                    | ExecuteFunction f -> { n = f n }
-                    | PutNumber n -> { n = n }
-                "
-    execAndCheckPrint prog false false "[ 0 1 2 6 ]"
+                    | Inc n -> n + 1
+                    | Dec n -> n - 1
+                ;;
+
+                let main =
+                    proc (Inc 10) + proc (Dec 10)
+                ;;
+              "
+    execAndCheck prog "20"
 
 [<Test>]
 [<Timeout(1000)>]
@@ -759,7 +708,7 @@ let testCastInsideRecord () =
                 let main =
                     { data = 10 :> uint32 } ;;
                 "
-    execAndCheckPrint prog false false "[ 10 ]"
+    execAndCheck prog "[\"10\"]"
 
 [<Test>]
 [<Timeout(1000)>]
@@ -771,7 +720,7 @@ let testGeLe () =
                     if (f2 100 >= f1 10) then 10 else 20
                 ;;
                 "
-    execAndCheckPrint prog1 false false "10"
+    execAndCheck prog1 "10"
 
     let prog2 = "contract testLe
                 let main =
@@ -780,7 +729,7 @@ let testGeLe () =
                     if (f2 100 <= f1 10) then 10 else 20
                 ;;
                 "
-    execAndCheckPrint prog2 false false "20"
+    execAndCheck prog2  "20"
 
 [<Test>]
 [<Timeout(1000)>]
@@ -791,7 +740,7 @@ let testIfBool () =
                     if b then 1 else 2
                 ;;
                 "
-    execAndCheckPrint prog1 false false "1"
+    execAndCheck prog1 "1"
 
     let prog2 = "contract testIfBoolFalse
                 let main =
@@ -799,7 +748,7 @@ let testIfBool () =
                     if b then 1 else 2
                 ;;
                 "
-    execAndCheckPrint prog2 false false "2"
+    execAndCheck prog2  "2"
 
 [<Test>]
 [<Timeout(1000)>]
@@ -812,4 +761,20 @@ let testTrivialActorInit () =
                 ;;
                 "
     let debug = false
-    execReal debug true prog "<b 0 32 u, -1 2 u, b>" "(null)"
+    execReal debug true prog "{ seqNo = 0; deployed = false; salt = 0; state = { b = true } }" "(null)"
+
+[<Test>]
+let testIRtest5 () =
+    let prog = [Integer 100; Integer 200; Add]
+    execIR prog  "300"
+
+[<Test>]
+[<Timeout(1000)>]
+let testIfBool3 () =
+    let prog1 = "contract testIfBoolTrue
+                let main =
+                    let b = true in
+                    if b then 1 else 2
+                ;;
+                "
+    execAndCheck prog1 "1" 

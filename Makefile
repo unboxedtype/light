@@ -1,3 +1,7 @@
+CWD := $(shell pwd)
+INSTALLDIR := "/usr/bin/"
+
+
 all: run test
 
 build:
@@ -5,21 +9,43 @@ build:
 	@echo Building LHCompiler binary...
 	@echo ====================================
 	@echo
-	@dotnet build -c Debug src/LHCompiler/
+	@dotnet build -c Debug src/LHCompiler/ -o ./bin/LHCompiler/
 	@echo
 	@echo ====================================
 	@echo building LHGenDes binary...
 	@echo ====================================
 	@echo
-	@dotnet build -c Debug src/LHGenDes/
+	@dotnet build -c Debug src/LHGenDes/ -o ./bin/LHGenDes/
+
+install:
+	@echo ======================================================
+	@echo Creating a symbolic link to Light compiler executables
+	@echo ======================================================
+	sudo ln -fs "$(CWD)/bin/LHCompiler/light" $(INSTALLDIR)/light
+	sudo ln -fs "$(CWD)/bin/LHCompiler/lightMessage.fsx" $(INSTALLDIR)/lightMessage.fsx
+	sudo ln -fs "$(CWD)/bin/LHCompiler/lightExpr.fsx" $(INSTALLDIR)/lightExpr.fsx
+	@echo
+	@echo Done. Execute 'light' to run Light compiler.
+	@echo
+	@echo
+
+uninstall:
+	@echo =====================================================
+	@echo Removing symbolic links to Light compiler executables
+	@echo =====================================================
+	sudo rm -f $(INSTALLDIR)/light
+	sudo rm -f $(INSTALLDIR)/lightMessage.fsx
+	sudo rm -f $(INSTALLDIR)/lightExpr.fsx
+	@echo
 
 clean:
 	@find . -type d -name 'bin' | xargs rm -rf
 	@find . -type d -name 'obj' | xargs rm -rf
 
-## /m:1 switch is a workaround not to
-## let dotnet break the tty
-test: test_tvm test_lhm test_parser test_ti test_comp
+test: test_tvm test_lhm test_parser test_ti test_comp test_interop
+
+test_interop:
+	@dotnet test ./tests/SDKInteropTests/
 
 test_parser:
 	@dotnet test ./tests/ParserTests

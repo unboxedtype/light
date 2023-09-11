@@ -50,7 +50,7 @@ type SExpr =
     | STuple of es:list<SExpr>
     | SUpdateRec of e0:SExpr * n:int * e1:SExpr
     | SAssign of e0:SExpr
-    | SAsm of s:string
+    | SAsm of s:list<TVM.Instruction>
     | STypeCast of e1:SExpr * typ:Type
     | SFailWith of n:int
     member this.ToString n =
@@ -93,7 +93,7 @@ type Expr =
     | EUpdateRec of e0:ASTNode * n:int * e1:ASTNode
     | EAssign of e0:ASTNode
     | EFailWith of n:int
-    | EAsm of s:string
+    | EAsm of s:list<TVM.Instruction>
     | ETypeCast of e0:ASTNode * typ:Type
     member this.Name =
         match this with

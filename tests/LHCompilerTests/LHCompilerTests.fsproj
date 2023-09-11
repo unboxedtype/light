@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net6.0</TargetFramework>
+    <TargetFramework>net7.0</TargetFramework>
     <IsPackable>false</IsPackable>
     <GenerateProgramFile>false</GenerateProgramFile>
   </PropertyGroup>
@@ -13,8 +13,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/Parser/Parser.fsproj" />
-    <ProjectReference Include="../../src/LHCompiler/LHCompiler.fsproj" />
-    <ProjectReference Include="../../src/FiftExecutor/FiftExecutor.fsproj" />
+    <ProjectReference Include="../../src/TestsCommon/TestsCommon.fsproj" />    
   </ItemGroup>
 
   <ItemGroup>

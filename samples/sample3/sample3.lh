@@ -10,7 +10,7 @@ type ActorMessage = {
 }
 
 let accept () =
-  assembly "ACCEPT" :> unit ;
+  assembly { ACCEPT } :> unit ;
   ()
 ;;
 

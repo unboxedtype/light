@@ -15,8 +15,17 @@ open LHExpr
 open type LHTypes.Type
 open type ParserModule.Module
 
+let replaceExt (filePath: string) (newExt: string) =
+    let directory = Path.GetDirectoryName (filePath)
+    let fileName = Path.GetFileNameWithoutExtension (filePath)
+    let newFilePath = Path.Combine(directory, fileName + newExt)
+    newFilePath
+
+let onlyName (filePath: string) =
+    Path.GetFileNameWithoutExtension (filePath)
+
 // TODO: put all parse functions into a single module
-let parse source =
+let parse source filename =
     let lexbuf = LexBuffer<char>.FromString source
     let res = Parser.start Lexer.read lexbuf
     res
@@ -317,13 +326,12 @@ let makeReductions debug (ast:ASTNode) : ASTNode =
 
 exception CompilerError of string
 
-let compileModule modName decls withInit debug : string =
+let compileModule modName decls withInit debug isFift : string =
     if debug then
         printfn "Compiling actor %A" modName ;
     let typesFull = ParserModule.extractTypes debug decls
     if debug then
-        use fileTy = System.IO.File.CreateText(modName + ".types")
-        fprintfn fileTy "%A" typesFull
+        File.WriteAllText(modName + ".types", sprintf "%A" typesFull)
 
     let finalDecls =
         if withInit then
@@ -337,7 +345,7 @@ let compileModule modName decls withInit debug : string =
             let actorStateWriterCode =
                 LHTypes.serializeValue typesFull actorStateType
             let messageBodyReaderCode =
-                (LHTypes.deserializeValueSlice typesFull messageBodyType) + " ENDS "
+                (LHTypes.deserializeValueSlice typesFull messageBodyType) @ [TVM.Ends] // " ENDS "
             // pack 5 elements from the stack into a tuple, this will be an
             // ActorInitParams value.
             let aargsLet =
@@ -345,7 +353,7 @@ let compileModule modName decls withInit debug : string =
                     "actorArgs", [], false,
                     mkAST (
                       ETypeCast (
-                         mkAST (EAsm "5 TUPLE"),
+                         mkAST (EAsm [TVM.Tuple 5]),
                          UserType ("ActorInitArgs", None)
                       )
                     )
@@ -415,6 +423,7 @@ let compileModule modName decls withInit debug : string =
         else prepareAstMain letBndsUpd typesFull
     let ast1 = makeReductions debug finalExpr
     let typeEnv = LHTypeInfer.TypeEnv.ofProgramTypes typesFull
+    let debug = false
     let (ty, (oldMap, newMap)) =
         LHTypeInfer.typeInferenceDebug
           typeEnv
@@ -423,7 +432,7 @@ let compileModule modName decls withInit debug : string =
           debug
 
     let ir = LHMachine.compileAST ast1 [] newMap
-    let assembly = LHMachine.compileIRIntoAssembly debug ir
+    let assembly = LHMachine.compileIRIntoAssembly debug isFift ir
 
     if (debug) then
         use file1 = System.IO.File.CreateText(modName + ".sexpr")
@@ -431,72 +440,34 @@ let compileModule modName decls withInit debug : string =
         use file2 = System.IO.File.CreateText(modName + ".ir")
         fprintfn file2 "%A" ir
         use file3 = System.IO.File.CreateText(modName + ".asm")
-        fprintfn file3 "%A" assembly
+        fprintfn file3 "%s" assembly
 
     assembly
 
-// The function compiles Lighthouse source code
-// into the FIFT source code.
+// The function compiles Light source code into the assembly code.
 // Arguments:
-//  - source = a string representing the source code
-//    of an actor.
-let compile (source:string) (withInit:bool) (debug:bool) : string =
-    let prog = if withInit then (source + ActorInit.actorInitCode)
-               else source
-    let res = parse prog
+//  - sourcePath = a string representing the source code path
+let compile (sourcePath:string) (withInit:bool) (debug:bool) (isFift:bool) : string =
+    if debug then
+        printfn "compiling with params: withInit = %A, debug = %A, isFift = %A" withInit debug isFift
+    let fileContent = File.ReadAllText sourcePath
+    let prog = if withInit then (fileContent + "\n" + ActorInit.actorInitCode)
+               else fileContent
+    if debug then
+       File.WriteAllText(replaceExt sourcePath ".lh.full", prog);
+    let res = parse prog sourcePath
     match res with
     | Some (Module (modName, decls)) ->
         if debug then
-            use file1 = System.IO.File.CreateText(modName + ".full")
-            fprintfn file1 "%A" prog
-            use file2 = System.IO.File.CreateText(modName + ".parse")
-            fprintfn file2 "%A" res
-        compileModule modName decls withInit debug
+            File.WriteAllText(modName + ".parse", sprintf "%A" res);
+        compileModule modName decls withInit debug isFift
     | _ ->
         failwith "Actor not found"
 
-// compile Lighthouse source at filePath and output the result (FIFT)
-// into the same filePath, but with ".fif" extension
-let compileFile (debug:bool) (prodAsm:bool) (withInit:bool) (filePath:string) (dataExpr:string) =
-    let generateDataBocFromExpr dataExpr =
-        let args = "-c \"dotnet fsi $(which serializeExpression.fsx) " + filePath +
-                   " ActorState \'" + dataExpr + "\'\""
-        printfn "args = %A" args
-        let res = FiftExecutor.executeShellCommand "/bin/bash" args
-        if res.ExitCode <> 0 then
-            failwithf "Shell command executed with the error: %s; output: %s"
-                      res.StandardError
-                      res.StandardOutput
-    let readFile (filePath: string) =
-        File.ReadAllText(filePath)
-    let replaceExt (filePath: string) (newExt: string) =
-        let directory = Path.GetDirectoryName (filePath)
-        let fileName = Path.GetFileNameWithoutExtension (filePath)
-        let newFilePath = Path.Combine(directory, fileName + newExt)
-        newFilePath
-    let onlyName (filePath: string) =
-        Path.GetFileNameWithoutExtension (filePath)
-    let writeFile (filePath: string) (content: string) =
-        File.WriteAllText(filePath, content)
-    let fileContent = readFile filePath
-    let code = LHMachine.asmAsCell (compile fileContent withInit debug)
-    let dataBoc = " \"data.boc\" file>B B>boc "
-    let nameGenStateInitScript = (onlyName filePath) + ".fif"
-    let nameGenStateInitTVC = (onlyName filePath) + ".tvc"
-    let nameGenMessageWithStateInitScript = (onlyName filePath) + "_deploy.fif"
-    let nameMsgWithStateInitBOC = (onlyName filePath) + ".boc"
-    TVM.dumpFiftScript
-       nameGenStateInitScript
-       (TVM.genStateInit nameGenStateInitTVC code dataBoc)
-    TVM.dumpFiftScript nameGenMessageWithStateInitScript
-       (TVM.genMessageWithStateInit (onlyName filePath) nameMsgWithStateInitBOC code dataBoc)
-    if (not prodAsm) then
-        generateDataBocFromExpr dataExpr |> ignore   (* side effect: data.boc is created *)
-
-// Compiles expression into FIFT-assembly evaluating the
-// given expression. Needed to generate init-state and messages
-// for actors.
-let compileExprOfType (types:list<Name*Type>) exprTypeName exprStr : string =
+// Compiles expression into assembly evaluating the
+// given expression. Needed to generate init-state and
+// messages for actors.
+let compileExprOfType (types:list<Name*Type>) exprTypeName exprStr isFift : string =
     let typeMap = Map.ofList types
     if Map.tryFind exprTypeName typeMap = None then
         failwithf "type %A not found" exprTypeName
@@ -504,10 +475,92 @@ let compileExprOfType (types:list<Name*Type>) exprTypeName exprStr : string =
     // TODO! Check type of the expr
     let writerCode =
         LHTypes.serializeValue types exprT
-    let res1  = parse ("contract Test\nlet main = " + exprStr + " ;; ")
+    let writerCodeStr =
+        writerCode
+        |> List.map (TVM.instructionToAsmString isFift)
+        |> String.concat "\n"
+    let res1  = parse ("contract Test\nlet main = " + exprStr + " ;; ") "noname"
     let getLetAst (m:ParserModule.Module) (n:int) = m.Decls.[n]
     let letBndMain = getLetAst res1.Value 0
     let fullTypeDecls = types |> List.map ParserModule.TypeDef
-    (compileModule "eval" (fullTypeDecls @ [letBndMain]) false false) +
-      "\n" + writerCode + "\n"
+    let debug = false
+    (compileModule "Test" (fullTypeDecls @ [letBndMain]) false debug isFift) +
+      "\n" + writerCodeStr + "\n"
 
+let compileExpr sourcePath exprType exprStr isFift =
+    let fileContent = File.ReadAllText sourcePath
+    let prog = fileContent + "\n" + ActorInit.actorInitCode
+    // File.WriteAllText(sourcePath + ".full", prog)
+    let res = parse prog sourcePath
+    match res with
+    | Some (Module (modName, decls)) ->
+        let typesFull = ParserModule.extractTypes false decls
+        let typeMap = Map.ofList typesFull
+        compileExprOfType typesFull exprType exprStr isFift
+    | _ ->
+        failwith "No actor definition found in the file"
+
+// Compile Light source located at filePath into .BOC file containing
+// a message with the given code and initial data. Data is given in a form
+// of a Light expression.
+let compileFile (debug:bool) (prodAsm:bool) (withInit:bool) (filePath:string) (dataExpr:string) =
+    // 1. Using SDKInterop.executeTVMCode, compile and execute dataExpr, result is stored in Base64
+    // 2. Using LHCompiler.compile, compile filePath into Base64
+    // 3. Using SDKInterop.encodeStateInit, using (1) data and (2) code, build the stateinit in Base64.
+    // 4. Using SDKInterop.encodeInitMsg, using (3), build init message in Base64.
+    // 5. Using Convert.FromBase64String, convert (4) into a binary form
+    // 6. Using File.WriteAllBytes(path,bytes), store (5) into a file
+    let readTextFile (filePath: string) =
+        File.ReadAllText(filePath)
+    let writeBinaryFile (filePath: string) (content: array<byte>) =
+        File.WriteAllBytes(filePath, content)
+    let isFift = false
+    let dataGenCode = compileExpr filePath "ActorState" dataExpr isFift
+    if debug then
+        printfn "data expression compiled successfully:"
+        printfn "%s" dataGenCode
+    let stk = SDKInterop.executeTVMCode SDKInterop.client dataGenCode
+    let dataBase64 = stk.[0].GetProperty("value").ToString()
+    if debug then
+        printfn "Expression value in base64: %s" dataBase64
+    let withInit, isFift = true, false
+    let codeAsm = compile filePath withInit debug isFift
+    if debug then
+        File.WriteAllText(replaceExt filePath ".asm", codeAsm);
+    if debug then
+        printfn "Compiling assembly code into binary (in B64 repr)..."
+    let codeBase64 = SDKInterop.compileCode codeAsm
+    if debug then
+        printfn "Compiling state-init into binary (in B64 repr)..."
+    let stateInitBase64 = SDKInterop.encodeStateInit SDKInterop.client codeBase64 dataBase64
+    let stateInitBytes  = System.Convert.FromBase64String (stateInitBase64)
+    let stateInitPath = replaceExt filePath ".stateinit.tvc"
+    File.WriteAllBytes (stateInitPath, stateInitBytes) ;
+    let addr = "0:" + (SDKInterop.accountIdOfStateInit SDKInterop.client stateInitBase64)
+    let addrPath = replaceExt filePath ".address"
+    File.WriteAllText (addrPath, addr)
+    if debug then
+        printfn "Actor address is %s" addr
+    let initMsgBase64 = SDKInterop.encodeInitMsg SDKInterop.client stateInitBase64
+    let initMsgBytes  = System.Convert.FromBase64String (initMsgBase64)
+    let bocPath = replaceExt filePath ".initmsg.boc"
+    File.WriteAllBytes (bocPath, initMsgBytes) ;
+
+(* Compile the given expression as an actor message that has
+   to be sent to actor with the given id. The side-effect of
+   this function is a file.msg.boc file containing the message *)
+let compileMessage (filePath:string) (id:string) (msgExpr:string) : unit =
+    let idHex =
+        if id.[0..1] = "0:" then "0x" + id.[2..]
+        elif id.[0..2] = "-1:" then
+            failwith "Masterchain messages are not supported"
+        else
+            failwith "Unknown workchain id in the actor address"
+    let isFift = false (* TODO *)
+    let msgBodyGenCode = compileExpr filePath "MessageBody" msgExpr isFift
+    let stk = SDKInterop.executeTVMCode SDKInterop.client msgBodyGenCode
+    let msgBodyB64 = stk.[0].GetProperty("value").ToString()
+    let msgBocB64 = SDKInterop.encodeExtMsg SDKInterop.client id msgBodyB64
+    let msgBytes  = System.Convert.FromBase64String msgBocB64
+    let bocPath = replaceExt filePath ".msg.boc"
+    File.WriteAllBytes (bocPath, msgBytes)

@@ -3,11 +3,10 @@ open ParserModule
 open LHExpr
 open FSharp.Text.Parsing
 open LHTypes
-// EFunc of arg:(Name*option<Type>) * body:Expr
-// [("x",None),("y",Some Int 256)], body ->
-//   --> EFunc (("x",None), EFunc (("y", Some Int 256), ...))
-// [], body ->
-//   --> body
+
+// Transform classic function representation 'let f a b c = body' into a
+// series of enclosed lambdas, i.e. 'let f = \a -> \b -> \c -> body'.
+// Light core language has only lambdas as function abstractions.
 let rec unfoldFunction argsTypes body =
     match argsTypes with
     | [] -> body
@@ -29,6 +28,16 @@ let genFunVar () : string =
 let resetFunVar () =
     funVar <- 0
 
+// val parse_error_rich: (ParseErrorContext<'tok> -> unit) option
+
+let parse_error_rich = Some (
+  fun (ctx:ParseErrorContext<'tok>) ->
+    let ps = (ctx.get_ParseState ()).get_ResultRange ()
+    let m = ctx.get_Message ()
+    let ct = ctx.get_CurrentToken ()
+    let msg = sprintf "parse error:%s\ntoken: %A\npos:%A" m ct ps
+    failwith msg
+)
 %}
 
 %start start
@@ -39,6 +48,7 @@ let resetFunVar () =
 %token <string> LIDENT
 %token <string> IDENT
 %token <string> STRING
+%token <TVM.Instruction> TVMI
 %token BOOL INT UINT UINT32 UNIT VMCELL VMSLICE STRINGT
 %token TRUE FALSE
 %token DSCOLON
@@ -125,6 +135,15 @@ ADTCtors:
 ADTDecl:
   | ADTCtors { ADT $1 }
 
+UnitDecl:
+  | UNIT     { Unit }
+
+
+TypeDecl:
+  | recordDecl { $1 }
+  | ADTDecl    { $1 }
+  | UnitDecl   { $1 }
+
 // =================================================
 // Function and Handler declaration argument
 // "(x:int)" "y" "()"
@@ -138,6 +157,10 @@ funcArgs:
    | { [] }
    | funcArg funcArgs { $1 :: $2 }
 
+
+asmInstructions:
+   | TVMI { [$1] }
+   | TVMI SEMICOLON asmInstructions { [$1] @ $3 }
 
 // ex.varEquation
 recordConstrVar:
@@ -238,7 +261,7 @@ expr:
 
   | elems
     %prec prec_tuple
-  { mkAST (ETuple $1) }
+      { mkAST (ETuple $1) }
 
   // LET TUPLE has to be here
 
@@ -257,10 +280,15 @@ expr:
          failwith "failwith requires integer value as parameter"
   }
 
-  | ASM STRING
-  {
-     mkAST (EAsm $2)
-  }
+  | ASM LBRACE asmInstructions RBRACE
+      { mkAST (EAsm $3) }
+
+ | error
+   {
+      let x = (fst parseState.ResultRange).pos_lnum
+      let y = (snd parseState.ResultRange).pos_lnum
+      failwith
+        (sprintf "parse error near lines %d-%d" x y) }
 
   // | expr LARROW expr
   //{
@@ -289,10 +317,7 @@ elems:
 //  * let binding
 // =================================================
 decl:
-  | TYPEDEF UIDENT EQ recordDecl
-  { TypeDef ($2, $4) }
-
-  | TYPEDEF UIDENT EQ ADTDecl
+  | TYPEDEF UIDENT EQ TypeDecl
   { TypeDef ($2, $4) }
 
   | HANDLER LIDENT funcArgs EQ expr
@@ -319,4 +344,3 @@ decls:
 // Module is a named list of declarations.
 modle:
   | MODULE ident decls { Module ($2, $3) }
-
