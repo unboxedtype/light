@@ -446,20 +446,20 @@ let compileModule modName decls withInit debug isFift : string =
 
 // The function compiles Light source code into the assembly code.
 // Arguments:
-//  - sourcePath = a string representing the source code path
-let compile (sourcePath:string) (withInit:bool) (debug:bool) (isFift:bool) : string =
+//  - prog = a string representing the actor program
+let compile (prog0:string) (withInit:bool) (debug:bool) (isFift:bool) : string =
     if debug then
         printfn "compiling with params: withInit = %A, debug = %A, isFift = %A" withInit debug isFift
-    let fileContent = File.ReadAllText sourcePath
-    let prog = if withInit then (fileContent + "\n" + ActorInit.actorInitCode)
-               else fileContent
-    if debug then
-       File.WriteAllText(replaceExt sourcePath ".lh.full", prog);
+    let prog = if withInit then (prog0 + "\n" + ActorInit.actorInitCode)
+               else prog0
+    // if debug then
+    //   File.WriteAllText(replaceExt sourcePath ".lh.full", prog);
+    let sourcePath = "" (* TODO *)
     let res = parse prog sourcePath
     match res with
     | Some (Module (modName, decls)) ->
-        if debug then
-            File.WriteAllText(modName + ".parse", sprintf "%A" res);
+        //if debug then
+        //    File.WriteAllText(modName + ".parse", sprintf "%A" res);
         compileModule modName decls withInit debug isFift
     | _ ->
         failwith "Actor not found"
@@ -524,7 +524,8 @@ let compileFile (debug:bool) (prodAsm:bool) (withInit:bool) (filePath:string) (d
     if debug then
         printfn "Expression value in base64: %s" dataBase64
     let withInit, isFift = true, false
-    let codeAsm = compile filePath withInit debug isFift
+    let progText = readTextFile filePath
+    let codeAsm = compile progText withInit debug isFift
     if debug then
         File.WriteAllText(replaceExt filePath ".asm", codeAsm);
     if debug then
