@@ -67,3 +67,6 @@ test_comp:
 
 comp:
 	@dotnet build ./src/LHCompiler/
+
+interpret:
+	@dotnet build ./src/LHInterpret/

@@ -26,6 +26,15 @@ let execIRExt isFift irProg expected =
 let execIR irProg expected =
     execIRExt false irProg expected
 
+let execAsm isFift code =
+    if isFift then
+        (* TVM.dumpString filename (LHMachine.asmAsRunVM code) ;
+           FiftExecutor.runFiftScript filename *)
+        failwith "not supported; please fix"
+    else
+        // TVM.dumpString filename code ;
+        (SDKInterop.executeTVMCode SDKInterop.client code).[0].ToString()
+
 let execAndCheckPrint addInit debug isFift (prog:string) expected =
     if debug then
         printfn "%A" prog |> ignore
@@ -34,13 +43,8 @@ let execAndCheckPrint addInit debug isFift (prog:string) expected =
     if debug then
         printfn "Dumping compiled program into file..."
     let filename = NUnit.Framework.TestContext.CurrentContext.Test.Name + ".asm"
-    let res = 
-       if isFift then
-           TVM.dumpString filename (LHMachine.asmAsRunVM code) ;
-           FiftExecutor.runFiftScript filename
-       else
-           TVM.dumpString filename code ;
-           (SDKInterop.executeTVMCode SDKInterop.client code).[0].ToString()
+    let res =
+        execAsm isFift (* filename *) code
     Assert.AreEqual (expected, res)
 
 let execAndCheck prog expected =
