@@ -27,24 +27,27 @@ let right x =
   | _ -> failwith "left"
 
 module Lifter (A:Actor) (B:Actor) = struct
-  type outMsg = (A.outMsg, B.outMsg) either
-  let liftA (x:A.outMsg) : outMsg  = Left x
-  let liftB (x:B.outMsg) : outMsg = Right x
+  type inMsg = (A.inMsg, B.inMsg) either
+  type outMsg = (A.outMsg, B.outMsg) either  
+  let liftInA (x:A.inMsg) : inMsg  = Left x
+  let liftInB (x:B.inMsg) : inMsg = Right x
+  let liftOutA (x:A.outMsg) : outMsg  = Left x
+  let liftOutB (x:B.outMsg) : outMsg = Right x
   let liftActA (x:A.outMsg action) : outMsg action =
     match x with
-    | SendMessage (msg,id,v) -> SendMessage (liftA msg, id, v)
+    | SendMessage (msg,id,v) -> SendMessage (liftOutA msg, id, v)
     | Reserve (i,p) -> Reserve (i,p)
   let liftActB (x:B.outMsg action) : outMsg action =
     match x with
-    | SendMessage (msg,id,v) -> SendMessage (liftB msg, id, v)
+    | SendMessage (msg,id,v) -> SendMessage (liftOutB msg, id, v)
     | Reserve (i,p) -> Reserve (i,p)
 end
 
 (* make a union of two behaviours, A and B *)
 module Union (A:Actor) (B:Actor) = struct
   type state = A.state * B.state
-  type inMsg = (A.inMsg, B.inMsg) either
   include Lifter (A) (B)
+  type inMsg = (A.inMsg, B.inMsg) either
   type outMsg = (A.outMsg, B.outMsg) either
   let default = (A.default, B.default)
 
@@ -58,17 +61,15 @@ module Union (A:Actor) (B:Actor) = struct
        ((fst st, fst r), List.map liftActB (snd r))
 end
 
-(* Extend the behavior of A with the behavior of B, i.e. add new message
-   types and handlers for them *)
+(* Extend the behavior of A with the behavior of B, i.e. add new
+   incoming message types and handlers for them *)
 (* Extension is allowed iff B has the same state type *)
 module Extend (A:Actor) (B:Actor with type state = A.state) = struct
   type state = A.state
-  type inMsg = (A.inMsg, B.inMsg) either
   include Lifter (A) (B)
+  type inMsg = (A.inMsg, B.inMsg) either
   type outMsg = (A.outMsg, B.outMsg) either
   let default = A.default
-  let lmsg msg : inMsg = Left msg
-  let rmsg msg : inMsg = Right msg
   let receive (st:state) (msg:inMsg) : state * outMsg action list =
     match msg with
     | Left m ->
@@ -144,7 +145,7 @@ end
 
 module C = Union (A) (B) ;;
 
-C.receive ( { a = 10 }, { b = 1; c = 2 } ) (Right (BMessage1 (10, 20, 30))) ;;
+C.receive ({ a = 10 }, { b = 1; c = 2 }) (Right (BMessage1 (10, 20, 30))) ;;
 
 module PatchB = struct
   type state = B.state
@@ -183,9 +184,10 @@ module AExt = struct
 end
 
 module AExtended = Extend (A) (AExt) ;;
+module LiftAB = Lifter (A) (AExt) ;;
 
-AExtended.receive { a = 10 } (AExtended.rmsg (AExtMsg1 100)) ;;
-AExtended.receive { a = 10 } (AExtended.lmsg (AMessage2 (100, 200))) ;;
+AExtended.receive { a = 10 } (LiftAB.liftInB (AExtMsg1 100)) ;;
+AExtended.receive { a = 10 } (LiftAB.liftInA (AMessage2 (100, 200))) ;;
 
 let actions = ref [] ;;
 let sendmsg1 (msg:int) (val0:int) (flags:int) : unit =
