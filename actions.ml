@@ -3,9 +3,9 @@ type ('msg) action =
   | Reserve of int * int
 
 module type Actor = sig
-  type state
-  type inMsg
-  type outMsg
+  type state  (* type of actor state *)
+  type inMsg  (* type of incoming messages *)
+  type outMsg (* type of outgoing messages *)
   (* default function returns the default state variable values *)
   val default : state
   (* actor message handler *)
@@ -31,15 +31,13 @@ module Lifter (A:Actor) (B:Actor) = struct
   type outMsg = (A.outMsg, B.outMsg) either  
   let liftInA (x:A.inMsg) : inMsg  = Left x
   let liftInB (x:B.inMsg) : inMsg = Right x
-  let liftOutA (x:A.outMsg) : outMsg  = Left x
-  let liftOutB (x:B.outMsg) : outMsg = Right x
   let liftActA (x:A.outMsg action) : outMsg action =
     match x with
-    | SendMessage (msg,id,v) -> SendMessage (liftOutA msg, id, v)
+    | SendMessage (msg,id,v) -> SendMessage (Left msg, id, v)
     | Reserve (i,p) -> Reserve (i,p)
   let liftActB (x:B.outMsg action) : outMsg action =
     match x with
-    | SendMessage (msg,id,v) -> SendMessage (liftOutB msg, id, v)
+    | SendMessage (msg,id,v) -> SendMessage (Right msg, id, v)
     | Reserve (i,p) -> Reserve (i,p)
 end
 
